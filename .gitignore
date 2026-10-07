@@ -1,0 +1,24 @@
+# dependencies & build output
+node_modules/
+dist/
+src-tauri/target/
+target/
+*.tsbuildinfo
+
+# local env & secrets (never commit keys)
+.env
+.env.*
+*.pem
+*.key
+
+# editors & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test artifacts
+coverage/
+test-results/
+docs/testing/runs/*.local.md
