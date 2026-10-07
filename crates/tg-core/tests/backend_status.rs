@@ -130,6 +130,77 @@ fn test_status_rename() {
 }
 
 #[test]
+fn test_status_rename_with_content_change_stays_renamed() {
+    let repo = common::rename();
+    fs::write(repo.path().join("b.txt"), "rename test content\nchanged\n")
+        .expect("edit renamed file");
+    repo.git(&["add", "b.txt"]);
+
+    let backend = Git2Backend::open(repo.path()).expect("open rename repo");
+    let statuses = backend.status().expect("status");
+    assert_eq!(
+        statuses.len(),
+        1,
+        "expected a single rename entry: {statuses:?}"
+    );
+
+    let ren = &statuses[0];
+    assert_eq!(ren.path, "b.txt");
+    assert_eq!(ren.old_path.as_deref(), Some("a.txt"));
+    assert_eq!(ren.index, Some(ChangeKind::Renamed));
+    assert_eq!(ren.worktree, None);
+    assert!(!ren.conflicted);
+}
+
+#[test]
+fn test_status_unstaged_rename() {
+    let repo = common::basic();
+    fs::rename(
+        repo.path().join("a.java"),
+        repo.path().join("a_renamed.java"),
+    )
+    .expect("filesystem rename");
+
+    let backend = Git2Backend::open(repo.path()).expect("open repo");
+    let statuses = backend.status().expect("status");
+    assert_eq!(
+        statuses.len(),
+        1,
+        "identical rename should be one entry, got: {statuses:?}"
+    );
+    let ren = &statuses[0];
+    assert_eq!(ren.path, "a_renamed.java");
+    assert_eq!(ren.old_path.as_deref(), Some("a.java"));
+    assert_eq!(ren.index, None);
+    assert_eq!(ren.worktree, Some(ChangeKind::Renamed));
+    assert!(!ren.conflicted);
+}
+
+#[test]
+fn test_status_unstaged_rename_with_edit_stays_renamed() {
+    let repo = common::basic();
+    let src = repo.path().join("a.java");
+    let dst = repo.path().join("a_renamed.java");
+    let mut body = fs::read(&src).expect("read a.java");
+    body.extend_from_slice(b"// edited\n");
+    fs::write(&dst, body).expect("write renamed edit");
+    fs::remove_file(&src).expect("remove old path");
+
+    let backend = Git2Backend::open(repo.path()).expect("open repo");
+    let statuses = backend.status().expect("status");
+    assert_eq!(
+        statuses.len(),
+        1,
+        "rename plus a small edit should stay one entry, got: {statuses:?}"
+    );
+    let ren = &statuses[0];
+    assert_eq!(ren.path, "a_renamed.java");
+    assert_eq!(ren.old_path.as_deref(), Some("a.java"));
+    assert_eq!(ren.index, None);
+    assert_eq!(ren.worktree, Some(ChangeKind::Renamed));
+}
+
+#[test]
 fn test_head_unborn_and_detached() {
     // Unborn repository
     let unborn_repo = common::unborn();

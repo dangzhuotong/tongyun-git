@@ -7,6 +7,21 @@ use crate::redact::redact_url_credentials;
 
 pub const MIN_GIT_VERSION: (u32, u32) = (2, 30);
 
+/// Removed from the git child so hooks and trace output cannot see AI keys or
+/// dump `Authorization` headers into the captured log. `env_remove` does not read
+/// the values. Applied after `extra_env`, so a caller cannot put them back.
+const STRIPPED_ENV: &[&str] = &[
+    "KIE_API_KEY",
+    "OPENAI_API_KEY",
+    "GIT_CURL_VERBOSE",
+    "GIT_TRACE",
+    "GIT_TRACE_CURL",
+    "GIT_TRACE_PACKET",
+    "GIT_TRACE2",
+    "GIT_TRACE2_EVENT",
+    "GIT_TRACE2_PERF",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliOutput {
     pub command_line: String,
@@ -84,6 +99,9 @@ impl CliRunner {
         for (k, v) in &opts.extra_env {
             cmd.env(k, v);
         }
+        for key in STRIPPED_ENV {
+            cmd.env_remove(key);
+        }
 
         if opts.stdin.is_some() {
             cmd.stdin(Stdio::piped());
@@ -114,6 +132,11 @@ impl CliRunner {
                 return Err(CoreError::Io(e));
             }
         };
+
+        // Windows: `Child::kill` only terminates git. Hook grandchildren (and any
+        // handles they inherit) stay alive and can block the pipe readers forever.
+        #[cfg(windows)]
+        let job = crate::win_job::Job::attach(&child);
 
         if let Some(input) = opts.stdin {
             if let Some(mut stdin) = child.stdin.take() {
@@ -155,10 +178,21 @@ impl CliRunner {
                             extern "C" {
                                 fn kill(pid: i32, sig: i32) -> i32;
                             }
-                            let pid = child.id() as i32;
-                            unsafe {
-                                kill(-pid, 9);
+                            // `process_group(0)` makes this child the group leader.
+                            // A negative pid signals that group (git and hook children),
+                            // not the process group of this application. pid 0 would
+                            // signal our own group, so refuse it.
+                            let id = child.id();
+                            if id > 0 && id <= i32::MAX as u32 {
+                                let pid = id as i32;
+                                unsafe {
+                                    kill(-pid, 9);
+                                }
                             }
+                        }
+                        #[cfg(windows)]
+                        if let Some(job) = &job {
+                            job.terminate();
                         }
                         let _ = child.kill();
                         let _ = child.wait();
