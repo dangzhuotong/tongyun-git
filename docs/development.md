@@ -1,6 +1,6 @@
-# 开发、CI 与发版（计划）
+# 开发、CI 与发版
 
-状态：**还没有代码，下面的命令和流水线都未建立**。M0 建立后把「状态」列改为实际结果，并删除「计划」字样。
+状态：M0 已建立命令和 CI（以 package.json 和 .github/workflows 为准）。
 
 ## 技术栈（已定）
 
@@ -9,28 +9,33 @@
 - 前端：React + TypeScript + Vite + Tailwind CSS 4，组件见 [界面方向](design/ui-direction.md#8-组件选型候选m0--m1-核实版本和许可证)
 - 版本以 tongyun-planner 当前锁定的为起点（React 19、TypeScript 5.8、Vite 7、Tailwind 4、Node 20），M0 时核实最新稳定版再定。
 
-## 计划命令
+## 命令
 
 沿用 tongyun-planner 的脚本命名，便于在两个仓库间切换：
 
 | 目的 | 命令（仓库根目录） | 前提 | 成功条件 | 状态 |
 | --- | --- | --- | --- | --- |
-| 全量检查 | `npm run check` | Node 20、Rust stable、系统 git | typecheck、lint、vitest、cargo test 全部通过 | 未建立 |
-| 类型检查 | `npm run typecheck` | 依赖已装 | `tsc --noEmit` 零报错 | 未建立 |
-| 前端测试 | `npm test` | 同上 | Vitest 全部通过，无全跳过 | 未建立 |
-| Rust 测试 | `npm run test:rust`（`cargo test`） | 系统 git | L1 用例全部通过 | 未建立 |
-| 代码规范 | `npm run lint` | 同上 | ESLint 零错误 | 未建立 |
-| 本地运行 | `npm run tauri dev` | 平台依赖（Linux 需 webkit2gtk-4.1 等，同 planner） | 窗口启动 | 未建立 |
-| 打包 | `npm run tauri build` | 同上 | 产出对应平台安装包 | 未建立 |
-| 端到端 | `npm run e2e` | 已打包的应用、tauri-driver | L3 用例通过 | 未建立 |
+| 全量检查 | `npm run check` | Node 20、Rust stable、系统 git（首次需先 `npm run build`） | typecheck、lint、vitest、lint:rust、test:rust 全部通过 | 已建立，2026-10-07 本地通过 |
+| 类型检查 | `npm run typecheck` | 依赖已装 | `tsc --noEmit` 零报错 | 已建立，2026-10-07 本地通过 |
+| 前端规范 | `npm run lint` | 依赖已装 | ESLint 零错误 | 已建立，2026-10-07 本地通过 |
+| 前端测试 | `npm test` | 依赖已装 | Vitest 全部通过，无全跳过 | 已建立，2026-10-07 本地通过 |
+| Rust 规范 | `npm run lint:rust` | Rust stable（含 clippy, rustfmt）、需存在 `dist/` | rustfmt 与 clippy 零警告零错误 | 已建立，2026-10-07 本地通过 |
+| Rust 测试 | `npm run test:rust`（`cargo test --workspace`） | 系统 git | L1 用例全部通过 | 已建立，2026-10-07 本地通过 |
+| 前端构建 | `npm run build` | 依赖已装 | 生成 `dist/` 产物 | 已建立，2026-10-07 本地通过 |
+| 本地运行 | `npm run tauri dev` | 平台依赖（Linux 需 webkit2gtk-4.1 等，同 planner） | 窗口启动 | 已建立，2026-10-07 box（Debian 13 + Xvfb）窗口启动，见 [M0 验证记录](testing/runs/2026-10-07-m0.md) |
+| 打包 | `npm run tauri build` | 同上 | 产出对应平台安装包 | 已建立，2026-10-07 box 出 deb（3.96 MiB）并能启动；Windows / macOS 走 `build.yml` |
+| 性能基线 | `cargo run --release -p tg-core --example baseline -- <仓库> [条数]` | 系统 git | 输出一行 JSON | 已建立，结果见决策 0001 |
+| 端到端 | `npm run e2e` | 已打包的应用、tauri-driver | L3 用例通过 | 未建立（M6） |
 
-## CI 计划
+> 注：`npm run check` 包含 Rust 检查（`lint:rust` 与 `test:rust`），Tauri 编译期会核验 `frontendDist`（即 `dist/` 目录）是否存在。全新检出或执行清理后，首次运行 `npm run check` 前需先运行 `npm run build` 生成一次 dist。
+
+## CI
 
 仓库是**私有**的，GitHub Free 账户私有仓库每月共 2000 分钟 Actions 额度，macOS 运行器按约 10 倍扣分钟（以 GitHub 账单页为准）。所以：
 
-- `ci.yml`：PR 和推送到 main 时只在 ubuntu 上跑 `npm run check`。
-- `build.yml`：手动触发（`workflow_dispatch`），三平台矩阵构建测试包并上传为构建产物，保留 7 天。里程碑结束时跑一次。
-- `release.yml`：推 `v*` 标签时三平台构建并建 GitHub Release。从 tongyun-planner 的 `release.yml` 复制矩阵和 tauri-action 配置，**去掉 Gitee 镜像那一步**。
+- `ci.yml`：PR 和推送到 main 时触发（配置了同一分支并发取消 `concurrency`），只在 `ubuntu-22.04` 单运行器执行。步骤包括检出仓库、安装 Linux 系统依赖、设置 Node 20（带 npm 缓存）、安装 Rust stable（带 clippy 与 rustfmt）、Rust cache（workspace 根目录）、检查系统 git 版本、`npm ci`、`npm run build`（生成 `dist/` 供 Tauri 编译期检查通过）以及 `npm run check`。
+- `build.yml`：仅手动触发（`workflow_dispatch`，不监听 push/PR/tag）。在 Windows（x64）、macOS（universal 架构，`--target universal-apple-darwin`）、Linux（`ubuntu-22.04`，打包 AppImage 与 deb）三平台矩阵构建桌面端安装包。使用 `tauri-apps/tauri-action@v0`，不建 Release、不传任何签名密钥、不包含 updater json；构建产物通过 `actions/upload-artifact@v4` 上传（保留 7 天）。供里程碑验收和手动安装测试使用。
+- `release.yml`：仍未建立（正式发版时再建立：推 `v*` 标签时三平台构建并建 GitHub Release，从 tongyun-planner 的 `release.yml` 复制矩阵与 tauri-action 配置，**去掉 Gitee 镜像步骤**并配置独立的更新签名公私钥）。
 - 公开仓库后标准运行器免费，再把 ci.yml 扩成三平台。
 
 ## 自动更新与签名

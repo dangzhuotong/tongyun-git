@@ -3,6 +3,7 @@ node_modules/
 dist/
 src-tauri/target/
 target/
+src-tauri/gen/
 *.tsbuildinfo
 
 # local env & secrets (never commit keys)

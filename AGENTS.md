@@ -6,7 +6,7 @@
 
 - 用途：独立的桌面 Git 图形客户端，对标 IntelliJ IDEA 的 Git 面板，自带 AI。产品范围以 [docs/prd.md](docs/prd.md) 为准。
 - 技术栈（已定）：Tauri 2 + Rust；Git 底层 `git2` + 系统 git 命令行（[决策 0001](docs/decisions/0001-git-backend.md)）；前端 React + TypeScript + Vite + Tailwind CSS 4。
-- **当前状态：只有规划文档，代码、脚手架、依赖清单、测试和 CI 都还没有建立。** 计划中的目录职责见 [docs/architecture.md](docs/architecture.md)（提案）。代码建立后按实际结构更新这里，不要把提案当现状引用。
+- **当前状态：M0 已建立工程脚手架、tg-core 骨架、L1 测试和 CI；实际目录见 docs/architecture.md。**
 
 | 要改什么 | 先读 |
 | --- | --- |
@@ -20,10 +20,10 @@
 
 ## 开发与验证
 
-- 命令表只在 [docs/development.md](docs/development.md) 维护。目前全部是「未建立」，**不要声称运行过 `npm run check` 等命令**；M0 建立后以 `package.json` 和 CI 配置为准更新该表。
+- 命令表只在 [docs/development.md](docs/development.md) 维护。以 package.json 和 CI 配置为准；交接时写实际运行过的命令和结果。
 - 改动前读受影响模块的规则和实现，确定目标行为对应的需求编号（R-xx）和验收用例（AT-xx）。
 - 按改动选验证：
-  - Git 操作逻辑 → L1 Rust 集成测试，用 `tests/fixtures/` 生成的临时仓库和真实 git，从命令行（`git diff --cached`、`git log`）核对结果。
+  - Git 操作逻辑 → L1 Rust 集成测试，用 `crates/tg-core/tests/common/`（夹具生成）造的临时仓库和真实 git，从命令行（`git diff --cached`、`git log`）核对结果。
   - 界面交互 → L2 前端测试；涉及完整流程 → L3 端到端。
   - 打包、安装、钥匙串、文件监听 → 构建产物上的 L4 人工验收；源码测试通过不代表安装包可用。
   - 只改文档 → 检查链接、编号和各文档之间是否一致。
