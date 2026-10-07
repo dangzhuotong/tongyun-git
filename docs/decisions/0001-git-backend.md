@@ -1,6 +1,6 @@
 # 决策 0001：Git 底层用 git2（libgit2），网络和提交走系统 git 命令行
 
-状态：已实施（M0，2026-10-07）。验证结果见文末；三平台编译一项以手动 `build.yml` 的运行结果为准。
+状态：已实施（M0，2026-10-07）。验证结果见文末。
 
 日期：2026-10-07
 
@@ -66,7 +66,7 @@ tongyun-git 是 Tauri 2 + Rust 的桌面 Git 客户端。Rust 侧需要一个 Gi
 
 M0 技术验证（可观察的验收条件，结果写回本文件）：
 
-- [x] 带 `git2`（`default-features = false` + `vendored-libgit2`，git2 0.21.0 / libgit2 1.9.7）的空 Tauri 应用：Linux 本地 `tauri build` 出 deb 并能启动（box，Debian 13）；ubuntu CI 编译通过。Windows / macOS 由手动 `build.yml` 验证，结果记在 [M0 验证记录](../testing/runs/2026-10-07-m0.md)。
+- [x] 带 `git2`（`default-features = false` + `vendored-libgit2`，git2 0.21.0 / libgit2 1.9.7）的空 Tauri 应用：Linux 本地 `tauri build` 出 deb 并能启动（box，Debian 13）；ubuntu CI 编译通过。2026-10-07 手动 `build.yml` 三平台（Windows x64、macOS universal、Ubuntu 22.04）全部编译打包成功，结果记在 [M0 验证记录](../testing/runs/2026-10-07-m0.md)。
 - [x] 按行暂存补丁逐字一致：`crates/tg-core/tests/patch_index.rs` 6 个用例（3 个 hunk 选 1 个、混合 hunk 选 1 删 1 增、CRLF、新文件部分暂存、末尾无换行、反向取消一行）全部通过；预期补丁在测试里手写。新文件直接用 `new file mode` 补丁应用到 index，不需要 `git add -N`。补丁本身由谁生成（M2 的行选择 → 补丁）还没做。
 - [x] `git commit -F` 触发 pre-commit，失败时拿到退出码和 `HOOK FAILED` 输出、HEAD 不变；commit-msg 改写信息生效（`tests/cli_runner.rs`）。
 - [x] `file://` 裸仓库 push、pull 跑通；指向不可连接地址的 fetch 在 30 秒内返回；带 `user:secret@` 的地址在命令行和输出里被打码。超时会杀掉整个进程组（Unix）。
