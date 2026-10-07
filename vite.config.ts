@@ -1,0 +1,29 @@
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+const host = typeof process !== "undefined" ? process.env?.TAURI_DEV_HOST : undefined;
+
+export default defineConfig({
+  plugins: [tailwindcss(), react()],
+  clearScreen: false,
+  server: {
+    port: 1420,
+    strictPort: true,
+    host: host || false,
+    hmr: host
+      ? {
+          protocol: "ws",
+          host,
+          port: 1421,
+        }
+      : undefined,
+    watch: {
+      ignored: ["**/src-tauri/**", "**/target/**"],
+    },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+  },
+});
