@@ -38,12 +38,22 @@
 - 私有仓库的 Release 下载需要认证，planner 那种 `releases/latest/download/latest.json` 的更新地址对私有仓库无效。**MVP 不接自动更新**，阿橦从构建产物或 Release 手动安装。
 - 公开时再接 Tauri updater：为本应用单独生成一对签名密钥（不复用 planner 的），私钥放 GitHub Actions secrets（`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`），公钥写进 `tauri.conf.json`。第一次公开发版前就要配好，否则重演 planner 1.0 → 1.1 不能自动升级、只能手动重装的问题。
 - macOS 未做公证，沿用 planner 的说明（`xattr -cr /Applications/<应用名>.app`）；Windows 未做代码签名，SmartScreen 会提示。是否购买证书在公开时再定。
-- Tauri identifier 暂定 `com.tongyun.git`（不以 `.app` 结尾，避免 macOS 的包名冲突警告），等仓库名定下来再改（PRD Q4）。
+- Tauri identifier 暂定 `com.tongyun.git`（不以 `.app` 结尾，避免 macOS 的包名冲突警告），名字暂用 tongyun-git（PRD D4）。
+
+## 应用名与标识
+
+显示名和标识只在 `src-tauri/tauri.conf.json` 维护：`productName`（窗口标题、安装包名）、`identifier`（应用配置目录、钥匙串服务名）。Rust 用 `app.config()`、前端用 `@tauri-apps/api/app` 的 `getName()` 在运行时读取，代码里不写死。
+
+以后改名的清单：
+
+1. 改 `tauri.conf.json` 的 `productName`、`identifier`（必须）。
+2. 改 identifier 会换一个应用配置目录和钥匙串服务名：用户要重新填 AI key，最近仓库等设置不会自动迁移。公开发版前改名没有这个问题。
+3. 次要位置（不影响运行）：`package.json` 的 `name`、`src-tauri/Cargo.toml` 的 package 名、README 标题、GitHub 仓库名。
 
 ## 密钥和隐私
 
 - 仓库里不出现任何 key、token、密码，也不放 `.env`（已在 `.gitignore`）。
-- AI key 只从环境变量 `KIE_API_KEY` 或系统钥匙串读取；Rust 侧使用，不传给前端，不写日志。
+- AI key 由用户在设置里填写，只存系统钥匙串；应用不内置 key，不读取任何环境变量（包括 `KIE_API_KEY`）。Rust 侧使用，不传给前端，不写日志（PRD D1、[决策 0002](decisions/0002-ai-providers-and-keys.md)）。
 - 测试和 CI 不调用真实 AI 接口，用本地测试替身。
 
 ## 许可证

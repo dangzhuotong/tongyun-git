@@ -13,6 +13,7 @@
 | 需求、范围、验收条件 | [docs/prd.md](docs/prd.md)、[docs/user-flows.md](docs/user-flows.md) |
 | 界面、样式、交互 | [docs/design/ui-direction.md](docs/design/ui-direction.md)、[docs/design/wireframes.md](docs/design/wireframes.md) |
 | Git 操作的实现方式 | [docs/decisions/0001-git-backend.md](docs/decisions/0001-git-backend.md)、[docs/architecture.md](docs/architecture.md) |
+| AI 提供方、key 存放 | [docs/decisions/0002-ai-providers-and-keys.md](docs/decisions/0002-ai-providers-and-keys.md)、PRD R-07 / R-13 |
 | 测试 | [docs/testing/acceptance-tests.md](docs/testing/acceptance-tests.md) |
 | 命令、CI、发版、许可证 | [docs/development.md](docs/development.md) |
 | 排期 | [docs/plan.md](docs/plan.md) |
@@ -47,10 +48,10 @@
 
 ## 修改约束
 
-1. **密钥**：任何 key、token、密码不得进入仓库、日志、测试快照、设置文件或界面。AI key 只从环境变量 `KIE_API_KEY` 或系统钥匙串读取，只在 Rust 侧使用。测试和 CI 一律用本地 AI 测试替身。
+1. **密钥**：任何 key、token、密码不得进入仓库、日志、测试快照、设置文件或界面。应用不内置 key；AI key 由用户在设置里填写，只存系统钥匙串、只在 Rust 侧使用，**不读取任何环境变量**（PRD D1、决策 0002）。测试和 CI 一律用本地 AI 测试替身和内存钥匙串替身。
 2. **AI 发送范围**：只能在用户触发后发送，范围和排除规则见 PRD R-07。扩大发送内容属于需求变更，先改 PRD。
-3. **不破坏用户数据**：MVP 不提供 reset --hard、clean、强制推送、丢弃改动等入口（PRD N-03）。测试只在临时目录的夹具仓库里执行写操作，不碰真实仓库，不推送真实远程。
-4. **Git 调用**：本地读写走 `GitBackend`；commit、fetch、pull、push、abort 走 `CliRunner`（决策 0001）。新增调用系统 git 的地方必须经过 `CliRunner`，以便统一设置 `LC_ALL=C`、`GIT_TERMINAL_PROMPT=0`、记录操作日志和打码 URL 凭据。
+3. **不破坏用户数据**：MVP 不提供 reset --hard、clean、强制推送入口。丢弃改动只有 R-17 一个实现，必须二次确认并先写快照；amend 在 HEAD 已推送时先警告（PRD N-03）。测试只在临时目录的夹具仓库里执行写操作，不碰真实仓库，不推送真实远程。
+4. **Git 调用**：本地读写走 `GitBackend`；commit（含 amend）、fetch、pull、push、abort 走 `CliRunner`（决策 0001）。新增调用系统 git 的地方必须经过 `CliRunner`，以便统一设置 `LC_ALL=C`、`GIT_TERMINAL_PROMPT=0`、记录操作日志和打码 URL 凭据。
 5. **前后端接口**：改 Tauri 命令的参数或返回结构时，同步修改前端类型和调用方，并跑受影响的 L1、L2 测试。
 6. **需求编号稳定**：行为变化时更新 PRD 原条目和对应 AT 用例，不新开重复编号。
 7. **远程与发布**：只推 GitHub（`dangzhuotong/tongyun-git`，私有）。不接 CNB、不同步 Gitee。打标签发版按 [docs/development.md](docs/development.md)，只在明确要求时执行。

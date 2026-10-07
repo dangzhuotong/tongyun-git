@@ -12,9 +12,10 @@ Tauri 命令层（src-tauri/src/commands/）  参数校验、错误转成界面�
    ▼
 应用服务（src-tauri/src/app/）  仓库会话、写操作串行锁、文件监听、设置
    ├──► GitBackend trait ──► Git2Backend（git2，本地读写）
-   ├──► CliRunner        ──► 系统 git 子进程（commit、fetch、pull、push、abort）
-   ├──► AiClient         ──► OpenAI 兼容 chat completions（reqwest + rustls）
-   └──► SecretStore      ──► 系统钥匙串（keyring crate）/ 环境变量
+   ├──► CliRunner        ──► 系统 git 子进程（commit、commit --amend、fetch、pull、push、abort）
+   ├──► DiscardService   ──► 丢弃前快照（refs/tongyun/discard/*）+ 恢复 + 撤销
+   ├──► AiClient         ──► chat completions，三种提供方：KIE / OpenAI 兼容 / Ollama（reqwest + rustls）
+   └──► SecretStore      ──► 系统钥匙串（keyring crate），按提供方一个条目；不读环境变量
 ```
 
 规则：
@@ -50,11 +51,14 @@ tongyun-git/
 - **改动列表**：`notify` 监听工作区和 `.git`（去抖 200ms）→ `Git2Backend::status()` → 发 `repo://status` 事件给界面。
 - **按行暂存**：界面发送「文件路径 + diff 版本号 + 选中的行号集合」→ 服务端重新计算 diff，版本号不一致则拒绝（AT-05f）→ 生成只含所选行的补丁 → `Repository::apply(.., ApplyLocation::Index)`。
 - **提交**：信息写临时文件 → `git commit -F <文件>`（`LC_ALL=C`、`GIT_TERMINAL_PROMPT=0`）→ 输出进操作日志 → 刷新状态和日志。
-- **AI 生成**：服务端读取已暂存 diff → 按排除规则替换敏感文件内容 → 截断 → 组装提示词（提示词带版本号，便于以后比较效果）→ 流式请求 → 逐段发 `ai://delta` 事件 → 界面拼接。
+- **AI 生成**：服务端读取已暂存 diff → 按排除规则替换敏感文件内容 → 截断 → 组装提示词（提示词带版本号，便于以后比较效果）→ 按提供方拼请求地址（KIE：`https://api.kie.ai/<模型>/v1/chat/completions`；OpenAI 兼容：`<base>/chat/completions`；Ollama：`<地址>/v1/chat/completions`）→ `SecretStore` 取当前提供方的 key（Ollama 可为空）→ 流式请求 → 逐段发 `ai://delta` 事件 → 界面拼接。key 不出 Rust 层，设置命令只返回 `has_key: bool`。详见 [决策 0002](decisions/0002-ai-providers-and-keys.md)。
+- **amend**：检查 HEAD 是否被任一远程跟踪分支包含（git2 `graph_descendant_of` 或 `git branch -r --contains`）→ 已推送则返回需要确认的状态，界面弹 S11 → 确认后 `git commit --amend -F <文件>` 走 `CliRunner`。
+- **丢弃改动**：界面发送路径列表 → 服务端拿写锁 → 读取这些文件的工作区内容和 index 条目 → 写成 blob，组成树（`worktree/<路径>`、`index/<路径>` 两个子树，外加记录「丢弃前不存在」的清单）→ 建一个不挂在任何分支上的提交对象，更新 `refs/tongyun/discard/<毫秒时间戳>` → 再用 git2 checkout HEAD 版本到 index 和工作区、删除新增和未跟踪文件 → 超过 20 个快照时删除最旧的引用。撤销：比对当前文件和丢弃后的状态，不一致的文件交给界面让用户选（S10 下半部分），其余从快照写回 index 和工作区。
 - **树图**：`revwalk` 分批（每批 500 条）→ Rust 计算每行的轨道和连线 → 界面虚拟列表只渲染可见行。
 
 ## 设置与本地数据
 
-- 应用设置：Tauri 应用配置目录下的 JSON（主题、diff 视图、AI 的 base URL / 模型 / 语言 / 排除规则、每个仓库的 pull 策略和提交草稿、最近仓库、窗口状态）。
-- key：只在系统钥匙串（macOS Keychain、Windows Credential Manager、Linux Secret Service）。Linux 没有 Secret Service 时只能用环境变量，设置页说明原因。
-- 应用不写用户的 git 配置，不在仓库里放任何文件（v2 的 shelve 和快照除外，届时放在 `.git/tongyun/` 和 `refs/tongyun/`，不进工作区）。
+- 应用设置：Tauri 应用配置目录下的 JSON（主题、diff 视图、AI 的提供方 / 各提供方的地址和模型 / 超时 / 语言 / 排除规则、每个仓库的 pull 策略和提交草稿、最近仓库、窗口状态）。
+- key：只在系统钥匙串（macOS Keychain、Windows Credential Manager、Linux Secret Service），服务名取应用标识（`tauri.conf.json` 的 `identifier`），账户名 `ai-key:<提供方>`。钥匙串不可用时不能保存 key，设置页说明原因；不退回明文文件，也不读环境变量。
+- 应用名和标识只在 `src-tauri/tauri.conf.json` 维护（`productName`、`identifier`），Rust 和前端运行时从 Tauri 配置读取，不在代码里写死（PRD D4）。
+- 应用不写用户的 git 配置，不在工作区放任何文件。MVP 唯一写进仓库 `.git` 的是丢弃快照 `refs/tongyun/discard/*`（最多 20 个）；v2 的 shelve 和 agent 快照届时放在 `.git/tongyun/` 和 `refs/tongyun/`。
