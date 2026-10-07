@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod cli;
 pub mod error;
+pub mod patch;
 pub mod redact;
 
 pub use backend::{ChangeKind, FileStatus, Git2Backend, GitBackend, HeadInfo};
@@ -8,6 +9,7 @@ pub use cli::{
     parse_git_version, version_at_least, CliOutput, CliRunner, RunOptions, MIN_GIT_VERSION,
 };
 pub use error::{CoreError, Result};
+pub use patch::apply_patch_to_index;
 pub use redact::redact_url_credentials;
 
 /// Thin wrapper preserving backwards compatibility for callers of `git_version`.
