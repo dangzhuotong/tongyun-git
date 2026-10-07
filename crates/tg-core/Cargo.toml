@@ -5,3 +5,9 @@ edition.workspace = true
 
 [dependencies]
 git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+regex = "1"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

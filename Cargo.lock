@@ -3682,6 +3682,10 @@ name = "tg-core"
 version = "0.0.0"
 dependencies = [
  "git2",
+ "regex",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

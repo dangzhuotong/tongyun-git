@@ -19,7 +19,7 @@ fn app_info(app: AppHandle) -> AppInfo {
         .unwrap_or_else(|| app.package_info().name.clone());
     let version = app.package_info().version.to_string();
     let identifier = app.config().identifier.clone();
-    let git_version = tg_core::git_version("git").ok();
+    let git_version = tg_core::CliRunner::new("git").version().ok();
     let libgit2_version = tg_core::libgit2_version();
 
     AppInfo {

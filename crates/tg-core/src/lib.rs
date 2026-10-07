@@ -1,35 +1,20 @@
-use std::process::Command;
+pub mod backend;
+pub mod cli;
+pub mod error;
+pub mod redact;
 
-pub fn git_version(git_path: &str) -> Result<String, String> {
-    let output = Command::new(git_path)
-        .arg("--version")
-        .env("LC_ALL", "C")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .map_err(|e| e.to_string())?;
+pub use backend::{ChangeKind, FileStatus, Git2Backend, GitBackend, HeadInfo};
+pub use cli::{
+    parse_git_version, version_at_least, CliOutput, CliRunner, RunOptions, MIN_GIT_VERSION,
+};
+pub use error::{CoreError, Result};
+pub use redact::redact_url_credentials;
 
-    if !output.status.success() {
-        return Err(format!(
-            "git --version exited with status: {}",
-            output.status
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_git_version(&stdout)
-        .ok_or_else(|| format!("Failed to parse git version from: {}", stdout.trim()))
-}
-
-fn parse_git_version(output: &str) -> Option<String> {
-    let trimmed = output.trim();
-    if let Some(pos) = trimmed.find("git version ") {
-        let rest = &trimmed[pos + "git version ".len()..];
-        let version = rest.split_whitespace().next()?;
-        if !version.is_empty() {
-            return Some(version.to_string());
-        }
-    }
-    None
+/// Thin wrapper preserving backwards compatibility for callers of `git_version`.
+pub fn git_version(git_path: &str) -> std::result::Result<String, String> {
+    CliRunner::new(git_path)
+        .version()
+        .map_err(|e| e.to_string())
 }
 
 pub fn libgit2_version() -> String {
@@ -45,7 +30,6 @@ mod tests {
     fn test_git_version_success() {
         let version = git_version("git").expect("git should be available in PATH");
         assert!(!version.is_empty(), "version should not be empty");
-        // Verify it contains digits and dots
         assert!(version.contains('.'), "version should contain a dot");
     }
 
