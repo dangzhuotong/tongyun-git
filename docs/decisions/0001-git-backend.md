@@ -1,6 +1,6 @@
 # 决策 0001：Git 底层用 git2（libgit2），网络和提交走系统 git 命令行
 
-状态：提案（M0 技术验证通过后改为「已实施」，并补实测数据）
+状态：已实施（M0，2026-10-07）。验证结果见文末；三平台编译一项以手动 `build.yml` 的运行结果为准。
 
 日期：2026-10-07
 
@@ -44,7 +44,7 @@ tongyun-git 是 Tauri 2 + Rust 的桌面 Git 客户端。Rust 侧需要一个 Gi
    - 中止合并或 rebase：`git merge --abort`、`git rebase --abort`。
 3. Rust 侧定义 `GitBackend` trait，界面层只依赖 trait，不直接依赖 git2，方便以后整体或局部换成 gix。
 4. **gix 列为后续性能优化候选**：当大仓库的 status 或日志加载达不到目标时，先在只读路径（status、revwalk）上换 gix，写路径不动。gix 补齐 push 和 checkout 后再评估整体迁移。
-5. 运行前提：用户机器装有 git。最低版本 M0 时定（暂定 2.30+，待确认）；找不到 git 时在启动页提示安装，并允许在设置里手动指定路径。
+5. 运行前提：用户机器装有 git。最低版本 2.30（M0 定，代码常量 `tg_core::MIN_GIT_VERSION`）；找不到 git 时在启动页提示安装，并允许在设置里手动指定路径。
 
 一句话理由：**gix 现在还不能 push，也没有 checkout、rebase、stash；git2 功能齐、最成熟，再把 hook 和认证敏感的操作交给系统 git，这是行为最接近用户习惯、风险最小的组合。**
 
@@ -66,11 +66,14 @@ tongyun-git 是 Tauri 2 + Rust 的桌面 Git 客户端。Rust 侧需要一个 Gi
 
 M0 技术验证（可观察的验收条件，结果写回本文件）：
 
-- [ ] 三平台 CI 都能编译带 `git2`（`default-features = false`）的空 Tauri 应用。
-- [ ] 夹具仓库上，按行暂存后 `git diff --cached` 的输出与预期补丁逐字一致（含 CRLF 文件、新文件、末尾无换行）。
-- [ ] `git commit -F` 能触发夹具里的 pre-commit hook，hook 失败时拿到退出码和输出。
-- [ ] 指向本机裸仓库（`file://`）的 push、pull 能跑通，认证失败时 30 秒内返回错误而不是卡住（`GIT_TERMINAL_PROMPT=0`）。
-- [ ] 中等仓库（基准仓库 M0 时选定，例如 tauri-apps/tauri）上记录：打开到改动列表出现的耗时、1 万条提交日志首屏耗时。作为性能基线，不预设阈值。
+- [x] 带 `git2`（`default-features = false` + `vendored-libgit2`，git2 0.21.0 / libgit2 1.9.7）的空 Tauri 应用：Linux 本地 `tauri build` 出 deb 并能启动（box，Debian 13）；ubuntu CI 编译通过。Windows / macOS 由手动 `build.yml` 验证，结果记在 [M0 验证记录](../testing/runs/2026-10-07-m0.md)。
+- [x] 按行暂存补丁逐字一致：`crates/tg-core/tests/patch_index.rs` 6 个用例（3 个 hunk 选 1 个、混合 hunk 选 1 删 1 增、CRLF、新文件部分暂存、末尾无换行、反向取消一行）全部通过；预期补丁在测试里手写。新文件直接用 `new file mode` 补丁应用到 index，不需要 `git add -N`。补丁本身由谁生成（M2 的行选择 → 补丁）还没做。
+- [x] `git commit -F` 触发 pre-commit，失败时拿到退出码和 `HOOK FAILED` 输出、HEAD 不变；commit-msg 改写信息生效（`tests/cli_runner.rs`）。
+- [x] `file://` 裸仓库 push、pull 跑通；指向不可连接地址的 fetch 在 30 秒内返回；带 `user:secret@` 的地址在命令行和输出里被打码。超时会杀掉整个进程组（Unix）。
+- [x] 性能基线（box，release 构建，3 次取中位数，`cargo run --release -p tg-core --example baseline`）：
+  - tauri-apps/tauri（1091 个文件，6299 个提交）：open 0.22 ms、首次 status 11.5 ms、走完 6299 个提交 89 ms。
+  - git/git（4857 个文件，82443 个提交）：open 0.41 ms、首次 status 22.5 ms、前 1 万个提交 251 ms（冷缓存第一次 1157 ms）。`TOPOLOGICAL` 排序要先遍历整张图，M4 做树图分批加载时要考虑只用时间排序或增量拓扑。
+  - 只是 box 上的数字，不代表 Windows / macOS；N-01 阈值仍待阿橦机器上测。
 
 参考：
 

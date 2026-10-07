@@ -1,6 +1,6 @@
 # 架构（提案）
 
-状态：**提案，代码尚未建立**。M0 落地后把本文件改成描述实际结构，未实施的部分继续标注。
+状态：M0 已建立 `crates/tg-core`（GitBackend、Git2Backend、CliRunner、redact、patch spike）和 `src-tauri` 宿主；其余模块仍是提案。
 
 ## 进程与依赖方向
 
@@ -44,6 +44,59 @@ tongyun-git/
 ├── crates/tg-core/          Git、CLI、AI、密钥的核心逻辑（无 Tauri 依赖）
 ├── tests/fixtures/          夹具仓库生成脚本
 └── docs/
+```
+
+### M0 实际目录
+
+```
+tongyun-git/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml               # CI：PR 与 push main 自动化检查（Ubuntu，npm run check）
+│       └── build.yml            # 手动触发多平台构建（Windows / macOS / Ubuntu）
+├── crates/
+│   └── tg-core/                 # 核心 Git / CLI / 打码逻辑（无 Tauri 依赖）
+│       ├── Cargo.toml
+│       ├── examples/
+│       │   └── baseline.rs      # 性能基线测试程序（中位数 JSON）
+│       ├── src/
+│       │   ├── backend.rs       # GitBackend trait 与 Git2Backend 实现
+│       │   ├── cli.rs           # CliRunner（带超时、进程组终止与凭据打码）
+│       │   ├── error.rs         # CoreError 统一错误类型
+│       │   ├── lib.rs           # 模块导出与版本信息
+│       │   ├── patch.rs         # 按行暂存与补丁应用到 index spike
+│       │   └── redact.rs        # URL 敏感凭据脱敏
+│       └── tests/
+│           ├── backend_status.rs # 后端与状态 L1 集成测试
+│           ├── cli_runner.rs    # CLI 运行器 L1 集成测试
+│           ├── common/mod.rs    # 测试夹具生成器（basic/unborn/hunks/crlf 等）
+│           └── patch_index.rs   # 按行/按 hunk 暂存逐字一致集成测试
+├── docs/                        # 需求、架构、设计、决策与开发文档
+├── src/                         # 前端源码（React 19 + TypeScript + Tailwind 4）
+│   ├── App.test.tsx             # 前端组件测试
+│   ├── App.tsx                  # 根组件
+│   ├── lib/host.ts              # Tauri 宿主检测与 IPC 包装
+│   ├── main.tsx                 # 入口挂载
+│   └── styles/theme.css         # 主题样式
+├── src-tauri/                   # Tauri 2 桌面宿主
+│   ├── Cargo.toml
+│   ├── build.rs                 # Tauri 构建脚本
+│   ├── capabilities/
+│   │   └── default.json         # 权限与功能配置
+│   ├── icons/                   # 应用图标
+│   ├── src/
+│   │   ├── lib.rs               # Tauri app_info 命令与插件注册
+│   │   └── main.rs              # 宿主入口
+│   └── tauri.conf.json          # Tauri 应用配置
+├── Cargo.toml                   # 根 Cargo workspace 清单
+├── Cargo.lock
+├── eslint.config.js             # ESLint 配置
+├── index.html                   # 页面入口
+├── package.json                 # 依赖与脚本
+├── package-lock.json
+├── tsconfig.json                # TypeScript 配置
+├── tsconfig.node.json
+└── vite.config.ts               # Vite 构建配置
 ```
 
 ## 关键数据流

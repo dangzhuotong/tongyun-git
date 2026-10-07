@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apps:
+    name: Build Apps (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            os: 'windows'
+            arch: 'x64'
+          - platform: 'macos-latest'
+            os: 'macos'
+            arch: 'universal'
+            args: '--target universal-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            os: 'linux'
+            arch: 'x64'
+            args: '--bundles appimage,deb'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS universal targets
+        if: matrix.os == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Application
+        uses: tauri-apps/tauri-action@v0
+        with:
+          args: ${{ matrix.args || '' }}
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tongyun-git-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            target/release/bundle/**
+            target/*/release/bundle/**
+          if-no-files-found: error
+          retention-days: 7
