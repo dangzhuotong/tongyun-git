@@ -34,7 +34,7 @@
 仓库是**私有**的，GitHub Free 账户私有仓库每月共 2000 分钟 Actions 额度，macOS 运行器按约 10 倍扣分钟（以 GitHub 账单页为准）。所以：
 
 - `ci.yml`：PR 和推送到 main 时触发（配置了同一分支并发取消 `concurrency`），只在 `ubuntu-22.04` 单运行器执行。步骤包括检出仓库、安装 Linux 系统依赖、设置 Node 20（带 npm 缓存）、安装 Rust stable（带 clippy 与 rustfmt）、Rust cache（workspace 根目录）、检查系统 git 版本、`npm ci`、`npm run build`（生成 `dist/` 供 Tauri 编译期检查通过）以及 `npm run check`。
-- `build.yml`：仅手动触发（`workflow_dispatch`，不监听 push/PR/tag）。在 Windows（x64）、macOS（universal 架构，`--target universal-apple-darwin`）、Linux（`ubuntu-22.04`，打包 AppImage 与 deb）三平台矩阵构建桌面端安装包。使用 `tauri-apps/tauri-action@v0`，不建 Release、不传任何签名密钥、不包含 updater json；构建产物通过 `actions/upload-artifact@v4` 上传（保留 7 天）。供里程碑验收和手动安装测试使用。
+- `build.yml`：仅手动触发（`workflow_dispatch`，不监听 push/PR/tag）。在 Windows（x64）、macOS（universal 架构，`--target universal-apple-darwin`）、Linux（`ubuntu-22.04`，打包 AppImage 与 deb）三平台矩阵构建桌面端安装包。使用 `tauri-apps/tauri-action@v0`，不建 Release、不传任何签名密钥、不包含 updater json；构建产物通过 `actions/upload-artifact@v4` 上传（保留 7 天）。上传只包含安装包：Linux 的 AppImage 与 deb、Windows 的 msi 与 nsis、macOS universal 的 dmg 与 `.app`，不包含 AppImage 的解包目录。供里程碑验收和手动安装测试使用。
 - `release.yml`：仍未建立（正式发版时再建立：推 `v*` 标签时三平台构建并建 GitHub Release，从 tongyun-planner 的 `release.yml` 复制矩阵与 tauri-action 配置，**去掉 Gitee 镜像步骤**并配置独立的更新签名公私钥）。
 - 公开仓库后标准运行器免费，再把 ci.yml 扩成三平台。
 

@@ -31,6 +31,10 @@ pub enum CoreError {
 
     #[error("path error: {0}")]
     PathError(PathBuf),
+
+    /// Line-level index apply refused the patch before touching the repository.
+    #[error("rejected patch: {0}")]
+    RejectedPatch(&'static str),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

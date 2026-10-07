@@ -1,7 +1,7 @@
 mod common;
 
 use std::fs;
-use tg_core::apply_patch_to_index;
+use tg_core::{apply_patch_to_index, CoreError};
 
 /// 用例 1: hunks 夹具中包含 3 个独立 hunk，仅暂存第 2 个 hunk (AT-05a)
 #[test]
@@ -471,4 +471,102 @@ fn test_unstage_reverse_single_line() {
     let cat_file = repo.git(&["cat-file", "-p", ":unstage_test.txt"]);
     let cat_str = String::from_utf8_lossy(&cat_file.stdout);
     assert_eq!(cat_str, "line 1\nline 2 MODIFIED\nline 3\nline 4\nline 5\n");
+}
+
+#[test]
+fn test_reject_patch_that_escapes_the_worktree() {
+    let repo = common::basic();
+    let outside = repo
+        .path()
+        .parent()
+        .expect("repo parent")
+        .join("outside.txt");
+    let _ = fs::remove_file(&outside);
+
+    let patch = "\
+diff --git a/../outside.txt b/../outside.txt
+new file mode 100644
+--- /dev/null
++++ b/../outside.txt
+@@ -0,0 +1 @@
++pwned
+";
+    let err = apply_patch_to_index(repo.path(), patch).expect_err("escape must be rejected");
+    assert!(
+        matches!(err, CoreError::RejectedPatch(_)),
+        "expected RejectedPatch, got {err:?}"
+    );
+    assert!(
+        !outside.exists(),
+        "patch wrote a file outside the repository"
+    );
+    assert!(!repo.path().join("outside.txt").exists());
+}
+
+#[test]
+fn test_reject_binary_patch() {
+    let repo = common::basic();
+    let patch = "\
+diff --git a/data.bin b/data.bin
+new file mode 100644
+--- /dev/null
++++ b/data.bin
+GIT binary patch
+literal 4
+zcmV-b0
+";
+    let err = apply_patch_to_index(repo.path(), patch).expect_err("binary must be rejected");
+    assert!(
+        matches!(err, CoreError::RejectedPatch(_)),
+        "expected RejectedPatch, got {err:?}"
+    );
+    let listed = repo.git(&["ls-files", "--", "data.bin"]);
+    assert!(
+        listed.stdout.is_empty(),
+        "binary patch changed the index: {}",
+        String::from_utf8_lossy(&listed.stdout)
+    );
+}
+
+#[test]
+fn test_rename_patch_updates_index_path() {
+    let repo = common::basic();
+    let patch = "\
+diff --git a/a.java b/a_renamed.java
+similarity index 100%
+rename from a.java
+rename to a_renamed.java
+";
+    apply_patch_to_index(repo.path(), patch).expect("apply rename patch");
+    let files = repo.git(&["ls-files"]);
+    let listed = String::from_utf8_lossy(&files.stdout);
+    assert!(
+        listed.lines().any(|line| line == "a_renamed.java"),
+        "renamed path missing from index: {listed}"
+    );
+    assert!(
+        !listed.lines().any(|line| line == "a.java"),
+        "old path still in index: {listed}"
+    );
+    let cat = repo.git(&["cat-file", "-p", ":a_renamed.java"]);
+    assert!(
+        cat.stdout.starts_with(b"public class A"),
+        "rename dropped blob contents"
+    );
+}
+
+#[test]
+fn test_reject_symlink_patch() {
+    let repo = common::basic();
+    let patch = "\
+diff --git a/link b/link
+new file mode 120000
+--- /dev/null
++++ b/link
+@@ -0,0 +1 @@
++/tmp/outside
+";
+    let err = apply_patch_to_index(repo.path(), patch).expect_err("symlink must be rejected");
+    assert!(matches!(err, CoreError::RejectedPatch(_)), "{err:?}");
+    assert!(!repo.path().join("link").exists());
 }

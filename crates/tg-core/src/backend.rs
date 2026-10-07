@@ -152,30 +152,33 @@ impl GitBackend for Git2Backend {
         for entry in statuses.iter() {
             let status = entry.status();
 
+            // libgit2 ORs INDEX_MODIFIED / WT_MODIFIED onto a rename whose blob changed.
+            // Renamed has to win, or a renamed-and-edited file is reported as a plain edit
+            // and the old path is dropped from the kind the UI keys off.
             let index = if status.contains(git2::Status::INDEX_NEW) {
                 Some(ChangeKind::Added)
-            } else if status.contains(git2::Status::INDEX_MODIFIED) {
-                Some(ChangeKind::Modified)
-            } else if status.contains(git2::Status::INDEX_DELETED) {
-                Some(ChangeKind::Deleted)
             } else if status.contains(git2::Status::INDEX_RENAMED) {
                 Some(ChangeKind::Renamed)
+            } else if status.contains(git2::Status::INDEX_DELETED) {
+                Some(ChangeKind::Deleted)
             } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
                 Some(ChangeKind::TypeChange)
+            } else if status.contains(git2::Status::INDEX_MODIFIED) {
+                Some(ChangeKind::Modified)
             } else {
                 None
             };
 
             let worktree = if status.contains(git2::Status::WT_NEW) {
                 Some(ChangeKind::Untracked)
-            } else if status.contains(git2::Status::WT_MODIFIED) {
-                Some(ChangeKind::Modified)
-            } else if status.contains(git2::Status::WT_DELETED) {
-                Some(ChangeKind::Deleted)
             } else if status.contains(git2::Status::WT_RENAMED) {
                 Some(ChangeKind::Renamed)
+            } else if status.contains(git2::Status::WT_DELETED) {
+                Some(ChangeKind::Deleted)
             } else if status.contains(git2::Status::WT_TYPECHANGE) {
                 Some(ChangeKind::TypeChange)
+            } else if status.contains(git2::Status::WT_MODIFIED) {
+                Some(ChangeKind::Modified)
             } else {
                 None
             };
