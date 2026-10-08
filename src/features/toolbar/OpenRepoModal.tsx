@@ -7,23 +7,33 @@ interface OpenRepoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenRepo: (path: string) => Promise<void>;
+  onInitRepo?: (path: string) => Promise<void>;
   recentRepos: string[];
   onRemoveRecent: (path: string) => void;
   error: string | null;
   loading: boolean;
+  initialPath?: string;
 }
 
 export function OpenRepoModal({
   isOpen,
   onClose,
   onOpenRepo,
+  onInitRepo,
   recentRepos,
   onRemoveRecent,
   error,
   loading,
+  initialPath = "",
 }: OpenRepoModalProps) {
-  const [inputPath, setInputPath] = useState("");
+  const [inputPath, setInputPath] = useState(initialPath);
+  const [prevInitialPath, setPrevInitialPath] = useState(initialPath);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  if (initialPath !== prevInitialPath) {
+    setPrevInitialPath(initialPath);
+    setInputPath(initialPath);
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -154,9 +164,21 @@ export function OpenRepoModal({
             </div>
 
             {error && (
-              <div className="p-2.5 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] flex items-center gap-2">
-                <AlertCircleIcon width={14} height={14} className="shrink-0" />
-                <span>{error}</span>
+              <div className="p-2.5 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircleIcon width={14} height={14} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+                {error.includes("不是 Git 仓库") && onInitRepo && inputPath.trim() && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => onInitRepo(inputPath.trim())}
+                    className="self-start px-2.5 py-1 rounded bg-[var(--color-accent)] text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+                  >
+                    在此初始化 Git 仓库 (git init) 并打开
+                  </button>
+                )}
               </div>
             )}
           </form>

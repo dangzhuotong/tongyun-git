@@ -31,6 +31,10 @@ vi.mock("./lib/host.ts", () => ({
   getCommitLog: vi.fn(),
   getCommitDetails: vi.fn(),
   getCommitFileDiff: vi.fn(),
+  pullRemote: vi.fn(),
+  fetchRemote: vi.fn(),
+  selectFolder: vi.fn(),
+  initRepository: vi.fn(),
 }));
 
 describe("App workspace and components", () => {
@@ -542,6 +546,64 @@ describe("App workspace and components", () => {
 
     // Draft should be cleared after success
     expect(localStorage.getItem("tongyun_commit_draft_/test/my-repo")).toBeNull();
+  });
+
+  it("handles opening a non-git directory and allows initializing it with git init", async () => {
+    vi.mocked(host.getAppInfo).mockResolvedValue({
+      name: "tongyun-git",
+      version: "0.0.0",
+      identifier: "test-id",
+      git_version: "2.47.3",
+      libgit2_version: "1.9.7",
+    });
+    vi.mocked(host.checkGit).mockResolvedValue({
+      available: true,
+      version: "git version 2.47.3",
+      error: null,
+    });
+    vi.mocked(host.openRepository).mockRejectedValueOnce("这个文件夹不是 Git 仓库");
+    vi.mocked(host.initRepository).mockResolvedValueOnce({
+      root_path: "/test/new-repo",
+      name: "new-repo",
+      head: {
+        branch: "main",
+        oid: null,
+        unborn: true,
+      },
+    });
+    vi.mocked(host.getRepoStatus).mockResolvedValue({
+      head: {
+        branch: "main",
+        oid: null,
+        unborn: true,
+      },
+      files: [],
+    });
+
+    render(<App />);
+
+    const openBtn = await screen.findByText("打开本地仓库");
+    fireEvent.click(openBtn);
+
+    const input = screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/);
+    fireEvent.change(input, { target: { value: "/test/new-repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+
+    // Should display not a git repo error
+    expect(await screen.findByText("这个文件夹不是 Git 仓库")).toBeDefined();
+
+    // Should offer to initialize
+    const initBtn = screen.getByRole("button", {
+      name: "在此初始化 Git 仓库 (git init) 并打开",
+    });
+    expect(initBtn).toBeDefined();
+
+    fireEvent.click(initBtn);
+
+    await waitFor(() => {
+      expect(host.initRepository).toHaveBeenCalledWith("/test/new-repo");
+      expect(screen.getByText("new-repo")).toBeDefined();
+    });
   });
 });
 

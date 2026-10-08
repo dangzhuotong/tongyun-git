@@ -15,6 +15,7 @@ import {
   pullRemote,
   fetchRemote,
   selectFolder,
+  initRepository,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
@@ -75,6 +76,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
   const [openError, setOpenError] = useState<string | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
+  const [openAttemptPath, setOpenAttemptPath] = useState("");
 
   // Active view: changes vs commit log (M4)
   const [activeView, setActiveView] = useState<"changes" | "log">("changes");
@@ -259,10 +261,41 @@ export default function App() {
   // Open repository action
   const handleOpenRepo = useCallback(
     async (path: string) => {
+      setOpenAttemptPath(path);
       setOpenLoading(true);
       setOpenError(null);
       try {
         const info = await openRepository(path);
+        setCurrentRepo(info);
+        saveRecentRepo(info.root_path);
+        localStorage.setItem("tongyun_last_repo", info.root_path);
+        setOpenModalVisible(false);
+        setSelectedTarget(null);
+        setDiff(null);
+
+        // Fetch initial status
+        await refreshStatus(info.root_path);
+      } catch (err: unknown) {
+        const msg =
+          typeof err === "string"
+            ? err
+            : (err as { message?: string })?.message || String(err);
+        setOpenError(msg);
+        setOpenModalVisible(true);
+      } finally {
+        setOpenLoading(false);
+      }
+    },
+    [refreshStatus, saveRecentRepo]
+  );
+
+  // Init repository action
+  const handleInitRepo = useCallback(
+    async (path: string) => {
+      setOpenLoading(true);
+      setOpenError(null);
+      try {
+        const info = await initRepository(path);
         setCurrentRepo(info);
         saveRecentRepo(info.root_path);
         localStorage.setItem("tongyun_last_repo", info.root_path);
@@ -975,10 +1008,12 @@ export default function App() {
         isOpen={openModalVisible}
         onClose={() => setOpenModalVisible(false)}
         onOpenRepo={handleOpenRepo}
+        onInitRepo={handleInitRepo}
         recentRepos={recentRepos}
         onRemoveRecent={removeRecentRepo}
         error={openError}
         loading={openLoading}
+        initialPath={openAttemptPath}
       />
 
       {/* Settings Modal */}

@@ -5,6 +5,7 @@ src-tauri/target/
 target/
 src-tauri/gen/
 *.tsbuildinfo
+*.exe
 
 # local env & secrets (never commit keys)
 .env

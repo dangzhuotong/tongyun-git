@@ -103,6 +103,16 @@ fn open_repository(path: String) -> std::result::Result<RepoInfo, String> {
 }
 
 #[tauri::command]
+fn init_repository(path: String) -> std::result::Result<RepoInfo, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err("指定的路径不存在".to_string());
+    }
+    Git2Backend::init(p).map_err(|e| e.to_string())?;
+    open_repository(path)
+}
+
+#[tauri::command]
 fn get_repo_status(root_path: String) -> std::result::Result<RepoStatusResult, String> {
     let p = Path::new(&root_path);
     let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
@@ -561,7 +571,8 @@ pub fn run() {
             abort_merge_or_rebase,
             get_operation_logs,
             clear_operation_logs,
-            select_folder
+            select_folder,
+            init_repository
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

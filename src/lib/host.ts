@@ -523,5 +523,10 @@ export async function selectFolder(): Promise<string | null> {
   return await invoke<string | null>("select_folder");
 }
 
+export async function initRepository(path: string): Promise<RepoInfo> {
+  return await invoke<RepoInfo>("init_repository", { path });
+}
+
+
 
 

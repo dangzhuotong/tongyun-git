@@ -159,6 +159,17 @@ impl Git2Backend {
             repo_root,
         })
     }
+
+    pub fn init(path: &Path) -> Result<Self> {
+        let repo = git2::Repository::init(path).map_err(CoreError::Git2)?;
+        let workdir = repo.workdir().ok_or(CoreError::BareRepository)?;
+        let repo_root = std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf());
+
+        Ok(Self {
+            repo: Mutex::new(repo),
+            repo_root,
+        })
+    }
 }
 
 impl GitBackend for Git2Backend {
