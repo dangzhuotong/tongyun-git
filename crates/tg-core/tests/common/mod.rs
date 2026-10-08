@@ -351,3 +351,30 @@ pub fn remote() -> RemoteFixture {
         other_path,
     }
 }
+
+/// binary: repository with committed binary file (png) and modified in worktree
+pub fn binary() -> TestRepo {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let home = dir.path();
+    let repo_dir = dir.path().join("repo");
+    std::fs::create_dir_all(&repo_dir).expect("create_dir");
+
+    init_local_repo(&repo_dir, home);
+
+    let bin_data = vec![
+        0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 13,
+    ];
+    std::fs::write(repo_dir.join("test.png"), &bin_data).expect("write test.png");
+    git_cmd(&repo_dir, home, &["add", "test.png"]);
+    git_cmd(&repo_dir, home, &["commit", "-m", "commit test.png"]);
+
+    let bin_data_modified = vec![
+        0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 20, 1, 2, 3,
+    ];
+    std::fs::write(repo_dir.join("test.png"), &bin_data_modified).expect("modify test.png");
+
+    TestRepo {
+        dir,
+        path: repo_dir,
+    }
+}

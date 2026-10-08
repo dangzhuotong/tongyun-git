@@ -31,10 +31,42 @@ pub struct FileStatus {
     pub conflicted: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiffLine {
+    pub origin: char,
+    pub old_lineno: Option<u32>,
+    pub new_lineno: Option<u32>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiffHunk {
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub header: String,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileDiff {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub staged: bool,
+    pub is_binary: bool,
+    pub old_size: Option<u64>,
+    pub new_size: Option<u64>,
+    pub is_crlf_change: bool,
+    pub is_large: bool,
+    pub hunks: Vec<DiffHunk>,
+}
+
 pub trait GitBackend: Send + Sync {
     fn repo_root(&self) -> &Path;
     fn head(&self) -> Result<HeadInfo>;
     fn status(&self) -> Result<Vec<FileStatus>>;
+    fn diff_file(&self, path: &str, staged: bool) -> Result<FileDiff>;
 }
 
 pub struct Git2Backend {
@@ -52,7 +84,28 @@ impl std::fmt::Debug for Git2Backend {
 
 impl Git2Backend {
     pub fn open(path: &Path) -> Result<Self> {
-        let repo = match git2::Repository::discover(path) {
+        let mut ceiling_dirs: Vec<PathBuf> = Vec::new();
+        if let Some(val) = std::env::var_os("GIT_CEILING_DIRECTORIES") {
+            ceiling_dirs.extend(std::env::split_paths(&val));
+        }
+
+        let home_opt = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(PathBuf::from);
+
+        if let Some(ref home) = home_opt {
+            let canon_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            let canon_home = std::fs::canonicalize(home).unwrap_or_else(|_| home.clone());
+            if canon_path != canon_home && canon_path.starts_with(&canon_home) {
+                ceiling_dirs.push(canon_home);
+            }
+        }
+
+        let repo = match git2::Repository::open_ext(
+            path,
+            git2::RepositoryOpenFlags::empty(),
+            &ceiling_dirs,
+        ) {
             Ok(r) => r,
             Err(e) => {
                 if e.code() == git2::ErrorCode::NotFound {
@@ -238,5 +291,154 @@ impl GitBackend for Git2Backend {
         }
 
         Ok(results)
+    }
+
+    fn diff_file(&self, path: &str, staged: bool) -> Result<FileDiff> {
+        let repo = self.repo.lock().unwrap_or_else(|p| p.into_inner());
+        let normalized_path = path.replace('\\', "/");
+
+        let mut opts = git2::DiffOptions::new();
+        opts.pathspec(&normalized_path);
+        opts.include_untracked(true);
+        opts.recurse_untracked_dirs(true);
+        opts.show_untracked_content(true);
+
+        let diff = if staged {
+            let head_tree = match repo.head() {
+                Ok(head_ref) => head_ref.peel_to_tree().ok(),
+                Err(_) => None,
+            };
+            repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?
+        } else {
+            repo.diff_index_to_workdir(None, Some(&mut opts))?
+        };
+
+        let mut old_path = None;
+        let mut old_size = None;
+        let mut new_size = None;
+        let mut is_binary = false;
+
+        if let Some(delta) = diff.deltas().next() {
+            if delta.status() == git2::Delta::Renamed {
+                if let Some(p) = delta.old_file().path() {
+                    let old_p = p.to_string_lossy().to_string();
+                    if old_p != normalized_path {
+                        old_path = Some(old_p);
+                    }
+                }
+            }
+            is_binary = delta.flags().contains(git2::DiffFlags::BINARY);
+            old_size = Some(delta.old_file().size());
+            new_size = Some(delta.new_file().size());
+        }
+
+        // Check CRLF change
+        let mut is_crlf_change = false;
+        if !is_binary {
+            let old_bytes_opt: Option<Vec<u8>> = if staged {
+                repo.head()
+                    .ok()
+                    .and_then(|h| h.peel_to_tree().ok())
+                    .and_then(|tree| {
+                        let path_to_lookup = old_path.as_deref().unwrap_or(&normalized_path);
+                        tree.get_path(Path::new(path_to_lookup)).ok()
+                    })
+                    .and_then(|entry| entry.to_object(&repo).ok())
+                    .and_then(|obj| obj.as_blob().map(|b| b.content().to_vec()))
+            } else {
+                let path_to_lookup = old_path.as_deref().unwrap_or(&normalized_path);
+                repo.index()
+                    .ok()
+                    .and_then(|idx| idx.get_path(Path::new(path_to_lookup), 0))
+                    .and_then(|entry| repo.find_blob(entry.id).ok())
+                    .map(|b| b.content().to_vec())
+            };
+
+            let new_bytes_opt: Option<Vec<u8>> = if staged {
+                repo.index()
+                    .ok()
+                    .and_then(|idx| idx.get_path(Path::new(&normalized_path), 0))
+                    .and_then(|entry| repo.find_blob(entry.id).ok())
+                    .map(|b| b.content().to_vec())
+            } else {
+                let full_path = self.repo_root.join(&normalized_path);
+                std::fs::read(&full_path).ok()
+            };
+
+            if let (Some(old_b), Some(new_b)) = (old_bytes_opt, new_bytes_opt) {
+                if old_b != new_b {
+                    let old_filtered: Vec<u8> = old_b.into_iter().filter(|&b| b != b'\r').collect();
+                    let new_filtered: Vec<u8> = new_b.into_iter().filter(|&b| b != b'\r').collect();
+                    if old_filtered == new_filtered {
+                        is_crlf_change = true;
+                    }
+                }
+            }
+        }
+
+        let hunks_cell = std::cell::RefCell::new(Vec::new());
+        let is_binary_cell = std::cell::Cell::new(is_binary);
+        let changed_lines_cell = std::cell::Cell::new(0);
+
+        if !is_binary {
+            diff.foreach(
+                &mut |_delta, _progress| true,
+                Some(&mut |_delta, _binary| {
+                    is_binary_cell.set(true);
+                    true
+                }),
+                Some(&mut |_delta, hunk| {
+                    let header = String::from_utf8_lossy(hunk.header())
+                        .trim_end()
+                        .to_string();
+                    hunks_cell.borrow_mut().push(DiffHunk {
+                        old_start: hunk.old_start(),
+                        old_lines: hunk.old_lines(),
+                        new_start: hunk.new_start(),
+                        new_lines: hunk.new_lines(),
+                        header,
+                        lines: Vec::new(),
+                    });
+                    true
+                }),
+                Some(&mut |_delta, _hunk, line| {
+                    let origin = line.origin();
+                    if origin == '+' || origin == '-' || origin == ' ' {
+                        if origin == '+' || origin == '-' {
+                            changed_lines_cell.set(changed_lines_cell.get() + 1);
+                        }
+                        if let Some(current_hunk) = hunks_cell.borrow_mut().last_mut() {
+                            let content = String::from_utf8_lossy(line.content()).to_string();
+                            current_hunk.lines.push(DiffLine {
+                                origin,
+                                old_lineno: line.old_lineno(),
+                                new_lineno: line.new_lineno(),
+                                content,
+                            });
+                        }
+                    }
+                    true
+                }),
+            )?;
+        }
+
+        let hunks = hunks_cell.into_inner();
+        let is_binary = is_binary_cell.get();
+        let total_changed_lines = changed_lines_cell.get();
+
+        let max_size = old_size.unwrap_or(0).max(new_size.unwrap_or(0));
+        let is_large = max_size > 1_000_000 || total_changed_lines > 5000;
+
+        Ok(FileDiff {
+            path: normalized_path,
+            old_path,
+            staged,
+            is_binary,
+            old_size,
+            new_size,
+            is_crlf_change,
+            is_large,
+            hunks: if is_binary { Vec::new() } else { hunks },
+        })
     }
 }
