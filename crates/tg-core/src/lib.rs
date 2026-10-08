@@ -38,8 +38,8 @@ pub use log::{
 pub use patch::{apply_patch_to_index, build_selected_patch};
 pub use redact::redact_url_credentials;
 pub use remote::{
-    AbortResult, FetchResult, PullResult, PullStrategy, PushCommit, PushInspection, PushResult,
-    RemoteService,
+    AbortResult, CloneResult, FetchResult, MultiPushItemResult, PullResult, PullStrategy,
+    PushCommit, PushInspection, PushResult, RemoteDetail, RemoteService,
 };
 
 /// Thin wrapper preserving backwards compatibility for callers of `git_version`.

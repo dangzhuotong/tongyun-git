@@ -6,6 +6,7 @@ import * as host from "../../lib/host";
 vi.mock("../../lib/host", () => ({
   inspectPush: vi.fn(),
   pushRemote: vi.fn(),
+  pushMultipleRemotes: vi.fn(),
   pullRemote: vi.fn(),
 }));
 
@@ -118,5 +119,48 @@ describe("PushModal", () => {
       await screen.findByText("远程包含您本地没有的新提交，请先拉取更新。")
     ).toBeDefined();
     expect(screen.getByText("立即拉取更新 (Pull)")).toBeDefined();
+  });
+
+  it("supports multi-remote push when multiple remotes are available", async () => {
+    vi.mocked(host.inspectPush).mockResolvedValue({
+      ...mockInspection,
+      available_remotes: [
+        { name: "origin", url: "https://github.com/test/repo.git", push_url: null },
+        { name: "gitee", url: "https://gitee.com/test/repo.git", push_url: null },
+      ],
+    });
+    vi.mocked(host.pushMultipleRemotes).mockResolvedValue([
+      { remote: "origin", success: true, rejected: false, output: "ok" },
+      { remote: "gitee", success: true, rejected: false, output: "ok" },
+    ]);
+
+    const onClose = vi.fn();
+    const onSuccess = vi.fn();
+
+    render(
+      <PushModal
+        isOpen={true}
+        rootPath={rootPath}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />
+    );
+
+    expect(await screen.findByText(/检测到多个远程仓库/)).toBeDefined();
+    expect(screen.getByText("gitee")).toBeDefined();
+
+    const pushBtn = screen.getByText("同步推送到 2 个远程");
+    fireEvent.click(pushBtn);
+
+    await waitFor(() => {
+      expect(host.pushMultipleRemotes).toHaveBeenCalledWith(
+        rootPath,
+        ["origin", "gitee"],
+        "feat-new",
+        true
+      );
+      expect(onSuccess).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 });

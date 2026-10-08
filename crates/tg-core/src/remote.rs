@@ -38,6 +38,29 @@ pub struct PushCommit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloneResult {
+    pub success: bool,
+    pub output: String,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RemoteDetail {
+    pub name: String,
+    pub url: Option<String>,
+    pub push_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiPushItemResult {
+    pub remote: String,
+    pub success: bool,
+    pub rejected: bool,
+    pub output: String,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushInspection {
     pub current_branch: String,
     pub upstream_branch: Option<String>,
@@ -46,6 +69,8 @@ pub struct PushInspection {
     pub needs_upstream_setup: bool,
     pub ahead_count: usize,
     pub ahead_commits: Vec<PushCommit>,
+    #[serde(default)]
+    pub available_remotes: Vec<RemoteDetail>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +220,7 @@ impl<'a> RemoteService<'a> {
                     needs_upstream_setup: true,
                     ahead_count: 0,
                     ahead_commits: Vec::new(),
+                    available_remotes: self.list_remotes(root_path).unwrap_or_default(),
                 });
             }
         };
@@ -306,6 +332,8 @@ impl<'a> RemoteService<'a> {
             (None, true)
         };
 
+        let available_remotes = self.list_remotes(root_path).unwrap_or_default();
+
         Ok(PushInspection {
             current_branch,
             upstream_branch,
@@ -314,6 +342,7 @@ impl<'a> RemoteService<'a> {
             needs_upstream_setup,
             ahead_count: ahead_commits.len(),
             ahead_commits,
+            available_remotes,
         })
     }
 
@@ -410,5 +439,76 @@ impl<'a> RemoteService<'a> {
                 error_message: Some(out.stderr),
             })
         }
+    }
+
+    /// List all remotes configured for the repository
+    pub fn list_remotes(&self, root_path: &Path) -> Result<Vec<RemoteDetail>> {
+        let repo = git2::Repository::open(root_path)?;
+        let mut result = Vec::new();
+        if let Ok(remotes) = repo.remotes() {
+            for name_opt in remotes.iter() {
+                if let Ok(Some(name)) = name_opt {
+                    if let Ok(remote) = repo.find_remote(name) {
+                        result.push(RemoteDetail {
+                            name: name.to_string(),
+                            url: remote.url().ok().map(|s| s.to_string()),
+                            push_url: remote.pushurl().ok().flatten().map(|s| s.to_string()),
+                        });
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Clone a repository from remote URL to target_path
+    pub fn clone_repo(&self, url: &str, target_path: &Path) -> Result<CloneResult> {
+        let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let target_str = target_path.to_string_lossy().to_string();
+        let args = vec!["clone", url, &target_str];
+        let out = self.runner.run(parent, &args, RunOptions::default())?;
+
+        if out.exit_code == Some(0) {
+            Ok(CloneResult {
+                success: true,
+                output: out.stdout,
+                error_message: None,
+            })
+        } else {
+            Ok(CloneResult {
+                success: false,
+                output: out.stdout,
+                error_message: Some(if out.stderr.trim().is_empty() {
+                    "克隆失败".to_string()
+                } else {
+                    out.stderr
+                }),
+            })
+        }
+    }
+
+    /// Push branch to multiple remotes in sequence
+    pub fn push_multiple(
+        &self,
+        root_path: &Path,
+        remotes: &[String],
+        branch: &str,
+        set_upstream: bool,
+    ) -> Result<Vec<MultiPushItemResult>> {
+        let mut results = Vec::new();
+        for r in remotes {
+            let res = self.push(root_path, r, branch, set_upstream)?;
+            results.push(MultiPushItemResult {
+                remote: r.clone(),
+                success: res.success,
+                rejected: res.rejected,
+                output: res.output,
+                error_message: res.error_message,
+            });
+        }
+        Ok(results)
     }
 }

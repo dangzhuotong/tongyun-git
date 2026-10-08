@@ -5,9 +5,9 @@ use tg_core::{
     clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
     AbortResult, AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails,
     CommitService, CoreError, FetchResult, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
-    KeyringStore, LogQuery, LogResult, LogService, OperationLogEntry, PullResult, PullStrategy,
-    PushInspection, PushResult, RemoteService, RunOptions, SecretFilter, SwitchBranchResult,
-    SystemKeyring, ValidationResult,
+    KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult, OperationLogEntry,
+    PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail, RemoteService, RunOptions,
+    SecretFilter, SwitchBranchResult, SystemKeyring, ValidationResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -533,6 +533,41 @@ async fn select_folder() -> Option<String> {
     folder.map(|f| f.path().to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn clone_repository(url: String, target_path: String) -> std::result::Result<RepoInfo, String> {
+    let p = Path::new(&target_path);
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    let res = service.clone_repo(&url, p).map_err(|e| e.to_string())?;
+    if !res.success {
+        return Err(res.error_message.unwrap_or(res.output));
+    }
+    open_repository(target_path)
+}
+
+#[tauri::command]
+fn list_remotes(root_path: String) -> std::result::Result<Vec<RemoteDetail>, String> {
+    let p = Path::new(&root_path);
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service.list_remotes(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn push_multiple_remotes(
+    root_path: String,
+    remotes: Vec<String>,
+    branch: String,
+    set_upstream: bool,
+) -> std::result::Result<Vec<MultiPushItemResult>, String> {
+    let p = Path::new(&root_path);
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .push_multiple(p, &remotes, &branch, set_upstream)
+        .map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -579,7 +614,10 @@ pub fn run() {
             get_operation_logs,
             clear_operation_logs,
             select_folder,
-            init_repository
+            init_repository,
+            clone_repository,
+            list_remotes,
+            push_multiple_remotes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

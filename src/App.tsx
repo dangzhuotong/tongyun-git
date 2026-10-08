@@ -16,6 +16,7 @@ import {
   fetchRemote,
   selectFolder,
   initRepository,
+  cloneRepository,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
@@ -72,6 +73,7 @@ export default function App() {
 
   // Modals
   const [openModalVisible, setOpenModalVisible] = useState(false);
+  const [openModalTab, setOpenModalTab] = useState<"open" | "clone">("open");
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
   const [openError, setOpenError] = useState<string | null>(null);
@@ -304,6 +306,33 @@ export default function App() {
         setDiff(null);
 
         // Fetch initial status
+        await refreshStatus(info.root_path);
+      } catch (err: unknown) {
+        const msg =
+          typeof err === "string"
+            ? err
+            : (err as { message?: string })?.message || String(err);
+        setOpenError(msg);
+      } finally {
+        setOpenLoading(false);
+      }
+    },
+    [refreshStatus, saveRecentRepo]
+  );
+
+  // Clone repository action
+  const handleCloneRepo = useCallback(
+    async (url: string, targetPath: string) => {
+      setOpenLoading(true);
+      setOpenError(null);
+      try {
+        const info = await cloneRepository(url, targetPath);
+        setCurrentRepo(info);
+        saveRecentRepo(info.root_path);
+        localStorage.setItem("tongyun_last_repo", info.root_path);
+        setOpenModalVisible(false);
+        setSelectedTarget(null);
+        setDiff(null);
         await refreshStatus(info.root_path);
       } catch (err: unknown) {
         const msg =
@@ -938,7 +967,10 @@ export default function App() {
                 <button
                   type="button"
                   disabled={!gitAvailable}
-                  onClick={() => setOpenModalVisible(true)}
+                  onClick={() => {
+                    setOpenModalTab("open");
+                    setOpenModalVisible(true);
+                  }}
                   className="px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <FolderIcon width={14} height={14} />
@@ -956,6 +988,20 @@ export default function App() {
                   className="px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
                 >
                   直接选文件夹
+                </button>
+                <button
+                  type="button"
+                  disabled={!gitAvailable}
+                  onClick={() => {
+                    setOpenModalTab("clone");
+                    setOpenModalVisible(true);
+                  }}
+                  className="px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>从 Git 克隆</span>
                 </button>
               </div>
             </div>
@@ -1009,11 +1055,13 @@ export default function App() {
         onClose={() => setOpenModalVisible(false)}
         onOpenRepo={handleOpenRepo}
         onInitRepo={handleInitRepo}
+        onCloneRepo={handleCloneRepo}
         recentRepos={recentRepos}
         onRemoveRecent={removeRecentRepo}
         error={openError}
         loading={openLoading}
         initialPath={openAttemptPath}
+        initialTab={openModalTab}
       />
 
       {/* Settings Modal */}

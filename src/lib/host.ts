@@ -433,6 +433,12 @@ export interface PushCommit {
   author_name: string;
 }
 
+export interface RemoteDetail {
+  name: string;
+  url?: string | null;
+  push_url?: string | null;
+}
+
 export interface PushInspection {
   current_branch: string;
   upstream_branch?: string | null;
@@ -441,6 +447,21 @@ export interface PushInspection {
   needs_upstream_setup: boolean;
   ahead_count: number;
   ahead_commits: PushCommit[];
+  available_remotes?: RemoteDetail[];
+}
+
+export interface MultiPushItemResult {
+  remote: string;
+  success: boolean;
+  rejected: boolean;
+  output: string;
+  error_message?: string | null;
+}
+
+export interface CloneResult {
+  success: boolean;
+  output: string;
+  error_message?: string | null;
 }
 
 export interface PushResult {
@@ -527,6 +548,27 @@ export async function initRepository(path: string): Promise<RepoInfo> {
   return await invoke<RepoInfo>("init_repository", { path });
 }
 
+export async function cloneRepository(
+  url: string,
+  targetPath: string
+): Promise<RepoInfo> {
+  return await invoke<RepoInfo>("clone_repository", { url, targetPath });
+}
 
+export async function listRemotes(rootPath: string): Promise<RemoteDetail[]> {
+  return await invoke<RemoteDetail[]>("list_remotes", { rootPath });
+}
 
-
+export async function pushMultipleRemotes(
+  rootPath: string,
+  remotes: string[],
+  branch: string,
+  setUpstream = false
+): Promise<MultiPushItemResult[]> {
+  return await invoke<MultiPushItemResult[]>("push_multiple_remotes", {
+    rootPath,
+    remotes,
+    branch,
+    setUpstream,
+  });
+}

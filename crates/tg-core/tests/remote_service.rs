@@ -216,3 +216,86 @@ fn test_operation_logs_recorded() {
     assert!(entry.timestamp_ms > 0);
     assert_eq!(entry.exit_code, Some(0));
 }
+
+#[test]
+fn test_list_remotes_and_push_multiple() {
+    let fix = common::remote();
+    let runner = CliRunner::new("git");
+    let home = fix.dir.path();
+    let remote_service = RemoteService::new(&runner);
+
+    // 1. Initial list_remotes should have 'origin'
+    let remotes = remote_service
+        .list_remotes(&fix.main_path)
+        .expect("list_remotes");
+    assert_eq!(remotes.len(), 1);
+    assert_eq!(remotes[0].name, "origin");
+    assert!(remotes[0].url.is_some());
+
+    // 2. Add second bare repository 'mirror'
+    let mirror_path = fix.dir.path().join("mirror.git");
+    std::fs::create_dir_all(&mirror_path).unwrap();
+    common::git_cmd(&mirror_path, home, &["init", "--bare"]);
+    let mirror_url = format!("file://{}", mirror_path.display());
+    common::git_cmd(
+        &fix.main_path,
+        home,
+        &["remote", "add", "mirror", &mirror_url],
+    );
+
+    let remotes_after = remote_service
+        .list_remotes(&fix.main_path)
+        .expect("list_remotes after adding mirror");
+    assert_eq!(remotes_after.len(), 2);
+    let names: Vec<String> = remotes_after.iter().map(|r| r.name.clone()).collect();
+    assert!(names.contains(&"origin".to_string()));
+    assert!(names.contains(&"mirror".to_string()));
+
+    // 3. Make a commit in main and push_multiple to both remotes
+    fs::write(fix.main_path.join("multi_push.txt"), "hello multi\n").unwrap();
+    common::git_cmd(&fix.main_path, home, &["add", "multi_push.txt"]);
+    common::git_cmd(&fix.main_path, home, &["commit", "-m", "multi push commit"]);
+
+    let push_results = remote_service
+        .push_multiple(
+            &fix.main_path,
+            &["origin".to_string(), "mirror".to_string()],
+            "main",
+            false,
+        )
+        .expect("push_multiple succeeds");
+
+    assert_eq!(push_results.len(), 2);
+    assert!(push_results[0].success);
+    assert!(push_results[1].success);
+
+    // 4. Verify both bare repositories received the commit
+    let out_origin = common::git_cmd(&fix.bare_path, home, &["log", "-1", "--format=%s", "main"]);
+    let out_mirror = common::git_cmd(&mirror_path, home, &["log", "-1", "--format=%s", "main"]);
+    assert_eq!(
+        String::from_utf8_lossy(&out_origin.stdout).trim(),
+        "multi push commit"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out_mirror.stdout).trim(),
+        "multi push commit"
+    );
+}
+
+#[test]
+fn test_clone_repo() {
+    let fix = common::remote();
+    let runner = CliRunner::new("git");
+    let remote_service = RemoteService::new(&runner);
+
+    let bare_url = format!("file://{}", fix.bare_path.display());
+    let cloned_path = fix.dir.path().join("cloned_sub");
+
+    let clone_res = remote_service
+        .clone_repo(&bare_url, &cloned_path)
+        .expect("clone_repo succeeds");
+
+    assert!(clone_res.success);
+    assert!(cloned_path.join(".git").exists());
+    assert!(cloned_path.join("init.txt").exists());
+}
