@@ -24,6 +24,11 @@ interface ToolbarProps {
   activeView?: "changes" | "log";
   onViewChange?: (view: "changes" | "log") => void;
   onOpenBranchModal?: () => void;
+  onPullClick?: () => void;
+  isPulling?: boolean;
+  onPushClick?: () => void;
+  onOpenLogModal?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export function Toolbar({
@@ -40,6 +45,11 @@ export function Toolbar({
   activeView = "changes",
   onViewChange,
   onOpenBranchModal,
+  onPullClick,
+  isPulling = false,
+  onPushClick,
+  onOpenLogModal,
+  onOpenCommandPalette,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -173,6 +183,52 @@ export function Toolbar({
           <span>打开文件夹</span>
         </button>
 
+        {/* Pull Button */}
+        {currentRepo && onPullClick && (
+          <button
+            type="button"
+            title="拉取远程更新 (Ctrl+T)"
+            onClick={onPullClick}
+            disabled={isPulling}
+            className="flex items-center gap-1 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <svg
+              className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-blue-400" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
+            </svg>
+            <span>{isPulling ? "正在拉取" : "拉取"}</span>
+          </button>
+        )}
+
+        {/* Push Button */}
+        {currentRepo && onPushClick && (
+          <button
+            type="button"
+            title="推送提交到远程 (Ctrl+Shift+K)"
+            onClick={onPushClick}
+            className="flex items-center gap-1 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 10l7-7m0 0l7 7m-7-7v18"
+              />
+            </svg>
+            <span>推送</span>
+          </button>
+        )}
+
         {/* Refresh Button */}
         <button
           type="button"
@@ -187,6 +243,44 @@ export function Toolbar({
             className={isRefreshing ? "animate-spin" : ""}
           />
         </button>
+
+        {/* Command Palette Button */}
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            title="命令面板 (Ctrl+Shift+P)"
+            onClick={onOpenCommandPalette}
+            className="p-1.5 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </button>
+        )}
+
+        {/* Operation Log Button */}
+        {onOpenLogModal && (
+          <button
+            type="button"
+            title="Git 命令行操作日志"
+            onClick={onOpenLogModal}
+            className="p-1.5 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h7"
+              />
+            </svg>
+          </button>
+        )}
 
         {/* Theme Toggle Button */}
         <button

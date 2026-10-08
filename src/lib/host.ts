@@ -24,10 +24,20 @@ export interface FileStatus {
   conflicted: boolean;
 }
 
+export type RepoState =
+  | "Clean"
+  | "Merge"
+  | "Rebase"
+  | "CherryPick"
+  | "Revert"
+  | "Bisect"
+  | "Other";
+
 export interface HeadInfo {
   branch?: string | null;
   oid?: string | null;
   unborn: boolean;
+  repo_state?: RepoState;
 }
 
 export interface RepoInfo {
@@ -399,4 +409,114 @@ export async function getCommitFileDiff(
     filePath,
   });
 }
+
+export interface FetchResult {
+  success: boolean;
+  output: string;
+  error_message?: string | null;
+}
+
+export type PullStrategy = "Merge" | "Rebase" | "FastForwardOnly";
+
+export interface PullResult {
+  success: boolean;
+  has_conflict: boolean;
+  conflicting_files: string[];
+  output: string;
+  error_message?: string | null;
+}
+
+export interface PushCommit {
+  oid: string;
+  short_oid: string;
+  summary: string;
+  author_name: string;
+}
+
+export interface PushInspection {
+  current_branch: string;
+  upstream_branch?: string | null;
+  default_remote: string;
+  default_target_branch: string;
+  needs_upstream_setup: boolean;
+  ahead_count: number;
+  ahead_commits: PushCommit[];
+}
+
+export interface PushResult {
+  success: boolean;
+  rejected: boolean;
+  output: string;
+  error_message?: string | null;
+}
+
+export interface AbortResult {
+  success: boolean;
+  action: string;
+  output: string;
+  error_message?: string | null;
+}
+
+export interface OperationLogEntry {
+  id: string;
+  timestamp_ms: number;
+  command_line: string;
+  cwd: string;
+  duration_ms: number;
+  exit_code?: number | null;
+  error_message?: string | null;
+}
+
+export async function fetchRemote(
+  rootPath: string,
+  remote?: string | null,
+  prune = false
+): Promise<FetchResult> {
+  return await invoke<FetchResult>("fetch_remote", { rootPath, remote, prune });
+}
+
+export async function pullRemote(
+  rootPath: string,
+  remote?: string | null,
+  branch?: string | null,
+  strategy: PullStrategy = "Merge"
+): Promise<PullResult> {
+  return await invoke<PullResult>("pull_remote", {
+    rootPath,
+    remote,
+    branch,
+    strategy,
+  });
+}
+
+export async function inspectPush(rootPath: string): Promise<PushInspection> {
+  return await invoke<PushInspection>("inspect_push", { rootPath });
+}
+
+export async function pushRemote(
+  rootPath: string,
+  remote: string,
+  branch: string,
+  setUpstream = false
+): Promise<PushResult> {
+  return await invoke<PushResult>("push_remote", {
+    rootPath,
+    remote,
+    branch,
+    setUpstream,
+  });
+}
+
+export async function abortMergeOrRebase(rootPath: string): Promise<AbortResult> {
+  return await invoke<AbortResult>("abort_merge_or_rebase", { rootPath });
+}
+
+export async function getOperationLogs(): Promise<OperationLogEntry[]> {
+  return await invoke<OperationLogEntry[]>("get_operation_logs");
+}
+
+export async function clearOperationLogs(): Promise<void> {
+  return await invoke("clear_operation_logs");
+}
+
 

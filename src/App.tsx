@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   getAppInfo,
   checkGit,
@@ -11,6 +11,8 @@ import {
   inspectDiscard,
   discardFiles,
   undoDiscard,
+  pullRemote,
+  fetchRemote,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
@@ -27,6 +29,10 @@ import { DiscardConfirmModal } from "./features/changes/DiscardConfirmModal";
 import { BranchModal } from "./features/branch/BranchModal";
 import { CreateBranchModal } from "./features/branch/CreateBranchModal";
 import { LogView } from "./features/log/LogView";
+import { PushModal } from "./features/remote/PushModal";
+import { ConflictBanner } from "./features/remote/ConflictBanner";
+import { OperationLogModal } from "./features/log/OperationLogModal";
+import { CommandPalette, CommandItem } from "./features/command/CommandPalette";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
@@ -76,6 +82,13 @@ export default function App() {
   const [createBranchModalOpen, setCreateBranchModalOpen] = useState(false);
   const [createBranchStartPoint, setCreateBranchStartPoint] = useState<string | null>(null);
 
+  // Remote & Sync state (R-11, R-12, R-15, R-16)
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
+
   // Discard & Undo state (R-17)
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
   const [discardCandidates, setDiscardCandidates] = useState<DiscardCandidate[]>([]);
@@ -101,6 +114,15 @@ export default function App() {
     }, 1000);
     return () => clearInterval(timer);
   }, [hasUndoToast]);
+
+  // Sync Toast auto-dismiss (4s)
+  useEffect(() => {
+    if (!syncToast) return;
+    const timer = setTimeout(() => {
+      setSyncToast(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [syncToast]);
 
   // Theme
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
@@ -192,6 +214,45 @@ export default function App() {
     },
     []
   );
+
+  // Pull remote action (R-11)
+  const handlePull = useCallback(async () => {
+    if (!currentRepo || isPulling) return;
+    setIsPulling(true);
+    setSyncToast(null);
+    try {
+      const res = await pullRemote(currentRepo.root_path, null, null, "Merge");
+      if (res.success) {
+        setSyncToast({ message: "拉取成功，已同步最新提交" });
+        await refreshStatus(currentRepo.root_path);
+      } else if (res.has_conflict) {
+        setSyncToast({ message: "拉取产生冲突，已切换至冲突解决状态", isError: true });
+        await refreshStatus(currentRepo.root_path);
+      } else {
+        setSyncToast({ message: res.error_message || "拉取失败", isError: true });
+      }
+    } catch (e) {
+      setSyncToast({ message: typeof e === "string" ? e : String(e), isError: true });
+    } finally {
+      setIsPulling(false);
+    }
+  }, [currentRepo, isPulling, refreshStatus]);
+
+  // Fetch remote action (R-11)
+  const handleFetch = useCallback(async () => {
+    if (!currentRepo) return;
+    try {
+      const res = await fetchRemote(currentRepo.root_path, null, false);
+      if (res.success) {
+        setSyncToast({ message: "获取远程更新完成 (Fetch)" });
+        await refreshStatus(currentRepo.root_path);
+      } else {
+        setSyncToast({ message: res.error_message || "获取更新失败", isError: true });
+      }
+    } catch (e) {
+      setSyncToast({ message: typeof e === "string" ? e : String(e), isError: true });
+    }
+  }, [currentRepo, refreshStatus]);
 
   // Open repository action
   const handleOpenRepo = useCallback(
@@ -294,19 +355,156 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, [currentRepo, refreshStatus]);
 
-  // Global branch modal shortcut: Ctrl/Cmd + Shift + ` (R-08)
+  // Global shortcuts (R-08, R-11, R-12, R-16)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Command Palette: Ctrl/Cmd + Shift + P
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "P" || e.key === "p")) {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Branch modal: Ctrl/Cmd + Shift + `
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "`" || e.code === "Backquote")) {
         e.preventDefault();
         if (currentRepo) {
           setBranchModalOpen((prev) => !prev);
         }
+        return;
+      }
+
+      // Pull: Ctrl/Cmd + T
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "T" || e.key === "t")) {
+        e.preventDefault();
+        if (currentRepo) {
+          handlePull();
+        }
+        return;
+      }
+
+      // Push: Ctrl/Cmd + Shift + K
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "K" || e.key === "k")) {
+        e.preventDefault();
+        if (currentRepo) {
+          setPushModalOpen(true);
+        }
+        return;
+      }
+
+      // View Switch: Alt + 0 -> changes, Alt + 9 -> log
+      if (e.altKey && (e.key === "0" || e.code === "Digit0")) {
+        e.preventDefault();
+        setActiveView("changes");
+        return;
+      }
+      if (e.altKey && (e.key === "9" || e.code === "Digit9")) {
+        e.preventDefault();
+        setActiveView("log");
+        return;
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentRepo]);
+  }, [currentRepo, handlePull]);
+
+  // Command list for CommandPalette (R-16)
+  const commandList: CommandItem[] = useMemo(() => {
+    const list: CommandItem[] = [
+      {
+        id: "cmd-palette",
+        title: "命令面板 (Command Palette)",
+        shortcut: "Ctrl+Shift+P",
+        action: () => setCommandPaletteOpen(true),
+      },
+      {
+        id: "view-changes",
+        title: "切换到改动视图 (View Changes)",
+        shortcut: "Alt+0",
+        action: () => setActiveView("changes"),
+      },
+      {
+        id: "view-log",
+        title: "切换到提交历史 (View Git Log)",
+        shortcut: "Alt+9",
+        action: () => setActiveView("log"),
+      },
+      {
+        id: "open-repo",
+        title: "打开本地仓库 (Open Repository)",
+        action: () => setOpenModalVisible(true),
+      },
+      {
+        id: "open-settings",
+        title: "打开应用设置 (Settings)",
+        action: () => {
+          setSettingsTab("general");
+          setSettingsModalVisible(true);
+        },
+      },
+      {
+        id: "open-ai-settings",
+        title: "配置 AI 提供方与密钥 (AI Settings)",
+        action: () => {
+          setSettingsTab("ai");
+          setSettingsModalVisible(true);
+        },
+      },
+    ];
+
+    if (currentRepo) {
+      list.unshift(
+        {
+          id: "git-pull",
+          title: "拉取远程分支 (Git Pull)",
+          description: "从远程拉取并合并当前分支的最新提交",
+          shortcut: "Ctrl+T",
+          action: () => handlePull(),
+        },
+        {
+          id: "git-push",
+          title: "推送提交到远程 (Git Push)",
+          description: "检查领先提交并推送至对应远程分支",
+          shortcut: "Ctrl+Shift+K",
+          action: () => setPushModalOpen(true),
+        },
+        {
+          id: "git-fetch",
+          title: "获取远程更新 (Git Fetch)",
+          description: "下载远程分支与标签引用，不自动合并",
+          action: () => handleFetch(),
+        },
+        {
+          id: "switch-branch",
+          title: "切换与管理分支 (Switch Branch)",
+          shortcut: "Ctrl+Shift+`",
+          action: () => setBranchModalOpen(true),
+        },
+        {
+          id: "create-branch",
+          title: "从 HEAD 新建分支 (Create Branch)",
+          action: () => {
+            setCreateBranchStartPoint(null);
+            setCreateBranchModalOpen(true);
+          },
+        },
+        {
+          id: "git-logs",
+          title: "查看 Git 操作日志 (Operation Log)",
+          description: "查看所有调用的系统 Git 命令行记录与耗时",
+          action: () => setLogModalOpen(true),
+        },
+        {
+          id: "refresh-status",
+          title: "刷新仓库状态 (Refresh Status)",
+          shortcut: "F5",
+          action: () => refreshStatus(currentRepo.root_path),
+        }
+      );
+    }
+
+    return list;
+  }, [currentRepo, handlePull, handleFetch, refreshStatus]);
 
   // Selection handler
   const handleSelectTarget = (target: SelectedFileTarget) => {
@@ -540,7 +738,21 @@ export default function App() {
         activeView={activeView}
         onViewChange={setActiveView}
         onOpenBranchModal={() => setBranchModalOpen(true)}
+        onPullClick={handlePull}
+        isPulling={isPulling}
+        onPushClick={() => setPushModalOpen(true)}
+        onOpenLogModal={() => setLogModalOpen(true)}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
       />
+
+      {/* Conflict / In-Progress Action Banner (R-11, R-17) */}
+      {currentRepo && (
+        <ConflictBanner
+          rootPath={currentRepo.root_path}
+          repoState={currentRepo.head.repo_state}
+          onAbortSuccess={() => refreshStatus(currentRepo.root_path)}
+        />
+      )}
 
       {/* Git Missing Warning Banner (R-01) */}
       {!gitAvailable && (
@@ -770,6 +982,50 @@ export default function App() {
             refreshStatus(currentRepo.root_path);
           }}
         />
+      )}
+      {/* Push Modal (R-12) */}
+      {currentRepo && (
+        <PushModal
+          isOpen={pushModalOpen}
+          rootPath={currentRepo.root_path}
+          onClose={() => setPushModalOpen(false)}
+          onSuccess={() => refreshStatus(currentRepo.root_path)}
+        />
+      )}
+
+      {/* Operation Log Modal (R-15) */}
+      <OperationLogModal
+        isOpen={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+      />
+
+      {/* Command Palette (R-16) */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={commandList}
+      />
+
+      {/* Sync / Pull Toast Notification */}
+      {syncToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-xs animate-in fade-in slide-in-from-bottom-2 ${
+            syncToast.isError
+              ? "bg-red-950/90 border-red-800 text-red-200"
+              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
+          }`}
+        >
+          <span>{syncToast.message}</span>
+          <button
+            type="button"
+            onClick={() => setSyncToast(null)}
+            className="p-1 rounded text-gray-400 hover:text-gray-200 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );

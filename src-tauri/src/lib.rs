@@ -2,10 +2,12 @@ use serde::Serialize;
 use std::path::Path;
 use tauri::AppHandle;
 use tg_core::{
-    AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails, CommitService,
-    CoreError, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo, KeyringStore, LogQuery,
-    LogResult, LogService, RunOptions, SecretFilter, SwitchBranchResult, SystemKeyring,
-    ValidationResult,
+    clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
+    AbortResult, AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails,
+    CommitService, CoreError, FetchResult, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
+    KeyringStore, LogQuery, LogResult, LogService, OperationLogEntry, PullResult, PullStrategy,
+    PushInspection, PushResult, RemoteService, RunOptions, SecretFilter, SwitchBranchResult,
+    SystemKeyring, ValidationResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -441,6 +443,80 @@ fn get_commit_file_diff(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn fetch_remote(
+    root_path: String,
+    remote: Option<String>,
+    prune: bool,
+) -> std::result::Result<FetchResult, String> {
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .fetch(Path::new(&root_path), remote.as_deref(), prune)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pull_remote(
+    root_path: String,
+    remote: Option<String>,
+    branch: Option<String>,
+    strategy: PullStrategy,
+) -> std::result::Result<PullResult, String> {
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .pull(
+            Path::new(&root_path),
+            remote.as_deref(),
+            branch.as_deref(),
+            strategy,
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn inspect_push(root_path: String) -> std::result::Result<PushInspection, String> {
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .inspect_push(Path::new(&root_path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn push_remote(
+    root_path: String,
+    remote: String,
+    branch: String,
+    set_upstream: bool,
+) -> std::result::Result<PushResult, String> {
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .push(Path::new(&root_path), &remote, &branch, set_upstream)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn abort_merge_or_rebase(root_path: String) -> std::result::Result<AbortResult, String> {
+    let runner = CliRunner::new("git");
+    let service = RemoteService::new(&runner);
+    service
+        .abort_action(Path::new(&root_path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_operation_logs() -> Vec<OperationLogEntry> {
+    tg_get_operation_logs()
+}
+
+#[tauri::command]
+fn clear_operation_logs() {
+    tg_clear_operation_logs();
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -471,7 +547,14 @@ pub fn run() {
             switch_branch,
             get_commit_log,
             get_commit_details,
-            get_commit_file_diff
+            get_commit_file_diff,
+            fetch_remote,
+            pull_remote,
+            inspect_push,
+            push_remote,
+            abort_merge_or_rebase,
+            get_operation_logs,
+            clear_operation_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

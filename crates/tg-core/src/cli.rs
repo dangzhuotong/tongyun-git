@@ -1,11 +1,72 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime};
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
 use crate::redact::redact_url_credentials;
 
 pub const MIN_GIT_VERSION: (u32, u32) = (2, 30);
+
+/// Operation log entry recorded whenever a CLI command executes (R-15)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationLogEntry {
+    pub id: String,
+    pub timestamp_ms: u64,
+    pub command_line: String,
+    pub cwd: String,
+    pub duration_ms: u64,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+static OPERATION_LOGS: Mutex<Vec<OperationLogEntry>> = Mutex::new(Vec::new());
+
+pub fn get_operation_logs() -> Vec<OperationLogEntry> {
+    OPERATION_LOGS.lock().map(|l| l.clone()).unwrap_or_default()
+}
+
+pub fn clear_operation_logs() {
+    if let Ok(mut logs) = OPERATION_LOGS.lock() {
+        logs.clear();
+    }
+}
+
+pub fn record_operation_log(
+    command_line: String,
+    cwd: String,
+    duration_ms: u64,
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+) {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let id = format!("{}_{}", now, duration_ms);
+    let entry = OperationLogEntry {
+        id,
+        timestamp_ms: now,
+        command_line,
+        cwd,
+        duration_ms,
+        exit_code,
+        stdout,
+        stderr,
+    };
+
+    if let Ok(mut logs) = OPERATION_LOGS.lock() {
+        logs.push(entry);
+        if logs.len() > 200 {
+            logs.remove(0);
+        }
+    }
+}
 
 /// Removed from the git child so hooks and trace output cannot see AI keys or
 /// dump `Authorization` headers into the captured log. `env_remove` does not read
@@ -22,7 +83,7 @@ const STRIPPED_ENV: &[&str] = &[
     "GIT_TRACE2_PERF",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CliOutput {
     pub command_line: String,
     pub exit_code: Option<i32>,
@@ -216,13 +277,24 @@ impl CliRunner {
         let stdout_raw = String::from_utf8_lossy(&stdout_bytes);
         let stderr_raw = String::from_utf8_lossy(&stderr_bytes);
 
-        Ok(CliOutput {
-            command_line,
+        let out = CliOutput {
+            command_line: command_line.clone(),
             exit_code: status.code(),
             stdout: redact_url_credentials(&stdout_raw),
             stderr: redact_url_credentials(&stderr_raw),
             duration_ms,
-        })
+        };
+
+        record_operation_log(
+            out.command_line.clone(),
+            cwd.display().to_string(),
+            out.duration_ms,
+            out.exit_code,
+            out.stdout.clone(),
+            out.stderr.clone(),
+        );
+
+        Ok(out)
     }
 }
 

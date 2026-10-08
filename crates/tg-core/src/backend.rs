@@ -5,11 +5,41 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RepoState {
+    #[default]
+    Clean,
+    Merge,
+    Rebase,
+    CherryPick,
+    Revert,
+    Bisect,
+    Other,
+}
+
+pub fn map_repo_state(state: git2::RepositoryState) -> RepoState {
+    match state {
+        git2::RepositoryState::Clean => RepoState::Clean,
+        git2::RepositoryState::Merge => RepoState::Merge,
+        git2::RepositoryState::Rebase
+        | git2::RepositoryState::RebaseInteractive
+        | git2::RepositoryState::RebaseMerge => RepoState::Rebase,
+        git2::RepositoryState::CherryPick | git2::RepositoryState::CherryPickSequence => {
+            RepoState::CherryPick
+        }
+        git2::RepositoryState::Revert | git2::RepositoryState::RevertSequence => RepoState::Revert,
+        git2::RepositoryState::Bisect => RepoState::Bisect,
+        _ => RepoState::Other,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeadInfo {
     pub branch: Option<String>,
     pub oid: Option<String>,
     pub unborn: bool,
+    #[serde(default)]
+    pub repo_state: RepoState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,6 +168,7 @@ impl GitBackend for Git2Backend {
 
     fn head(&self) -> Result<HeadInfo> {
         let repo = self.repo.lock().unwrap_or_else(|p| p.into_inner());
+        let repo_state = map_repo_state(repo.state());
 
         let head_info = match repo.head() {
             Ok(head_ref) => {
@@ -148,6 +179,7 @@ impl GitBackend for Git2Backend {
                         branch,
                         oid,
                         unborn: false,
+                        repo_state,
                     })
                 } else {
                     // Detached HEAD: branch field holds short commit hash
@@ -162,6 +194,7 @@ impl GitBackend for Git2Backend {
                         branch: short_oid,
                         oid,
                         unborn: false,
+                        repo_state,
                     })
                 }
             }
@@ -184,6 +217,7 @@ impl GitBackend for Git2Backend {
                     branch,
                     oid: None,
                     unborn: true,
+                    repo_state,
                 })
             }
             Err(e) => Err(CoreError::Git2(e)),
