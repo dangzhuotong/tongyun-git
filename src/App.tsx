@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   getAppInfo,
   checkGit,
@@ -13,6 +14,7 @@ import {
   undoDiscard,
   pullRemote,
   fetchRemote,
+  selectFolder,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
@@ -407,6 +409,32 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentRepo, handlePull]);
+
+  // Global Drag & Drop folder support (Windows / Desktop)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    try {
+      getCurrentWebview()
+        .onDragDropEvent((event) => {
+          if (event.payload.type === "drop" && event.payload.paths.length > 0) {
+            const droppedPath = event.payload.paths[0];
+            if (droppedPath) {
+              handleOpenRepo(droppedPath);
+            }
+          }
+        })
+        .then((fn) => {
+          unlisten = fn;
+        })
+        .catch(() => {});
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      unlisten?.();
+    };
+  }, [handleOpenRepo]);
 
   // Command list for CommandPalette (R-16)
   const commandList: CommandItem[] = useMemo(() => {
@@ -869,18 +897,34 @@ export default function App() {
                   没有打开的仓库
                 </h2>
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  请选择一个包含 Git 版本控制的本地目录以开始工作。
+                  可将本地 Git 仓库文件夹直接拖拽放进窗口，或点击下方按钮选择。
                 </p>
               </div>
 
-              <button
-                type="button"
-                disabled={!gitAvailable}
-                onClick={() => setOpenModalVisible(true)}
-                className="px-4 py-2 rounded-md bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs"
-              >
-                打开本地仓库
-              </button>
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={!gitAvailable}
+                  onClick={() => setOpenModalVisible(true)}
+                  className="px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <FolderIcon width={14} height={14} />
+                  <span>打开本地仓库</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!gitAvailable}
+                  onClick={async () => {
+                    const selected = await selectFolder();
+                    if (selected) {
+                      handleOpenRepo(selected);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
+                >
+                  直接选文件夹
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -517,6 +517,12 @@ fn clear_operation_logs() {
     tg_clear_operation_logs();
 }
 
+#[tauri::command]
+async fn select_folder() -> Option<String> {
+    let folder = rfd::AsyncFileDialog::new().pick_folder().await;
+    folder.map(|f| f.path().to_string_lossy().to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -554,7 +560,8 @@ pub fn run() {
             push_remote,
             abort_merge_or_rebase,
             get_operation_logs,
-            clear_operation_logs
+            clear_operation_logs,
+            select_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

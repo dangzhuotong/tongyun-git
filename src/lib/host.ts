@@ -519,4 +519,9 @@ export async function clearOperationLogs(): Promise<void> {
   return await invoke("clear_operation_logs");
 }
 
+export async function selectFolder(): Promise<string | null> {
+  return await invoke<string | null>("select_folder");
+}
+
+
 
