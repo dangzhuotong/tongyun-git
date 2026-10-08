@@ -130,3 +130,31 @@ impl KeyringStore for MemoryKeyring {
         self.available.read().map(|b| *b).unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_system_keyring_roundtrip() {
+        let keyring = SystemKeyring;
+        if !keyring.is_available() {
+            return;
+        }
+        let provider = "test_roundtrip_provider";
+        let secret = "sk-test-secret-value-789";
+
+        // 1. Set key
+        keyring.set_key(provider, secret).expect("set_key should succeed");
+
+        // 2. Read key
+        let read_val = keyring.get_key(provider).expect("get_key should succeed");
+        assert_eq!(read_val, Some(secret.to_string()));
+
+        // 3. Delete key
+        keyring.delete_key(provider).expect("delete_key should succeed");
+        let after_delete = keyring.get_key(provider).expect("get_key after delete");
+        assert_eq!(after_delete, None);
+    }
+}
+

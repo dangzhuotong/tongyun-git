@@ -73,6 +73,7 @@ export function SettingsModal({
   const [newKey, setNewKey] = useState("");
   const [keySaving, setKeySaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [keySuccessMessage, setKeySuccessMessage] = useState<string | null>(null);
 
   const [testingAi, setTestingAi] = useState(false);
   const [testAiResult, setTestAiResult] = useState<{
@@ -123,6 +124,12 @@ export function SettingsModal({
 
   // Persist AI settings
   const updateAiSettings = (partial: Partial<AiSettings>) => {
+    if (partial.provider && partial.provider !== aiSettings.provider) {
+      setKeyError(null);
+      setKeySuccessMessage(null);
+      setNewKey("");
+      setTestAiResult(null);
+    }
     const updated = { ...aiSettings, ...partial };
     setAiSettings(updated);
     localStorage.setItem("tongyun_ai_settings", JSON.stringify(updated));
@@ -155,9 +162,11 @@ export function SettingsModal({
     if (!newKey.trim()) return;
     setKeySaving(true);
     setKeyError(null);
+    setKeySuccessMessage(null);
     try {
       await saveAiKey(aiSettings.provider, newKey.trim());
       setNewKey("");
+      setKeySuccessMessage("密钥已安全加密保存到系统钥匙串");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -170,8 +179,10 @@ export function SettingsModal({
   const handleDeleteKey = async () => {
     setKeySaving(true);
     setKeyError(null);
+    setKeySuccessMessage(null);
     try {
       await deleteAiKey(aiSettings.provider);
+      setKeySuccessMessage("密钥已从系统钥匙串中清除");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -204,6 +215,18 @@ export function SettingsModal({
     setTestingAi(true);
     setTestAiResult(null);
     try {
+      // Auto-save key if user typed a key but forgot to click Save Key
+      if (newKey.trim()) {
+        try {
+          await saveAiKey(aiSettings.provider, newKey.trim());
+          setNewKey("");
+          setKeySuccessMessage("已自动为您将密钥存入系统钥匙串");
+          await refreshKeyStatus();
+        } catch {
+          // ignore error here, proceed to test
+        }
+      }
+
       const msg = await testAiConnection(aiSettings);
       setTestAiResult({ success: true, message: msg || "连接成功" });
     } catch (err: any) {
@@ -559,6 +582,11 @@ export function SettingsModal({
                         type="password"
                         value={newKey}
                         onChange={(e) => setNewKey(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newKey.trim() && !keySaving) {
+                            handleSaveKey();
+                          }
+                        }}
                         placeholder={
                           isCurrentProviderKeySaved
                             ? "输入新密钥以覆盖现有密钥..."
@@ -586,9 +614,17 @@ export function SettingsModal({
                       )}
                     </div>
 
+                    {keySuccessMessage && (
+                      <div className="text-[11px] text-[var(--color-status-added)] flex items-center gap-1 font-medium animate-in fade-in">
+                        <CheckIcon width={12} height={12} />
+                        <span>{keySuccessMessage}</span>
+                      </div>
+                    )}
+
                     {keyError && (
-                      <div className="text-[11px] text-[var(--color-danger)]">
-                        {keyError}
+                      <div className="text-[11px] text-[var(--color-danger)] flex items-center gap-1">
+                        <AlertCircleIcon width={12} height={12} />
+                        <span>{keyError}</span>
                       </div>
                     )}
                   </div>
