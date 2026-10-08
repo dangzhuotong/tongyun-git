@@ -38,6 +38,15 @@ pub enum CoreError {
 
     #[error("discard snapshot error: {0}")]
     DiscardError(String),
+
+    #[error("commit error: {0}")]
+    CommitError(String),
+
+    #[error("ai error: {0}")]
+    AiError(String),
+
+    #[error("keyring error: {0}")]
+    KeyringError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

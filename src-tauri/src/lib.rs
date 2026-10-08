@@ -1,7 +1,10 @@
 use serde::Serialize;
 use std::path::Path;
 use tauri::AppHandle;
-use tg_core::{CliRunner, CoreError, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo};
+use tg_core::{
+    AiService, AiSettings, CliRunner, CommitService, CoreError, FileDiff, FileStatus, Git2Backend,
+    GitBackend, HeadInfo, KeyringStore, RunOptions, SecretFilter, SystemKeyring,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AppInfo {
@@ -197,6 +200,169 @@ fn undo_discard(
     tg_core::DiscardService::undo_last_discard(p, skip_conflict).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AiKeyStatus {
+    pub kie: bool,
+    pub openai: bool,
+    pub ollama: bool,
+    pub keyring_available: bool,
+}
+
+#[tauri::command]
+fn check_commit_identity(
+    root_path: String,
+) -> std::result::Result<Option<tg_core::GitIdentity>, String> {
+    let p = Path::new(&root_path);
+    let runner = CliRunner::new("git");
+    CommitService::check_identity(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_head_message(root_path: String) -> std::result::Result<Option<String>, String> {
+    let p = Path::new(&root_path);
+    CommitService::get_head_message(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn inspect_amend(root_path: String) -> std::result::Result<tg_core::AmendStatus, String> {
+    let p = Path::new(&root_path);
+    let runner = CliRunner::new("git");
+    CommitService::inspect_amend(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_commit(
+    root_path: String,
+    message: String,
+    amend: bool,
+) -> std::result::Result<tg_core::CommitResult, String> {
+    let p = Path::new(&root_path);
+    let runner = CliRunner::new("git");
+    CommitService::commit(&runner, p, &message, amend).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
+    let keyring = SystemKeyring;
+    let available = keyring.is_available();
+    let kie = if available {
+        keyring.get_key("kie").map(|k| k.is_some()).unwrap_or(false)
+    } else {
+        false
+    };
+    let openai = if available {
+        keyring
+            .get_key("openai")
+            .map(|k| k.is_some())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let ollama = if available {
+        keyring
+            .get_key("ollama")
+            .map(|k| k.is_some())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    Ok(AiKeyStatus {
+        kie,
+        openai,
+        ollama,
+        keyring_available: available,
+    })
+}
+
+#[tauri::command]
+fn save_ai_key(provider: String, key: String) -> std::result::Result<(), String> {
+    let keyring = SystemKeyring;
+    if !keyring.is_available() {
+        return Err("系统钥匙串不可用，无法安全存储 Key".to_string());
+    }
+    keyring.set_key(&provider, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
+    let keyring = SystemKeyring;
+    keyring.delete_key(&provider).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn test_ai_connection(settings: AiSettings) -> std::result::Result<String, String> {
+    let keyring = SystemKeyring;
+    AiService::test_connection(&settings, &keyring)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn fetch_ollama_models(base_url: Option<String>) -> std::result::Result<Vec<String>, String> {
+    AiService::fetch_ollama_models(base_url.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn generate_ai_commit_message(
+    root_path: String,
+    settings: AiSettings,
+) -> std::result::Result<String, String> {
+    let p = Path::new(&root_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+
+    // 1. Get current branch
+    let head = backend.head().map_err(|e| e.to_string())?;
+    let branch = head.branch.unwrap_or_else(|| "HEAD".to_string());
+
+    // 2. Get recent commits for style reference
+    let runner = CliRunner::new("git");
+    let log_res = runner.run(p, &["log", "-n", "10", "--oneline"], RunOptions::default());
+    let recent_commits: Vec<String> = match log_res {
+        Ok(out) if out.exit_code == Some(0) => out.stdout.lines().map(|s| s.to_string()).collect(),
+        _ => Vec::new(),
+    };
+
+    // 3. Collect staged diffs
+    let status_files = backend.status().map_err(|e| e.to_string())?;
+    let staged_files: Vec<_> = status_files
+        .into_iter()
+        .filter(|f| f.index.is_some())
+        .collect();
+
+    if staged_files.is_empty() {
+        return Err("当前没有已暂存的改动，请先暂存文件".to_string());
+    }
+
+    let mut staged_diffs = Vec::new();
+    for file in staged_files {
+        if let Ok(diff) = backend.diff_file(&file.path, true) {
+            staged_diffs.push(diff);
+        }
+    }
+
+    // 4. Sanitize and filter sensitive contents
+    let sanitized_diff = SecretFilter::build_sanitized_diff(
+        &staged_diffs,
+        &settings.custom_secret_patterns,
+        settings.max_diff_chars,
+    );
+
+    // 5. Generate message via AI
+    let keyring = SystemKeyring;
+    AiService::generate_commit_message(
+        &settings,
+        &keyring,
+        &branch,
+        &recent_commits,
+        &sanitized_diff,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -210,7 +376,17 @@ pub fn run() {
             stage_lines,
             inspect_discard,
             discard_files,
-            undo_discard
+            undo_discard,
+            check_commit_identity,
+            get_head_message,
+            inspect_amend,
+            create_commit,
+            get_ai_key_status,
+            save_ai_key,
+            delete_ai_key,
+            test_ai_connection,
+            fetch_ollama_models,
+            generate_ai_commit_message
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

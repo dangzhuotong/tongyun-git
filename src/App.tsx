@@ -22,6 +22,7 @@ import { ChangesList } from "./features/changes/ChangesList";
 import { DiffViewer } from "./features/changes/DiffViewer";
 import { OpenRepoModal } from "./features/toolbar/OpenRepoModal";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { CommitPanel } from "./features/commit/CommitPanel";
 import { DiscardConfirmModal } from "./features/changes/DiscardConfirmModal";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
@@ -60,6 +61,7 @@ export default function App() {
   // Modals
   const [openModalVisible, setOpenModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
   const [openError, setOpenError] = useState<string | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
 
@@ -505,7 +507,10 @@ export default function App() {
         isRefreshing={isRefreshing}
         theme={theme}
         onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
-        onOpenSettings={() => setSettingsModalVisible(true)}
+        onOpenSettings={() => {
+          setSettingsTab("general");
+          setSettingsModalVisible(true);
+        }}
         gitAvailable={gitAvailable}
       />
 
@@ -565,13 +570,22 @@ export default function App() {
                 />
               </div>
 
-              {/* Commit Area Placeholder for M3 */}
-              <div className="p-3 border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text-muted)] flex items-center justify-between">
-                <span>提交区 (已就绪)</span>
-                <span className="font-mono text-[11px] opacity-75">
-                  {files.filter((f) => f.index != null).length} 个暂存
-                </span>
-              </div>
+              {/* Commit Area (R-06 & R-07) */}
+              <CommitPanel
+                key={currentRepo.root_path}
+                rootPath={currentRepo.root_path}
+                stagedCount={files.filter((f) => f.index != null).length}
+                onCommitSuccess={() => {
+                  refreshStatus(currentRepo.root_path);
+                  setSelectedTarget(null);
+                  setDiff(null);
+                }}
+                onOpenSettings={() => {
+                  setSettingsTab("ai");
+                  setSettingsModalVisible(true);
+                }}
+                disabled={!gitAvailable || isRefreshing}
+              />
             </div>
 
             {/* Splitter Resize Handle */}
@@ -682,6 +696,7 @@ export default function App() {
           setGitPath(p);
           localStorage.setItem("tongyun_git_path", p);
         }}
+        initialTab={settingsTab}
       />
     </div>
   );

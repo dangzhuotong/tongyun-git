@@ -163,3 +163,99 @@ export async function undoDiscard(
 ): Promise<UndoDiscardResult> {
   return await invoke<UndoDiscardResult>("undo_discard", { rootPath, skipConflict });
 }
+
+export interface GitIdentity {
+  name: string;
+  email: string;
+}
+
+export interface AmendStatus {
+  can_amend: boolean;
+  disabled_reason?: string | null;
+  head_message?: string | null;
+  is_pushed: boolean;
+  pushed_remote_branches: string[];
+}
+
+export interface CommitResult {
+  oid: string;
+  short_oid: string;
+  summary: string;
+}
+
+export interface AiKeyStatus {
+  kie: boolean;
+  openai: boolean;
+  ollama: boolean;
+  keyring_available: boolean;
+}
+
+export type AiProvider = "kie" | "openai" | "ollama";
+
+export interface AiSettings {
+  provider: AiProvider;
+  base_url?: string | null;
+  model: string;
+  language: string; // "follow" | "zh" | "en"
+  conventional: boolean;
+  timeout_seconds: number;
+  max_diff_chars: number;
+  custom_secret_patterns: string[];
+  consented: boolean;
+}
+
+export async function checkCommitIdentity(
+  rootPath: string
+): Promise<GitIdentity | null> {
+  return await invoke<GitIdentity | null>("check_commit_identity", { rootPath });
+}
+
+export async function getHeadMessage(rootPath: string): Promise<string | null> {
+  return await invoke<string | null>("get_head_message", { rootPath });
+}
+
+export async function inspectAmend(rootPath: string): Promise<AmendStatus> {
+  return await invoke<AmendStatus>("inspect_amend", { rootPath });
+}
+
+export async function createCommit(
+  rootPath: string,
+  message: string,
+  amend: boolean
+): Promise<CommitResult> {
+  return await invoke<CommitResult>("create_commit", {
+    rootPath,
+    message,
+    amend,
+  });
+}
+
+export async function getAiKeyStatus(): Promise<AiKeyStatus> {
+  return await invoke<AiKeyStatus>("get_ai_key_status");
+}
+
+export async function saveAiKey(provider: string, key: string): Promise<void> {
+  return await invoke("save_ai_key", { provider, key });
+}
+
+export async function deleteAiKey(provider: string): Promise<void> {
+  return await invoke("delete_ai_key", { provider });
+}
+
+export async function testAiConnection(settings: AiSettings): Promise<string> {
+  return await invoke<string>("test_ai_connection", { settings });
+}
+
+export async function fetchOllamaModels(baseUrl?: string): Promise<string[]> {
+  return await invoke<string[]>("fetch_ollama_models", { baseUrl });
+}
+
+export async function generateAiCommitMessage(
+  rootPath: string,
+  settings: AiSettings
+): Promise<string> {
+  return await invoke<string>("generate_ai_commit_message", {
+    rootPath,
+    settings,
+  });
+}

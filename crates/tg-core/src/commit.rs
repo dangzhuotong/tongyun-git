@@ -1,0 +1,202 @@
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
+
+use crate::cli::{CliRunner, RunOptions};
+use crate::error::{CoreError, Result};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitIdentity {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitResult {
+    pub oid: String,
+    pub short_oid: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AmendStatus {
+    pub can_amend: bool,
+    pub disabled_reason: Option<String>,
+    pub head_message: Option<String>,
+    pub is_pushed: bool,
+    pub pushed_remote_branches: Vec<String>,
+}
+
+pub struct CommitService;
+
+impl CommitService {
+    /// Check whether git user.name and user.email are configured.
+    pub fn check_identity(runner: &CliRunner, repo_root: &Path) -> Result<Option<GitIdentity>> {
+        let name_res = runner.run(repo_root, &["config", "user.name"], RunOptions::default());
+        let email_res = runner.run(repo_root, &["config", "user.email"], RunOptions::default());
+
+        let name = match name_res {
+            Ok(out) if out.exit_code == Some(0) => out.stdout.trim().to_string(),
+            _ => String::new(),
+        };
+
+        let email = match email_res {
+            Ok(out) if out.exit_code == Some(0) => out.stdout.trim().to_string(),
+            _ => String::new(),
+        };
+
+        if name.is_empty() || email.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(GitIdentity { name, email }))
+        }
+    }
+
+    /// Read the full commit message of HEAD if HEAD exists.
+    pub fn get_head_message(repo_root: &Path) -> Result<Option<String>> {
+        let repo = match git2::Repository::open(repo_root) {
+            Ok(r) => r,
+            Err(_) => return Ok(None),
+        };
+
+        let head = match repo.head() {
+            Ok(h) => h,
+            Err(_) => return Ok(None),
+        };
+
+        let target_oid = match head.target() {
+            Some(oid) => oid,
+            None => return Ok(None),
+        };
+
+        let commit = repo.find_commit(target_oid)?;
+        let msg = match commit.message() {
+            Ok(m) => m.to_string(),
+            _ => String::new(),
+        };
+        Ok(Some(msg))
+    }
+
+    /// Check if merge or rebase is currently in progress.
+    pub fn is_in_merge_or_rebase(repo_root: &Path) -> bool {
+        let dot_git = repo_root.join(".git");
+        dot_git.join("MERGE_HEAD").exists()
+            || dot_git.join("rebase-apply").exists()
+            || dot_git.join("rebase-merge").exists()
+    }
+
+    /// Check which remote branches contain HEAD (if any).
+    pub fn check_head_pushed(runner: &CliRunner, repo_root: &Path) -> Result<Vec<String>> {
+        let out = runner.run(
+            repo_root,
+            &["branch", "-r", "--contains", "HEAD"],
+            RunOptions::default(),
+        )?;
+        if out.exit_code != Some(0) {
+            return Ok(Vec::new());
+        }
+
+        let mut branches = Vec::new();
+        for line in out.stdout.lines() {
+            let trimmed = line.trim();
+            // Ignore detached HEAD markers or arrow pointers like origin/HEAD -> origin/main
+            if !trimmed.is_empty() && !trimmed.contains("->") && !trimmed.starts_with('(') {
+                branches.push(trimmed.to_string());
+            }
+        }
+        Ok(branches)
+    }
+
+    /// Inspect whether amend is available and its push warning status.
+    pub fn inspect_amend(runner: &CliRunner, repo_root: &Path) -> Result<AmendStatus> {
+        let head_msg = Self::get_head_message(repo_root)?;
+        if head_msg.is_none() {
+            return Ok(AmendStatus {
+                can_amend: false,
+                disabled_reason: Some("当前仓库没有历史提交，无法修改提交".to_string()),
+                head_message: None,
+                is_pushed: false,
+                pushed_remote_branches: Vec::new(),
+            });
+        }
+
+        if Self::is_in_merge_or_rebase(repo_root) {
+            return Ok(AmendStatus {
+                can_amend: false,
+                disabled_reason: Some("正在进行合并或变基，无法修改上一次提交".to_string()),
+                head_message: head_msg,
+                is_pushed: false,
+                pushed_remote_branches: Vec::new(),
+            });
+        }
+
+        let pushed_branches = Self::check_head_pushed(runner, repo_root)?;
+        let is_pushed = !pushed_branches.is_empty();
+
+        Ok(AmendStatus {
+            can_amend: true,
+            disabled_reason: None,
+            head_message: head_msg,
+            is_pushed,
+            pushed_remote_branches: pushed_branches,
+        })
+    }
+
+    /// Execute git commit (normal or amend) via CliRunner with a temporary message file.
+    pub fn commit(
+        runner: &CliRunner,
+        repo_root: &Path,
+        message: &str,
+        amend: bool,
+    ) -> Result<CommitResult> {
+        let trimmed_msg = message.trim();
+        if trimmed_msg.is_empty() {
+            return Err(CoreError::CommitError("提交信息不能为空".to_string()));
+        }
+
+        // Write commit message to a temporary file to preserve exact characters & line breaks
+        let temp_dir = tempfile::tempdir()?;
+        let msg_file_path = temp_dir.path().join("COMMIT_EDITMSG");
+        fs::write(&msg_file_path, message)?;
+
+        let path_str = msg_file_path.to_string_lossy().to_string();
+        let mut args = vec!["commit"];
+        if amend {
+            args.push("--amend");
+        }
+        args.push("-F");
+        args.push(&path_str);
+
+        let out = runner.run(repo_root, &args, RunOptions::default())?;
+        if out.exit_code != Some(0) {
+            let combined_err = format!("{}\n{}", out.stdout.trim(), out.stderr.trim())
+                .trim()
+                .to_string();
+            return Err(CoreError::Cli {
+                exit_code: out.exit_code,
+                stderr: combined_err,
+            });
+        }
+
+        // Fetch new HEAD info via git2
+        let repo = git2::Repository::open(repo_root)?;
+        let head = repo.head()?;
+        let target_oid = head
+            .target()
+            .ok_or_else(|| CoreError::CommitError("无法获取提交后的 HEAD 标识".to_string()))?;
+        let commit = repo.find_commit(target_oid)?;
+
+        let oid_str = target_oid.to_string();
+        let short_oid = oid_str.chars().take(7).collect();
+        let summary = match commit.message() {
+            Ok(m) => m.lines().next().unwrap_or("").to_string(),
+            _ => String::new(),
+        };
+
+        Ok(CommitResult {
+            oid: oid_str,
+            short_oid,
+            summary,
+        })
+    }
+}

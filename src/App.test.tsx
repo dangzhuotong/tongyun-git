@@ -15,12 +15,34 @@ vi.mock("./lib/host.ts", () => ({
   inspectDiscard: vi.fn(),
   discardFiles: vi.fn(),
   undoDiscard: vi.fn(),
+  checkCommitIdentity: vi.fn(),
+  inspectAmend: vi.fn(),
+  createCommit: vi.fn(),
+  getAiKeyStatus: vi.fn(),
+  saveAiKey: vi.fn(),
+  deleteAiKey: vi.fn(),
+  testAiConnection: vi.fn(),
+  fetchOllamaModels: vi.fn(),
+  generateAiCommitMessage: vi.fn(),
 }));
 
 describe("App workspace and components", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: false,
+      disabled_reason: null,
+      head_message: null,
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: false,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
   });
 
   it("renders empty workspace when no repository is opened", async () => {
@@ -406,4 +428,97 @@ describe("App workspace and components", () => {
       expect(host.undoDiscard).toHaveBeenCalledWith("/test/my-repo", true);
     });
   });
+
+  it("handles commit workflow and draft persistence", async () => {
+    vi.mocked(host.getAppInfo).mockResolvedValue({
+      name: "tongyun-git",
+      version: "0.0.0",
+      identifier: "test-id",
+      git_version: "2.47.3",
+      libgit2_version: "1.9.7",
+    });
+    vi.mocked(host.checkGit).mockResolvedValue({
+      available: true,
+      version: "git version 2.47.3",
+      error: null,
+    });
+    vi.mocked(host.openRepository).mockResolvedValue({
+      root_path: "/test/my-repo",
+      name: "my-repo",
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+    });
+    vi.mocked(host.getRepoStatus).mockResolvedValue({
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+      files: [
+        {
+          path: "src/main.rs",
+          old_path: null,
+          worktree: null,
+          index: "Modified",
+          conflicted: false,
+        },
+      ],
+    });
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "feat: initial commit\n\nbody details",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.checkCommitIdentity).mockResolvedValue({
+      name: "Alice",
+      email: "alice@example.com",
+    });
+    vi.mocked(host.createCommit).mockResolvedValue({
+      oid: "def5678",
+      short_oid: "def5678",
+      summary: "feat: implement commit",
+    });
+
+    render(<App />);
+
+    const openBtn = await screen.findByText("打开本地仓库");
+    fireEvent.click(openBtn);
+    const input = screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/);
+    fireEvent.change(input, { target: { value: "/test/my-repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+
+    // Verify commit area rendered
+    const textarea = (await screen.findByPlaceholderText(
+      /提交信息 \(首行标题/
+    )) as HTMLTextAreaElement;
+    expect(textarea).toBeDefined();
+
+    // Type commit message
+    fireEvent.change(textarea, { target: { value: "feat: implement commit" } });
+    expect(localStorage.getItem("tongyun_commit_draft_/test/my-repo")).toBe(
+      "feat: implement commit"
+    );
+
+    // Commit button should be enabled for 1 staged file
+    const commitBtn = screen.getByRole("button", { name: "提交 (1)" });
+    fireEvent.click(commitBtn);
+
+    await waitFor(() => {
+      expect(host.checkCommitIdentity).toHaveBeenCalledWith("/test/my-repo");
+      expect(host.createCommit).toHaveBeenCalledWith(
+        "/test/my-repo",
+        "feat: implement commit",
+        false
+      );
+    });
+
+    // Draft should be cleared after success
+    expect(localStorage.getItem("tongyun_commit_draft_/test/my-repo")).toBeNull();
+  });
 });
+

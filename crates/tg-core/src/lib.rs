@@ -1,5 +1,7 @@
+pub mod ai;
 pub mod backend;
 pub mod cli;
+pub mod commit;
 pub mod discard;
 pub mod error;
 pub mod patch;
@@ -8,12 +10,16 @@ pub mod redact;
 #[cfg(windows)]
 mod win_job;
 
+pub use ai::{
+    AiProviderType, AiService, AiSettings, KeyringStore, MemoryKeyring, SecretFilter, SystemKeyring,
+};
 pub use backend::{
     ChangeKind, DiffHunk, DiffLine, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
 };
 pub use cli::{
     parse_git_version, version_at_least, CliOutput, CliRunner, RunOptions, MIN_GIT_VERSION,
 };
+pub use commit::{AmendStatus, CommitResult, CommitService, GitIdentity};
 pub use discard::{
     DiscardCandidate, DiscardResult, DiscardService, UndoDiscardResult, MAX_SINGLE_FILE_SNAPSHOT,
     MAX_SNAPSHOT_COUNT, MAX_TOTAL_SNAPSHOT,
