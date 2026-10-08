@@ -24,6 +24,9 @@ import { OpenRepoModal } from "./features/toolbar/OpenRepoModal";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { CommitPanel } from "./features/commit/CommitPanel";
 import { DiscardConfirmModal } from "./features/changes/DiscardConfirmModal";
+import { BranchModal } from "./features/branch/BranchModal";
+import { CreateBranchModal } from "./features/branch/CreateBranchModal";
+import { LogView } from "./features/log/LogView";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
@@ -64,6 +67,14 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
   const [openError, setOpenError] = useState<string | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
+
+  // Active view: changes vs commit log (M4)
+  const [activeView, setActiveView] = useState<"changes" | "log">("changes");
+
+  // Branch management modals (R-08, R-09)
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [createBranchModalOpen, setCreateBranchModalOpen] = useState(false);
+  const [createBranchStartPoint, setCreateBranchStartPoint] = useState<string | null>(null);
 
   // Discard & Undo state (R-17)
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
@@ -282,6 +293,20 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [currentRepo, refreshStatus]);
+
+  // Global branch modal shortcut: Ctrl/Cmd + Shift + ` (R-08)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "`" || e.code === "Backquote")) {
+        e.preventDefault();
+        if (currentRepo) {
+          setBranchModalOpen((prev) => !prev);
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentRepo]);
 
   // Selection handler
   const handleSelectTarget = (target: SelectedFileTarget) => {
@@ -512,6 +537,9 @@ export default function App() {
           setSettingsModalVisible(true);
         }}
         gitAvailable={gitAvailable}
+        activeView={activeView}
+        onViewChange={setActiveView}
+        onOpenBranchModal={() => setBranchModalOpen(true)}
       />
 
       {/* Git Missing Warning Banner (R-01) */}
@@ -553,57 +581,70 @@ export default function App() {
       {/* Main Workspace Area (Layout A) */}
       <div className="flex-1 flex overflow-hidden">
         {currentRepo ? (
-          <>
-            {/* Left Column: Changes List & Commit Area */}
-            <div
-              style={{ width: `${sidebarWidth}px` }}
-              className="h-full flex flex-col shrink-0 border-r border-[var(--color-border)] overflow-hidden"
-            >
-              <div className="flex-1 overflow-hidden">
-                <ChangesList
-                  files={files}
-                  selectedTarget={selectedTarget}
-                  onSelectTarget={handleSelectTarget}
-                  onStageFiles={handleStageFiles}
-                  onUnstageFiles={handleUnstageFiles}
-                  onDiscardFiles={handleOpenDiscardModal}
+          activeView === "changes" ? (
+            <>
+              {/* Left Column: Changes List & Commit Area */}
+              <div
+                style={{ width: `${sidebarWidth}px` }}
+                className="h-full flex flex-col shrink-0 border-r border-[var(--color-border)] overflow-hidden"
+              >
+                <div className="flex-1 overflow-hidden">
+                  <ChangesList
+                    files={files}
+                    selectedTarget={selectedTarget}
+                    onSelectTarget={handleSelectTarget}
+                    onStageFiles={handleStageFiles}
+                    onUnstageFiles={handleUnstageFiles}
+                    onDiscardFiles={handleOpenDiscardModal}
+                  />
+                </div>
+
+                {/* Commit Area (R-06 & R-07) */}
+                <CommitPanel
+                  key={currentRepo.root_path}
+                  rootPath={currentRepo.root_path}
+                  stagedCount={files.filter((f) => f.index != null).length}
+                  onCommitSuccess={() => {
+                    refreshStatus(currentRepo.root_path);
+                    setSelectedTarget(null);
+                    setDiff(null);
+                  }}
+                  onOpenSettings={() => {
+                    setSettingsTab("ai");
+                    setSettingsModalVisible(true);
+                  }}
+                  disabled={!gitAvailable || isRefreshing}
                 />
               </div>
 
-              {/* Commit Area (R-06 & R-07) */}
-              <CommitPanel
-                key={currentRepo.root_path}
-                rootPath={currentRepo.root_path}
-                stagedCount={files.filter((f) => f.index != null).length}
-                onCommitSuccess={() => {
-                  refreshStatus(currentRepo.root_path);
-                  setSelectedTarget(null);
-                  setDiff(null);
-                }}
-                onOpenSettings={() => {
-                  setSettingsTab("ai");
-                  setSettingsModalVisible(true);
-                }}
-                disabled={!gitAvailable || isRefreshing}
+              {/* Splitter Resize Handle */}
+              <div
+                onMouseDown={handleMouseDownResize}
+                className="w-[4px] -ml-[2px] h-full cursor-col-resize hover:bg-[var(--color-accent)] transition-colors z-20 shrink-0 select-none"
               />
-            </div>
 
-            {/* Splitter Resize Handle */}
-            <div
-              onMouseDown={handleMouseDownResize}
-              className="w-[4px] -ml-[2px] h-full cursor-col-resize hover:bg-[var(--color-accent)] transition-colors z-20 shrink-0 select-none"
-            />
-
-            {/* Right Column: Diff View */}
+              {/* Right Column: Diff View */}
+              <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
+                <DiffViewer
+                  diff={diff}
+                  loading={diffLoading}
+                  error={diffError}
+                  onStageHunkLines={handleStageHunkLines}
+                />
+              </div>
+            </>
+          ) : (
+            /* Log View (R-10) */
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
-              <DiffViewer
-                diff={diff}
-                loading={diffLoading}
-                error={diffError}
-                onStageHunkLines={handleStageHunkLines}
+              <LogView
+                rootPath={currentRepo.root_path}
+                onOpenCreateBranch={(oid) => {
+                  setCreateBranchStartPoint(oid);
+                  setCreateBranchModalOpen(true);
+                }}
               />
             </div>
-          </>
+          )
         ) : (
           /* Empty Workspace State */
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[var(--color-bg)]">
@@ -698,6 +739,38 @@ export default function App() {
         }}
         initialTab={settingsTab}
       />
+
+      {/* Branch Modal (R-08) */}
+      {currentRepo && (
+        <BranchModal
+          isOpen={branchModalOpen}
+          onClose={() => setBranchModalOpen(false)}
+          rootPath={currentRepo.root_path}
+          onBranchSwitched={() => {
+            refreshStatus(currentRepo.root_path);
+            setSelectedTarget(null);
+            setDiff(null);
+          }}
+        />
+      )}
+
+      {/* Create Branch Modal (R-09) */}
+      {currentRepo && (
+        <CreateBranchModal
+          isOpen={createBranchModalOpen}
+          onClose={() => {
+            setCreateBranchModalOpen(false);
+            setCreateBranchStartPoint(null);
+          }}
+          rootPath={currentRepo.root_path}
+          startPoint={createBranchStartPoint}
+          onBranchCreated={() => {
+            setCreateBranchModalOpen(false);
+            setCreateBranchStartPoint(null);
+            refreshStatus(currentRepo.root_path);
+          }}
+        />
+      )}
     </div>
   );
 }

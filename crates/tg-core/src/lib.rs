@@ -1,9 +1,11 @@
 pub mod ai;
 pub mod backend;
+pub mod branch;
 pub mod cli;
 pub mod commit;
 pub mod discard;
 pub mod error;
+pub mod log;
 pub mod patch;
 pub mod redact;
 
@@ -16,6 +18,7 @@ pub use ai::{
 pub use backend::{
     ChangeKind, DiffHunk, DiffLine, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
 };
+pub use branch::{BranchItem, BranchService, SwitchBranchResult, ValidationResult};
 pub use cli::{
     parse_git_version, version_at_least, CliOutput, CliRunner, RunOptions, MIN_GIT_VERSION,
 };
@@ -25,6 +28,10 @@ pub use discard::{
     MAX_SNAPSHOT_COUNT, MAX_TOTAL_SNAPSHOT,
 };
 pub use error::{CoreError, Result};
+pub use log::{
+    CommitDetails, CommitFileChange, GraphEdge, LogCommit, LogQuery, LogResult, LogService,
+    RefBadge, RefKind,
+};
 pub use patch::{apply_patch_to_index, build_selected_patch};
 pub use redact::redact_url_credentials;
 

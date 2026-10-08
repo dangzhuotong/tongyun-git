@@ -259,3 +259,144 @@ export async function generateAiCommitMessage(
     settings,
   });
 }
+
+export interface BranchItem {
+  name: string;
+  is_remote: boolean;
+  is_head: boolean;
+  upstream?: string | null;
+  ahead: number;
+  behind: number;
+  target_oid: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  error_message?: string | null;
+}
+
+export interface SwitchBranchResult {
+  success: boolean;
+  current_branch: string;
+  conflicting_files: string[];
+  error_message?: string | null;
+}
+
+export type RefKind = "Head" | "LocalBranch" | "RemoteBranch" | "Tag";
+
+export interface RefBadge {
+  name: string;
+  kind: RefKind;
+}
+
+export interface GraphEdge {
+  from_col: number;
+  to_col: number;
+}
+
+export interface LogCommit {
+  oid: string;
+  short_oid: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  timestamp: number;
+  summary: string;
+  message: string;
+  refs: RefBadge[];
+  col: number;
+  edges: GraphEdge[];
+}
+
+export interface LogQuery {
+  all_branches: boolean;
+  filter_author?: string | null;
+  filter_query?: string | null;
+  skip: number;
+  limit: number;
+}
+
+export interface LogResult {
+  commits: LogCommit[];
+  total_matched: number;
+  has_more: boolean;
+}
+
+export interface CommitFileChange {
+  path: string;
+  old_path?: string | null;
+  kind: ChangeKind;
+}
+
+export interface CommitDetails {
+  oid: string;
+  short_oid: string;
+  parents: string[];
+  author_name: string;
+  author_email: string;
+  author_timestamp: number;
+  committer_name: string;
+  committer_email: string;
+  commit_timestamp: number;
+  message: string;
+  files: CommitFileChange[];
+}
+
+export async function listBranches(rootPath: string): Promise<BranchItem[]> {
+  return await invoke<BranchItem[]>("list_branches", { rootPath });
+}
+
+export async function validateBranchName(
+  rootPath: string,
+  name: string
+): Promise<ValidationResult> {
+  return await invoke<ValidationResult>("validate_branch_name", { rootPath, name });
+}
+
+export async function createBranch(
+  rootPath: string,
+  name: string,
+  startPoint?: string | null,
+  checkout = true
+): Promise<void> {
+  return await invoke("create_branch", { rootPath, name, startPoint, checkout });
+}
+
+export async function switchBranch(
+  rootPath: string,
+  targetName: string,
+  isRemote: boolean
+): Promise<SwitchBranchResult> {
+  return await invoke<SwitchBranchResult>("switch_branch", {
+    rootPath,
+    targetName,
+    isRemote,
+  });
+}
+
+export async function getCommitLog(
+  rootPath: string,
+  query: LogQuery
+): Promise<LogResult> {
+  return await invoke<LogResult>("get_commit_log", { rootPath, query });
+}
+
+export async function getCommitDetails(
+  rootPath: string,
+  oid: string
+): Promise<CommitDetails> {
+  return await invoke<CommitDetails>("get_commit_details", { rootPath, oid });
+}
+
+export async function getCommitFileDiff(
+  rootPath: string,
+  oid: string,
+  filePath: string
+): Promise<FileDiff> {
+  return await invoke<FileDiff>("get_commit_file_diff", {
+    rootPath,
+    oid,
+    filePath,
+  });
+}
+

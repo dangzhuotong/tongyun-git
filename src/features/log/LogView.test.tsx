@@ -1,0 +1,181 @@
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { LogView } from "./LogView";
+import * as host from "../../lib/host";
+
+vi.mock("../../lib/host", () => ({
+  getCommitLog: vi.fn(),
+  getCommitDetails: vi.fn(),
+  getCommitFileDiff: vi.fn(),
+}));
+
+describe("LogView", () => {
+  const rootPath = "/mock/repo";
+  const mockCommits: host.LogCommit[] = [
+    {
+      oid: "commit111",
+      short_oid: "com111",
+      summary: "feat: add user login",
+      message: "feat: add user login",
+      author_name: "Alice",
+      author_email: "alice@example.com",
+      timestamp: 1710000000,
+      parents: ["commit000"],
+      col: 0,
+      edges: [],
+      refs: [
+        { name: "HEAD", kind: "Head" },
+        { name: "main", kind: "LocalBranch" },
+      ],
+    },
+    {
+      oid: "commit222",
+      short_oid: "com222",
+      summary: "fix: button style bug",
+      message: "fix: button style bug",
+      author_name: "Bob",
+      author_email: "bob@example.com",
+      timestamp: 1709900000,
+      parents: ["commit000"],
+      col: 1,
+      edges: [{ from_col: 1, to_col: 0 }],
+      refs: [{ name: "origin/dev", kind: "RemoteBranch" }],
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(host.getCommitLog).mockResolvedValue({
+      commits: mockCommits,
+      has_more: false,
+      total_matched: 2,
+    });
+    vi.mocked(host.getCommitDetails).mockResolvedValue({
+      oid: "commit111",
+      short_oid: "com111",
+      parents: ["commit000"],
+      author_name: "Alice",
+      author_email: "alice@example.com",
+      author_timestamp: 1710000000,
+      committer_name: "Alice",
+      committer_email: "alice@example.com",
+      commit_timestamp: 1710000000,
+      message: "feat: add user login\n\ndetailed description",
+      files: [
+        {
+          path: "src/auth.ts",
+          old_path: null,
+          kind: "Modified",
+        },
+      ],
+    });
+    vi.mocked(host.getCommitFileDiff).mockResolvedValue({
+      path: "src/auth.ts",
+      old_path: null,
+      staged: false,
+      is_binary: false,
+      is_crlf_change: false,
+      is_large: false,
+      hunks: [
+        {
+          header: "@@ -1,3 +1,4 @@",
+          old_start: 1,
+          old_lines: 3,
+          new_start: 1,
+          new_lines: 4,
+          lines: [
+            { origin: " ", old_lineno: 1, new_lineno: 1, content: "const a = 1;" },
+            { origin: "+", old_lineno: null, new_lineno: 2, content: "const b = 2;" },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("renders commit list, graph badges, and details (AT-10a, AT-10c)", async () => {
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("feat: add user login")).toBeDefined();
+    expect(screen.getByText("fix: button style bug")).toBeDefined();
+    expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bob")).toBeDefined();
+    expect(screen.getByText("HEAD")).toBeDefined();
+    expect(screen.getByText("main")).toBeDefined();
+    expect(screen.getByText("origin/dev")).toBeDefined();
+
+    // Verify first commit details and file diff are loaded
+    await waitFor(() => {
+      expect(screen.getAllByText("src/auth.ts").length).toBeGreaterThan(0);
+      expect(screen.getByText(/const b = 2;/)).toBeDefined();
+    });
+  });
+
+  it("filters commits by search text (AT-10b)", async () => {
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    await screen.findByText("feat: add user login");
+
+    const searchInput = screen.getByPlaceholderText("过滤 作者 / 标题 / 哈希...");
+    fireEvent.change(searchInput, { target: { value: "Bob" } });
+
+    await waitFor(() => {
+      expect(host.getCommitLog).toHaveBeenCalledWith(
+        rootPath,
+        expect.objectContaining({
+          filter_query: "Bob",
+        })
+      );
+    });
+  });
+
+  it("switches scope between all branches and current branch", async () => {
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    await screen.findByText("feat: add user login");
+
+    const currentBranchBtn = screen.getByText("当前分支");
+    fireEvent.click(currentBranchBtn);
+
+    await waitFor(() => {
+      expect(host.getCommitLog).toHaveBeenCalledWith(
+        rootPath,
+        expect.objectContaining({
+          all_branches: false,
+        })
+      );
+    });
+  });
+
+  it("opens create branch modal from commit context menu", async () => {
+    const onOpenCreateBranch = vi.fn();
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={onOpenCreateBranch}
+      />
+    );
+
+    const commitRow = await screen.findByText("feat: add user login");
+    fireEvent.contextMenu(commitRow);
+
+    const newBranchOption = await screen.findByText("从这里新建分支...");
+    fireEvent.click(newBranchOption);
+
+    expect(onOpenCreateBranch).toHaveBeenCalledWith("commit111");
+  });
+});

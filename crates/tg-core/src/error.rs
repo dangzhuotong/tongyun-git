@@ -47,6 +47,12 @@ pub enum CoreError {
 
     #[error("keyring error: {0}")]
     KeyringError(String),
+
+    #[error("branch error: {0}")]
+    InvalidBranchName(String),
+
+    #[error("log error: {0}")]
+    LogError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

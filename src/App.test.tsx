@@ -24,6 +24,13 @@ vi.mock("./lib/host.ts", () => ({
   testAiConnection: vi.fn(),
   fetchOllamaModels: vi.fn(),
   generateAiCommitMessage: vi.fn(),
+  listBranches: vi.fn(),
+  validateBranchName: vi.fn(),
+  createBranch: vi.fn(),
+  switchBranch: vi.fn(),
+  getCommitLog: vi.fn(),
+  getCommitDetails: vi.fn(),
+  getCommitFileDiff: vi.fn(),
 }));
 
 describe("App workspace and components", () => {
@@ -42,6 +49,22 @@ describe("App workspace and components", () => {
       openai: false,
       ollama: false,
       keyring_available: true,
+    });
+    vi.mocked(host.listBranches).mockResolvedValue([
+      {
+        name: "main",
+        is_head: true,
+        is_remote: false,
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+        target_oid: "a1b2c3d",
+      },
+    ]);
+    vi.mocked(host.getCommitLog).mockResolvedValue({
+      commits: [],
+      has_more: false,
+      total_matched: 0,
     });
   });
 

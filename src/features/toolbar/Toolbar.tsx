@@ -21,6 +21,9 @@ interface ToolbarProps {
   onToggleTheme: () => void;
   onOpenSettings: () => void;
   gitAvailable: boolean;
+  activeView?: "changes" | "log";
+  onViewChange?: (view: "changes" | "log") => void;
+  onOpenBranchModal?: () => void;
 }
 
 export function Toolbar({
@@ -34,6 +37,9 @@ export function Toolbar({
   onToggleTheme,
   onOpenSettings,
   gitAvailable,
+  activeView = "changes",
+  onViewChange,
+  onOpenBranchModal,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -109,16 +115,47 @@ export function Toolbar({
           )}
         </div>
 
-        {/* Branch pill */}
+        {/* Branch pill / switcher button */}
         {currentRepo && (
-          <div
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-surface-raised)] border border-[var(--color-border)] font-mono text-[11px] text-[var(--color-text-muted)]"
-            title={`分支: ${branchDisplay}`}
+          <button
+            type="button"
+            onClick={onOpenBranchModal}
+            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-surface-raised)] hover:bg-[var(--color-bg)] border border-[var(--color-border)] font-mono text-[11px] text-[var(--color-text-muted)] transition-colors cursor-pointer group"
+            title={`分支: ${branchDisplay} (点击或快捷键 Ctrl+Shift+\` 切换)`}
           >
             <BranchIcon width={12} height={12} className="text-[var(--color-accent)]" />
             <span className="font-medium text-[var(--color-text)] max-w-[140px] truncate">
               {branchDisplay}
             </span>
+            <ChevronDownIcon width={10} height={10} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text)] transition-colors ml-0.5" />
+          </button>
+        )}
+
+        {/* View Segmented Control (改动 | 日志) */}
+        {currentRepo && onViewChange && (
+          <div className="flex items-center p-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] ml-1">
+            <button
+              type="button"
+              onClick={() => onViewChange("changes")}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                activeView === "changes"
+                  ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              改动
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("log")}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                activeView === "log"
+                  ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              日志
+            </button>
           </div>
         )}
       </div>
