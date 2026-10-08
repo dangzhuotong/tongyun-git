@@ -35,6 +35,9 @@ pub enum CoreError {
     /// Line-level index apply refused the patch before touching the repository.
     #[error("rejected patch: {0}")]
     RejectedPatch(&'static str),
+
+    #[error("discard snapshot error: {0}")]
+    DiscardError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

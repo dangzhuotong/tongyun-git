@@ -67,6 +67,8 @@ pub trait GitBackend: Send + Sync {
     fn head(&self) -> Result<HeadInfo>;
     fn status(&self) -> Result<Vec<FileStatus>>;
     fn diff_file(&self, path: &str, staged: bool) -> Result<FileDiff>;
+    fn stage_files(&self, paths: &[&str]) -> Result<()>;
+    fn unstage_files(&self, paths: &[&str]) -> Result<()>;
 }
 
 pub struct Git2Backend {
@@ -440,5 +442,39 @@ impl GitBackend for Git2Backend {
             is_large,
             hunks: if is_binary { Vec::new() } else { hunks },
         })
+    }
+
+    fn stage_files(&self, paths: &[&str]) -> Result<()> {
+        let repo = self.repo.lock().unwrap_or_else(|p| p.into_inner());
+        let mut index = repo.index()?;
+
+        for &path_str in paths {
+            let normalized = path_str.replace('\\', "/");
+            let p = Path::new(&normalized);
+            let full_path = self.repo_root.join(p);
+
+            if full_path.exists() {
+                index.add_path(p)?;
+            } else {
+                index.remove_path(p)?;
+            }
+        }
+
+        index.write()?;
+        Ok(())
+    }
+
+    fn unstage_files(&self, paths: &[&str]) -> Result<()> {
+        let repo = self.repo.lock().unwrap_or_else(|p| p.into_inner());
+
+        let head_obj = match repo.head() {
+            Ok(head_ref) => head_ref.peel(git2::ObjectType::Commit).ok(),
+            Err(_) => None,
+        };
+
+        let normalized_paths: Vec<String> = paths.iter().map(|s| s.replace('\\', "/")).collect();
+
+        repo.reset_default(head_obj.as_ref(), &normalized_paths)?;
+        Ok(())
     }
 }

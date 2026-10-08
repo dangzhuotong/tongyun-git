@@ -5,18 +5,26 @@ import {
   openRepository,
   getRepoStatus,
   getFileDiff,
+  stageFiles,
+  unstageFiles,
+  stageLines,
+  inspectDiscard,
+  discardFiles,
+  undoDiscard,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
   type FileDiff,
+  type DiscardCandidate,
 } from "./lib/host";
 import { Toolbar } from "./features/toolbar/Toolbar";
 import { ChangesList } from "./features/changes/ChangesList";
 import { DiffViewer } from "./features/changes/DiffViewer";
 import { OpenRepoModal } from "./features/toolbar/OpenRepoModal";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { DiscardConfirmModal } from "./features/changes/DiscardConfirmModal";
 import type { SelectedFileTarget } from "./features/changes/types";
-import { AlertCircleIcon, FolderIcon } from "./components/icons";
+import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -54,6 +62,32 @@ export default function App() {
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
+
+  // Discard & Undo state (R-17)
+  const [discardModalVisible, setDiscardModalVisible] = useState(false);
+  const [discardCandidates, setDiscardCandidates] = useState<DiscardCandidate[]>([]);
+  const [discardLoading, setDiscardLoading] = useState(false);
+  const [undoToast, setUndoToast] = useState<{
+    count: number;
+    secondsLeft: number;
+    snapshotRef: string;
+  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // 10-second undo countdown timer (R-17)
+  const hasUndoToast = Boolean(undoToast);
+  useEffect(() => {
+    if (!hasUndoToast) return;
+    const timer = setInterval(() => {
+      setUndoToast((prev) => {
+        if (!prev || prev.secondsLeft <= 1) {
+          return null;
+        }
+        return { ...prev, secondsLeft: prev.secondsLeft - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hasUndoToast]);
 
   // Theme
   const [theme, setTheme] = useState<"system" | "light" | "dark">(() => {
@@ -308,6 +342,154 @@ export default function App() {
     window.addEventListener("mouseup", handleMouseUp);
   };
 
+  // Stage & Unstage handlers (R-04)
+  const handleStageFiles = useCallback(
+    async (paths: string[]) => {
+      if (!currentRepo || paths.length === 0) return;
+      try {
+        await stageFiles(currentRepo.root_path, paths);
+        await refreshStatus(currentRepo.root_path);
+        if (selectedTarget && paths.includes(selectedTarget.path)) {
+          getFileDiff(currentRepo.root_path, selectedTarget.path, selectedTarget.staged)
+            .then(setDiff)
+            .catch(() => setDiff(null));
+        }
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [currentRepo, refreshStatus, selectedTarget]
+  );
+
+  const handleUnstageFiles = useCallback(
+    async (paths: string[]) => {
+      if (!currentRepo || paths.length === 0) return;
+      try {
+        await unstageFiles(currentRepo.root_path, paths);
+        await refreshStatus(currentRepo.root_path);
+        if (selectedTarget && paths.includes(selectedTarget.path)) {
+          getFileDiff(currentRepo.root_path, selectedTarget.path, selectedTarget.staged)
+            .then(setDiff)
+            .catch(() => setDiff(null));
+        }
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [currentRepo, refreshStatus, selectedTarget]
+  );
+
+  // Line / Hunk staging handler (R-05)
+  const handleStageHunkLines = useCallback(
+    async (hunkIndex: number, lineIndices: number[], reverse: boolean) => {
+      if (!currentRepo || !selectedTarget) return;
+      const targetFile = files.find((f) => f.path === selectedTarget.path);
+      const isNewFile =
+        targetFile?.worktree === "Untracked" && targetFile?.index == null;
+      try {
+        await stageLines(
+          currentRepo.root_path,
+          selectedTarget.path,
+          hunkIndex,
+          lineIndices,
+          reverse,
+          isNewFile
+        );
+        await refreshStatus(currentRepo.root_path);
+        // Reload diff
+        const newDiff = await getFileDiff(
+          currentRepo.root_path,
+          selectedTarget.path,
+          selectedTarget.staged
+        );
+        setDiff(newDiff);
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [currentRepo, selectedTarget, files, refreshStatus]
+  );
+
+  // Discard handlers (R-17)
+  const handleOpenDiscardModal = useCallback(
+    async (paths: string[]) => {
+      if (!currentRepo || paths.length === 0) return;
+      try {
+        const candidates = await inspectDiscard(currentRepo.root_path, paths);
+        setDiscardCandidates(candidates);
+        setDiscardModalVisible(true);
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [currentRepo]
+  );
+
+  const handleConfirmDiscard = useCallback(async () => {
+    if (!currentRepo || discardCandidates.length === 0) return;
+    setDiscardLoading(true);
+    try {
+      const paths = discardCandidates.map((c) => c.path);
+      const result = await discardFiles(currentRepo.root_path, paths);
+      setDiscardModalVisible(false);
+      await refreshStatus(currentRepo.root_path);
+
+      if (selectedTarget && paths.includes(selectedTarget.path)) {
+        try {
+          const newDiff = await getFileDiff(
+            currentRepo.root_path,
+            selectedTarget.path,
+            selectedTarget.staged
+          );
+          setDiff(newDiff);
+        } catch {
+          setSelectedTarget(null);
+          setDiff(null);
+        }
+      }
+
+      if (result.snapshot_ref) {
+        setUndoToast({
+          count: result.discarded_count,
+          secondsLeft: 10,
+          snapshotRef: result.snapshot_ref,
+        });
+      }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscardLoading(false);
+    }
+  }, [currentRepo, discardCandidates, refreshStatus, selectedTarget]);
+
+  const handleUndoDiscard = useCallback(async () => {
+    if (!currentRepo) return;
+    try {
+      const res = await undoDiscard(currentRepo.root_path, true);
+      setUndoToast(null);
+      await refreshStatus(currentRepo.root_path);
+      if (selectedTarget) {
+        try {
+          const newDiff = await getFileDiff(
+            currentRepo.root_path,
+            selectedTarget.path,
+            selectedTarget.staged
+          );
+          setDiff(newDiff);
+        } catch {
+          // ignore
+        }
+      }
+      if (res.skipped_files.length > 0) {
+        alert(
+          `已恢复 ${res.restored_count} 个文件。以下文件因检测到外部修改被跳过：\n${res.skipped_files.join("\n")}`
+        );
+      }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [currentRepo, refreshStatus, selectedTarget]);
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[var(--color-bg)] text-[var(--color-text)] overflow-hidden font-sans">
       {/* Top Toolbar */}
@@ -346,6 +528,23 @@ export default function App() {
         </div>
       )}
 
+      {/* Operation Error Banner */}
+      {actionError && (
+        <div className="px-4 py-2 bg-[var(--color-danger)]/15 border-b border-[var(--color-danger)]/30 text-xs text-[var(--color-danger)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircleIcon width={16} height={16} className="shrink-0" />
+            <span>{actionError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="p-1 hover:opacity-75"
+          >
+            <CloseIcon width={14} height={14} />
+          </button>
+        </div>
+      )}
+
       {/* Main Workspace Area (Layout A) */}
       <div className="flex-1 flex overflow-hidden">
         {currentRepo ? (
@@ -360,6 +559,9 @@ export default function App() {
                   files={files}
                   selectedTarget={selectedTarget}
                   onSelectTarget={handleSelectTarget}
+                  onStageFiles={handleStageFiles}
+                  onUnstageFiles={handleUnstageFiles}
+                  onDiscardFiles={handleOpenDiscardModal}
                 />
               </div>
 
@@ -380,7 +582,12 @@ export default function App() {
 
             {/* Right Column: Diff View */}
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
-              <DiffViewer diff={diff} loading={diffLoading} error={diffError} />
+              <DiffViewer
+                diff={diff}
+                loading={diffLoading}
+                error={diffError}
+                onStageHunkLines={handleStageHunkLines}
+              />
             </div>
           </>
         ) : (
@@ -411,6 +618,46 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Discard Confirmation Modal (R-17) */}
+      <DiscardConfirmModal
+        isOpen={discardModalVisible}
+        onClose={() => setDiscardModalVisible(false)}
+        onConfirm={handleConfirmDiscard}
+        candidates={discardCandidates}
+        loading={discardLoading}
+      />
+
+      {/* 10-Second Undo Discard Notification Toast (R-17) */}
+      {undoToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] shadow-lg animate-in fade-in slide-in-from-bottom-2 text-xs"
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-pulse" />
+            <span className="text-[var(--color-text)]">
+              已丢弃 {undoToast.count} 个文件改动，快照已建立 ({undoToast.secondsLeft} 秒)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleUndoDiscard}
+            className="px-2.5 py-1 rounded bg-[var(--color-accent)] text-white font-medium hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            撤销丢弃
+          </button>
+          <button
+            type="button"
+            onClick={() => setUndoToast(null)}
+            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+            title="关闭提示"
+          >
+            <CloseIcon width={14} height={14} />
+          </button>
+        </div>
+      )}
 
       {/* Open Repo Modal */}
       <OpenRepoModal

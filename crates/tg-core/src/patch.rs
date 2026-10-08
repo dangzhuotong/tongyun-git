@@ -1,3 +1,4 @@
+use crate::backend::DiffHunk;
 use crate::error::{CoreError, Result};
 use git2::{ApplyLocation, Diff, Repository};
 use std::path::Path;
@@ -8,6 +9,108 @@ pub fn apply_patch_to_index(repo_root: &Path, patch_text: &str) -> Result<()> {
     let diff = Diff::from_buffer(patch_text.as_bytes())?;
     repo.apply(&diff, ApplyLocation::Index, None)?;
     Ok(())
+}
+
+pub fn build_selected_patch(
+    path: &str,
+    hunk: &DiffHunk,
+    selected_line_indices: &[usize],
+    reverse: bool,
+    is_new_file: bool,
+) -> Result<String> {
+    let normalized = path.replace('\\', "/");
+    let is_all_selected = selected_line_indices.is_empty();
+
+    let mut patch_lines: Vec<String> = Vec::new();
+    let mut old_count = 0;
+    let mut new_count = 0;
+
+    for (idx, line) in hunk.lines.iter().enumerate() {
+        let is_selected = is_all_selected || selected_line_indices.contains(&idx);
+
+        if !reverse {
+            match line.origin {
+                ' ' => {
+                    old_count += 1;
+                    new_count += 1;
+                    patch_lines.push(format!(" {}", line.content.trim_end_matches(['\r', '\n'])));
+                }
+                '-' => {
+                    if is_selected {
+                        old_count += 1;
+                        patch_lines
+                            .push(format!("-{}", line.content.trim_end_matches(['\r', '\n'])));
+                    } else {
+                        old_count += 1;
+                        new_count += 1;
+                        patch_lines
+                            .push(format!(" {}", line.content.trim_end_matches(['\r', '\n'])));
+                    }
+                }
+                '+' if is_selected => {
+                    new_count += 1;
+                    patch_lines.push(format!("+{}", line.content.trim_end_matches(['\r', '\n'])));
+                }
+                _ => {}
+            }
+        } else {
+            // Unstaging
+            match line.origin {
+                ' ' => {
+                    old_count += 1;
+                    new_count += 1;
+                    patch_lines.push(format!(" {}", line.content.trim_end_matches(['\r', '\n'])));
+                }
+                '+' => {
+                    if is_selected {
+                        old_count += 1;
+                        patch_lines
+                            .push(format!("-{}", line.content.trim_end_matches(['\r', '\n'])));
+                    } else {
+                        old_count += 1;
+                        new_count += 1;
+                        patch_lines
+                            .push(format!(" {}", line.content.trim_end_matches(['\r', '\n'])));
+                    }
+                }
+                '-' if is_selected => {
+                    new_count += 1;
+                    patch_lines.push(format!("+{}", line.content.trim_end_matches(['\r', '\n'])));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut header = String::new();
+    if is_new_file {
+        header.push_str(&format!(
+            "diff --git a/{normalized} b/{normalized}\nnew file mode 100644\n--- /dev/null\n+++ b/{normalized}\n"
+        ));
+        header.push_str(&format!("@@ -0,0 +1,{} @@\n", new_count));
+    } else {
+        header.push_str(&format!(
+            "diff --git a/{normalized} b/{normalized}\n--- a/{normalized}\n+++ b/{normalized}\n"
+        ));
+        if !reverse {
+            header.push_str(&format!(
+                "@@ -{},{} +{},{} @@\n",
+                hunk.old_start, old_count, hunk.new_start, new_count
+            ));
+        } else {
+            header.push_str(&format!(
+                "@@ -{},{} +{},{} @@\n",
+                hunk.new_start, old_count, hunk.old_start, new_count
+            ));
+        }
+    }
+
+    for pl in patch_lines {
+        header.push_str(&pl);
+        header.push('\n');
+    }
+
+    Ok(header)
 }
 
 /// Refuses patches that line-level staging must not apply: paths that leave the

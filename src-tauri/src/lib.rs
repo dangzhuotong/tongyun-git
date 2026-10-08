@@ -119,6 +119,84 @@ fn get_file_diff(
     Ok(diff)
 }
 
+#[tauri::command]
+fn stage_files(root_path: String, paths: Vec<String>) -> std::result::Result<(), String> {
+    let p = Path::new(&root_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    backend
+        .stage_files(&path_slices)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn unstage_files(root_path: String, paths: Vec<String>) -> std::result::Result<(), String> {
+    let p = Path::new(&root_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    backend
+        .unstage_files(&path_slices)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn stage_lines(
+    root_path: String,
+    path: String,
+    hunk_index: usize,
+    selected_line_indices: Vec<usize>,
+    reverse: bool,
+    is_new_file: bool,
+) -> std::result::Result<(), String> {
+    let p = Path::new(&root_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let diff = backend
+        .diff_file(&path, reverse)
+        .map_err(|e| e.to_string())?;
+    let hunk = diff
+        .hunks
+        .get(hunk_index)
+        .ok_or_else(|| "未找到对应的 Hunk".to_string())?;
+
+    let patch =
+        tg_core::build_selected_patch(&path, hunk, &selected_line_indices, reverse, is_new_file)
+            .map_err(|e| e.to_string())?;
+
+    tg_core::apply_patch_to_index(p, &patch).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn inspect_discard(
+    root_path: String,
+    paths: Vec<String>,
+) -> std::result::Result<Vec<tg_core::DiscardCandidate>, String> {
+    let p = Path::new(&root_path);
+    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    tg_core::DiscardService::inspect_candidates(p, &path_slices).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn discard_files(
+    root_path: String,
+    paths: Vec<String>,
+) -> std::result::Result<tg_core::DiscardResult, String> {
+    let p = Path::new(&root_path);
+    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    tg_core::DiscardService::discard_files(p, &path_slices).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn undo_discard(
+    root_path: String,
+    skip_conflict: bool,
+) -> std::result::Result<tg_core::UndoDiscardResult, String> {
+    let p = Path::new(&root_path);
+    tg_core::DiscardService::undo_last_discard(p, skip_conflict).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -126,7 +204,13 @@ pub fn run() {
             check_git,
             open_repository,
             get_repo_status,
-            get_file_diff
+            get_file_diff,
+            stage_files,
+            unstage_files,
+            stage_lines,
+            inspect_discard,
+            discard_files,
+            undo_discard
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

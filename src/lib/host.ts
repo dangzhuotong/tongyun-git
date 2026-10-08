@@ -98,3 +98,68 @@ export async function getFileDiff(
 ): Promise<FileDiff> {
   return await invoke<FileDiff>("get_file_diff", { rootPath, path, staged });
 }
+
+export interface DiscardCandidate {
+  path: string;
+  will_delete: boolean;
+  unrestorable: boolean;
+  size: number;
+}
+
+export interface DiscardResult {
+  snapshot_ref: string | null;
+  discarded_count: number;
+  unrestorable_files: string[];
+}
+
+export interface UndoDiscardResult {
+  restored_count: number;
+  skipped_files: string[];
+}
+
+export async function stageFiles(rootPath: string, paths: string[]): Promise<void> {
+  return await invoke("stage_files", { rootPath, paths });
+}
+
+export async function unstageFiles(rootPath: string, paths: string[]): Promise<void> {
+  return await invoke("unstage_files", { rootPath, paths });
+}
+
+export async function stageLines(
+  rootPath: string,
+  path: string,
+  hunkIndex: number,
+  selectedLineIndices: number[],
+  reverse: boolean,
+  isNewFile: boolean
+): Promise<void> {
+  return await invoke("stage_lines", {
+    rootPath,
+    path,
+    hunkIndex,
+    selectedLineIndices,
+    reverse,
+    isNewFile,
+  });
+}
+
+export async function inspectDiscard(
+  rootPath: string,
+  paths: string[]
+): Promise<DiscardCandidate[]> {
+  return await invoke<DiscardCandidate[]>("inspect_discard", { rootPath, paths });
+}
+
+export async function discardFiles(
+  rootPath: string,
+  paths: string[]
+): Promise<DiscardResult> {
+  return await invoke<DiscardResult>("discard_files", { rootPath, paths });
+}
+
+export async function undoDiscard(
+  rootPath: string,
+  skipConflict: boolean
+): Promise<UndoDiscardResult> {
+  return await invoke<UndoDiscardResult>("undo_discard", { rootPath, skipConflict });
+}

@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import type { FileStatus, ChangeKind } from "../../lib/host";
 import type { SelectedFileTarget, ViewMode, TreeNode } from "./types";
 import {
@@ -14,12 +14,18 @@ interface ChangesListProps {
   files: FileStatus[];
   selectedTarget: SelectedFileTarget | null;
   onSelectTarget: (target: SelectedFileTarget) => void;
+  onStageFiles: (paths: string[]) => Promise<void>;
+  onUnstageFiles: (paths: string[]) => Promise<void>;
+  onDiscardFiles: (paths: string[]) => void;
 }
 
 export function ChangesList({
   files,
   selectedTarget,
   onSelectTarget,
+  onStageFiles,
+  onUnstageFiles,
+  onDiscardFiles,
 }: ChangesListProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     return (localStorage.getItem("tongyun_view_mode") as ViewMode) || "flat";
@@ -31,6 +37,9 @@ export function ChangesList({
     unstaged: true,
     untracked: true,
   });
+
+  // Multiple selection set: strings formatted as "staged:path" or "unstaged:path"
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -61,6 +70,65 @@ export function ChangesList({
     () => files.filter((f) => f.worktree === "Untracked" && !f.conflicted),
     [files]
   );
+
+  // Keyboard shortcut handler (Space to stage/unstage, Ctrl+Alt+Z to discard)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't intercept when focusing inputs or textarea
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (targetTag === "input" || targetTag === "textarea") {
+        return;
+      }
+
+      // Space: stage or unstage currently selected
+      if (e.key === " " && selectedTarget) {
+        e.preventDefault();
+        if (selectedTarget.staged) {
+          onUnstageFiles([selectedTarget.path]);
+        } else {
+          onStageFiles([selectedTarget.path]);
+        }
+      }
+
+      // Ctrl+Alt+Z / Cmd+Option+Z: discard currently selected
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.altKey &&
+        (e.key === "z" || e.key === "Z") &&
+        selectedTarget
+      ) {
+        e.preventDefault();
+        onDiscardFiles([selectedTarget.path]);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedTarget, onStageFiles, onUnstageFiles, onDiscardFiles]);
+
+  const handleToggleSelectKey = (key: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectedPaths = useMemo(() => {
+    const paths: string[] = [];
+    for (const key of selectedKeys) {
+      const parts = key.split(":");
+      if (parts.length >= 2) {
+        paths.push(parts.slice(1).join(":"));
+      }
+    }
+    return Array.from(new Set(paths));
+  }, [selectedKeys]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-surface)] select-none">
@@ -97,6 +165,46 @@ export function ChangesList({
         </div>
       </div>
 
+      {/* Batch Action Toolbar when files are multi-selected */}
+      {selectedPaths.length > 0 && (
+        <div className="px-3 py-1.5 bg-[var(--color-surface-raised)] border-b border-[var(--color-border)] flex items-center justify-between text-[11px]">
+          <span className="font-medium text-[var(--color-text-muted)]">
+            已勾选 {selectedPaths.length} 个
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                onStageFiles(selectedPaths);
+                setSelectedKeys(new Set());
+              }}
+              className="px-2 py-0.5 rounded bg-[var(--color-accent)] text-white hover:opacity-90 font-medium"
+            >
+              暂存
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onUnstageFiles(selectedPaths);
+                setSelectedKeys(new Set());
+              }}
+              className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)]"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDiscardFiles(selectedPaths);
+              }}
+              className="px-2 py-0.5 rounded border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+            >
+              丢弃
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* File Groups List */}
       <div className="flex-1 overflow-y-auto divide-y divide-[var(--color-border)]/50 text-xs">
         {/* Conflicted */}
@@ -107,13 +215,20 @@ export function ChangesList({
             count={conflictedFiles.length}
             expanded={expandedGroups.conflicted}
             onToggle={() => toggleGroup("conflicted")}
+            actionLabel="全部解决"
+            onAction={() => onStageFiles(conflictedFiles.map((f) => f.path))}
           >
             <GroupFileList
               files={conflictedFiles}
               staged={false}
               viewMode={viewMode}
               selectedTarget={selectedTarget}
+              selectedKeys={selectedKeys}
               onSelect={onSelectTarget}
+              onToggleSelectKey={handleToggleSelectKey}
+              onStage={(p) => onStageFiles([p])}
+              onUnstage={(p) => onUnstageFiles([p])}
+              onDiscard={(p) => onDiscardFiles([p])}
             />
           </GroupSection>
         )}
@@ -125,13 +240,20 @@ export function ChangesList({
           count={stagedFiles.length}
           expanded={expandedGroups.staged}
           onToggle={() => toggleGroup("staged")}
+          actionLabel="全部取消"
+          onAction={() => onUnstageFiles(stagedFiles.map((f) => f.path))}
         >
           <GroupFileList
             files={stagedFiles}
             staged={true}
             viewMode={viewMode}
             selectedTarget={selectedTarget}
+            selectedKeys={selectedKeys}
             onSelect={onSelectTarget}
+            onToggleSelectKey={handleToggleSelectKey}
+            onStage={(p) => onStageFiles([p])}
+            onUnstage={(p) => onUnstageFiles([p])}
+            onDiscard={(p) => onDiscardFiles([p])}
           />
         </GroupSection>
 
@@ -142,13 +264,20 @@ export function ChangesList({
           count={unstagedFiles.length}
           expanded={expandedGroups.unstaged}
           onToggle={() => toggleGroup("unstaged")}
+          actionLabel="全部暂存"
+          onAction={() => onStageFiles(unstagedFiles.map((f) => f.path))}
         >
           <GroupFileList
             files={unstagedFiles}
             staged={false}
             viewMode={viewMode}
             selectedTarget={selectedTarget}
+            selectedKeys={selectedKeys}
             onSelect={onSelectTarget}
+            onToggleSelectKey={handleToggleSelectKey}
+            onStage={(p) => onStageFiles([p])}
+            onUnstage={(p) => onUnstageFiles([p])}
+            onDiscard={(p) => onDiscardFiles([p])}
           />
         </GroupSection>
 
@@ -159,13 +288,20 @@ export function ChangesList({
           count={untrackedFiles.length}
           expanded={expandedGroups.untracked}
           onToggle={() => toggleGroup("untracked")}
+          actionLabel="全部暂存"
+          onAction={() => onStageFiles(untrackedFiles.map((f) => f.path))}
         >
           <GroupFileList
             files={untrackedFiles}
             staged={false}
             viewMode={viewMode}
             selectedTarget={selectedTarget}
+            selectedKeys={selectedKeys}
             onSelect={onSelectTarget}
+            onToggleSelectKey={handleToggleSelectKey}
+            onStage={(p) => onStageFiles([p])}
+            onUnstage={(p) => onUnstageFiles([p])}
+            onDiscard={(p) => onDiscardFiles([p])}
           />
         </GroupSection>
       </div>
@@ -179,6 +315,8 @@ function GroupSection({
   badgeColor,
   expanded,
   onToggle,
+  actionLabel,
+  onAction,
   children,
 }: {
   title: string;
@@ -186,16 +324,18 @@ function GroupSection({
   badgeColor: string;
   expanded: boolean;
   onToggle: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   children: ReactNode;
 }) {
   return (
     <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface-raised)] transition-colors text-left font-medium text-[var(--color-text-muted)]"
-      >
-        <div className="flex items-center gap-1.5">
+      <div className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface-raised)] transition-colors font-medium text-[var(--color-text-muted)] group">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex-1 flex items-center gap-1.5 text-left"
+        >
           {expanded ? (
             <ChevronDownIcon width={12} height={12} />
           ) : (
@@ -204,11 +344,24 @@ function GroupSection({
           <span className="text-[12px] font-semibold text-[var(--color-text)]">
             {title}
           </span>
-        </div>
-        <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${badgeColor}`}>
-          {count}
-        </span>
-      </button>
+          <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${badgeColor}`}>
+            {count}
+          </span>
+        </button>
+
+        {count > 0 && actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction();
+            }}
+            className="text-[10px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 hover:underline px-1 py-0.5 font-medium transition-opacity"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
       {expanded && <div>{children}</div>}
     </div>
   );
@@ -219,13 +372,23 @@ function GroupFileList({
   staged,
   viewMode,
   selectedTarget,
+  selectedKeys,
   onSelect,
+  onToggleSelectKey,
+  onStage,
+  onUnstage,
+  onDiscard,
 }: {
   files: FileStatus[];
   staged: boolean;
   viewMode: ViewMode;
   selectedTarget: SelectedFileTarget | null;
+  selectedKeys: Set<string>;
   onSelect: (target: SelectedFileTarget) => void;
+  onToggleSelectKey: (key: string, e: React.MouseEvent) => void;
+  onStage: (path: string) => void;
+  onUnstage: (path: string) => void;
+  onDiscard: (path: string) => void;
 }) {
   if (files.length === 0) {
     return (
@@ -243,7 +406,12 @@ function GroupFileList({
           nodes={tree}
           staged={staged}
           selectedTarget={selectedTarget}
+          selectedKeys={selectedKeys}
           onSelect={onSelect}
+          onToggleSelectKey={onToggleSelectKey}
+          onStage={onStage}
+          onUnstage={onUnstage}
+          onDiscard={onDiscard}
           depth={0}
         />
       </div>
@@ -253,15 +421,23 @@ function GroupFileList({
   return (
     <div className="py-0.5">
       {files.map((file) => {
+        const itemKey = `${staged ? "staged" : "unstaged"}:${file.path}`;
         const isSelected =
           selectedTarget?.path === file.path && selectedTarget?.staged === staged;
+        const isChecked = selectedKeys.has(itemKey);
+
         return (
           <FileRowItem
-            key={`${staged ? "staged" : "unstaged"}-${file.path}`}
+            key={itemKey}
             file={file}
             staged={staged}
             isSelected={isSelected}
+            isChecked={isChecked}
             onSelect={() => onSelect({ path: file.path, staged, status: file })}
+            onToggleCheck={(e) => onToggleSelectKey(itemKey, e)}
+            onStage={() => onStage(file.path)}
+            onUnstage={() => onUnstage(file.path)}
+            onDiscard={() => onDiscard(file.path)}
           />
         );
       })}
@@ -273,14 +449,24 @@ function FileRowItem({
   file,
   staged,
   isSelected,
+  isChecked,
   onSelect,
+  onToggleCheck,
+  onStage,
+  onUnstage,
+  onDiscard,
   displayName,
   indent = 0,
 }: {
   file: FileStatus;
   staged: boolean;
   isSelected: boolean;
+  isChecked: boolean;
   onSelect: () => void;
+  onToggleCheck: (e: React.MouseEvent) => void;
+  onStage: () => void;
+  onUnstage: () => void;
+  onDiscard: () => void;
   displayName?: string;
   indent?: number;
 }) {
@@ -294,14 +480,23 @@ function FileRowItem({
   return (
     <div
       onClick={onSelect}
-      style={{ paddingLeft: `${12 + indent * 14}px` }}
-      className={`h-[24px] pr-3 flex items-center justify-between cursor-pointer group transition-colors text-[12px] ${
+      style={{ paddingLeft: `${8 + indent * 14}px` }}
+      className={`h-[24px] pr-2 flex items-center justify-between cursor-pointer group transition-colors text-[12px] ${
         isSelected
           ? "bg-[var(--color-selection)] text-[var(--color-text)] font-medium"
           : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
       }`}
     >
-      <div className="flex items-center gap-1.5 overflow-hidden">
+      <div className="flex items-center gap-1.5 overflow-hidden flex-1">
+        {/* Checkbox */}
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onToggleCheck(e as any)}
+          className="rounded border-[var(--color-border)] accent-[var(--color-accent)] w-3.5 h-3.5"
+        />
+
         <FileIcon width={13} height={13} className="shrink-0 text-[var(--color-text-muted)]" />
         <span
           className={`truncate font-mono ${
@@ -314,12 +509,58 @@ function FileRowItem({
           {displayName || (file.old_path ? `${file.old_path} → ${file.path}` : file.path)}
         </span>
       </div>
-      <span
-        className={`shrink-0 ml-1.5 px-1 py-0.2 rounded text-[10px] font-mono font-bold leading-none ${badge.className}`}
-        title={badge.title}
-      >
-        {badge.label}
-      </span>
+
+      <div className="flex items-center gap-1 shrink-0 ml-1">
+        {/* Inline Action Buttons (Hover) */}
+        <div className="hidden group-hover:flex items-center gap-0.5">
+          {staged ? (
+            <button
+              type="button"
+              title="取消暂存此文件"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnstage();
+              }}
+              className="p-0.5 px-1 rounded hover:bg-[var(--color-border)] text-[var(--color-text-muted)] font-mono text-[11px]"
+            >
+              -
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                title="暂存此文件 (空格)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStage();
+                }}
+                className="p-0.5 px-1 rounded hover:bg-[var(--color-accent)] hover:text-white text-[var(--color-accent)] font-mono text-[11px] font-bold"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                title="丢弃此文件的改动 (Ctrl+Alt+Z)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDiscard();
+                }}
+                className="p-0.5 px-1 rounded hover:bg-[var(--color-danger)]/20 text-[var(--color-danger)] font-mono text-[10px]"
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Status Badge */}
+        <span
+          className={`px-1 py-0.2 rounded text-[10px] font-mono font-bold leading-none ${badge.className}`}
+          title={badge.title}
+        >
+          {badge.label}
+        </span>
+      </div>
     </div>
   );
 }
@@ -430,13 +671,23 @@ function TreeFolderView({
   nodes,
   staged,
   selectedTarget,
+  selectedKeys,
   onSelect,
+  onToggleSelectKey,
+  onStage,
+  onUnstage,
+  onDiscard,
   depth,
 }: {
   nodes: TreeNode[];
   staged: boolean;
   selectedTarget: SelectedFileTarget | null;
+  selectedKeys: Set<string>;
   onSelect: (target: SelectedFileTarget) => void;
+  onToggleSelectKey: (key: string, e: React.MouseEvent) => void;
+  onStage: (path: string) => void;
+  onUnstage: (path: string) => void;
+  onDiscard: (path: string) => void;
   depth: number;
 }) {
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -454,7 +705,7 @@ function TreeFolderView({
             <div key={node.path}>
               <div
                 onClick={() => toggleFolder(node.path)}
-                style={{ paddingLeft: `${12 + depth * 14}px` }}
+                style={{ paddingLeft: `${8 + depth * 14}px` }}
                 className="h-[24px] pr-3 flex items-center gap-1.5 cursor-pointer hover:bg-[var(--color-surface-raised)] text-[12px] text-[var(--color-text-muted)] font-medium"
               >
                 {isCollapsed ? (
@@ -470,7 +721,12 @@ function TreeFolderView({
                   nodes={node.children}
                   staged={staged}
                   selectedTarget={selectedTarget}
+                  selectedKeys={selectedKeys}
                   onSelect={onSelect}
+                  onToggleSelectKey={onToggleSelectKey}
+                  onStage={onStage}
+                  onUnstage={onUnstage}
+                  onDiscard={onDiscard}
                   depth={depth + 1}
                 />
               )}
@@ -479,15 +735,19 @@ function TreeFolderView({
         }
 
         if (node.fileStatus) {
+          const itemKey = `${staged ? "staged" : "unstaged"}:${node.fileStatus.path}`;
           const isSelected =
             selectedTarget?.path === node.fileStatus.path &&
             selectedTarget?.staged === staged;
+          const isChecked = selectedKeys.has(itemKey);
+
           return (
             <FileRowItem
-              key={`${staged ? "staged" : "unstaged"}-${node.fileStatus.path}`}
+              key={itemKey}
               file={node.fileStatus}
               staged={staged}
               isSelected={isSelected}
+              isChecked={isChecked}
               onSelect={() =>
                 onSelect({
                   path: node.fileStatus!.path,
@@ -495,6 +755,10 @@ function TreeFolderView({
                   status: node.fileStatus!,
                 })
               }
+              onToggleCheck={(e) => onToggleSelectKey(itemKey, e)}
+              onStage={() => onStage(node.fileStatus!.path)}
+              onUnstage={() => onUnstage(node.fileStatus!.path)}
+              onDiscard={() => onDiscard(node.fileStatus!.path)}
               displayName={node.name}
               indent={depth}
             />
