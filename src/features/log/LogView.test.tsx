@@ -7,6 +7,8 @@ vi.mock("../../lib/host", () => ({
   getCommitLog: vi.fn(),
   getCommitDetails: vi.fn(),
   getCommitFileDiff: vi.fn(),
+  aiSearchLog: vi.fn(),
+  getAiKeyStatus: vi.fn(),
 }));
 
 describe("LogView", () => {
@@ -177,5 +179,47 @@ describe("LogView", () => {
     fireEvent.click(newBranchOption);
 
     expect(onOpenCreateBranch).toHaveBeenCalledWith("commit111");
+  });
+
+  it("handles AI natural language log query correctly", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: true,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+    vi.mocked(host.aiSearchLog).mockResolvedValue({
+      answer: "登录功能是由 Alice 在 commit com111 中实现的",
+      matched_oids: [
+        {
+          oid: "commit111",
+          reason: "feat: add user login 实现了登录逻辑",
+        },
+      ],
+    });
+
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    await screen.findByText("feat: add user login");
+
+    // Toggle AI Search
+    const aiToggleBtn = screen.getByRole("button", { name: /AI 问历史/i });
+    fireEvent.click(aiToggleBtn);
+
+    const input = screen.getByPlaceholderText(/用自然语言提问历史/i);
+    fireEvent.change(input, { target: { value: "谁实现了登录？" } });
+
+    const searchBtn = screen.getByRole("button", { name: "提问" });
+    fireEvent.click(searchBtn);
+
+    // Verify AI response banner appears
+    await screen.findByText("AI 历史洞察解答");
+    expect(screen.getByText("登录功能是由 Alice 在 commit com111 中实现的")).toBeDefined();
+    expect(screen.getByText("✨ AI匹配")).toBeDefined();
   });
 });

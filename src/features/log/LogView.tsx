@@ -1,14 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   getCommitLog,
   getCommitDetails,
   getCommitFileDiff,
   checkoutCommit,
   resetToCommit,
+  aiSearchLog,
+  getAiKeyStatus,
   type LogCommit,
   type CommitDetails,
   type FileDiff,
   type RefBadge,
+  type AiSettings,
+  type AiLogQueryResult,
+  type AiLogMatch,
 } from "../../lib/host";
 import { LogGraphLane } from "./LogGraphLane";
 import { DiffViewer } from "../changes/DiffViewer";
@@ -19,6 +24,7 @@ import {
   FileIcon,
   HistoryIcon,
   BranchIcon,
+  SparklesIcon,
 } from "../../components/icons";
 
 interface LogViewProps {
@@ -51,6 +57,13 @@ export function LogView({
   const [selectedOid, setSelectedOid] = useState<string | null>(null);
   const [details, setDetails] = useState<CommitDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  // AI Log Search state
+  const [aiSearchOpen, setAiSearchOpen] = useState(false);
+  const [aiQuery, setAiQuery] = useState("");
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiQueryResult, setAiQueryResult] = useState<AiLogQueryResult | null>(null);
+  const [filterMatchedOnly, setFilterMatchedOnly] = useState(false);
 
   // Selected file diff state
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -220,8 +233,82 @@ export function LogView({
     }
   };
 
+  // AI Settings getter
+  const getAiSettings = (): AiSettings => {
+    try {
+      const stored = localStorage.getItem("tongyun_ai_settings");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      provider: "kie",
+      base_url: "https://api.kie.ai",
+      model: "kie-default",
+      language: "follow",
+      conventional: false,
+      timeout_seconds: 30,
+      max_diff_chars: 20000,
+      custom_secret_patterns: [],
+      consented: false,
+    };
+  };
+
+  // AI log query execution
+  const handleAiSearch = async () => {
+    const q = aiQuery.trim();
+    if (!q) return;
+
+    const settings = getAiSettings();
+    try {
+      const keyStatus = await getAiKeyStatus();
+      if (settings.provider === "kie" && !keyStatus.kie) {
+        setError("未配置 KIE 接口 key，请在设置中配置");
+        return;
+      }
+      if (settings.provider === "openai" && !keyStatus.openai) {
+        setError("未配置 OpenAI 接口 key，请在设置中配置");
+        return;
+      }
+
+      setAiSearching(true);
+      setError(null);
+      const res = await aiSearchLog(rootPath, q, settings);
+      setAiQueryResult(res);
+      if (res.matched_oids.length > 0) {
+        const firstOid = res.matched_oids[0].oid;
+        if (commits.some((c) => c.oid === firstOid)) {
+          setSelectedOid(firstOid);
+          setDetailsLoading(true);
+        }
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
+  // AI Matches lookup map
+  const matchedCommitMap = useMemo(() => {
+    if (!aiQueryResult) return new Map<string, AiLogMatch>();
+    const map = new Map<string, AiLogMatch>();
+    for (const m of aiQueryResult.matched_oids) {
+      map.set(m.oid, m);
+    }
+    return map;
+  }, [aiQueryResult]);
+
+  // Filtered commits for display
+  const displayCommits = useMemo(() => {
+    if (!filterMatchedOnly || !aiQueryResult) return commits;
+    return commits.filter((c) => matchedCommitMap.has(c.oid));
+  }, [commits, filterMatchedOnly, aiQueryResult, matchedCommitMap]);
+
   // Calculate max lane column for SVG sizing
-  const maxCol = commits.reduce((max, c) => Math.max(max, c.col), 0);
+  const maxCol = displayCommits.reduce((max, c) => Math.max(max, c.col), 0);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -280,6 +367,23 @@ export function LogView({
               </button>
             )}
           </div>
+
+          {/* AI 问历史切换按钮 */}
+          <button
+            type="button"
+            onClick={() => {
+              setAiSearchOpen((prev) => !prev);
+            }}
+            className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+              aiSearchOpen
+                ? "bg-purple-600/20 text-purple-400 border border-purple-500/40 shadow-xs"
+                : "bg-[var(--color-bg)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-purple-400 hover:border-purple-400/40"
+            }`}
+            title="使用自然语言向 AI 提问 Git 历史（例如：上次改支付配置是什么时候？）"
+          >
+            <SparklesIcon width={12} height={12} className={aiSearchOpen ? "text-purple-400 animate-pulse" : ""} />
+            <span>AI 问历史</span>
+          </button>
         </div>
 
         {/* Right Info & Refresh */}
@@ -298,6 +402,54 @@ export function LogView({
           </button>
         </div>
       </div>
+
+      {/* AI Log Search Input Bar */}
+      {aiSearchOpen && (
+        <div className="px-3 py-2 border-b border-purple-500/30 bg-purple-500/5 flex items-center gap-2 shrink-0">
+          <div className="relative flex-1 flex items-center">
+            <SparklesIcon width={14} height={14} className="absolute left-2.5 text-purple-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="用自然语言提问历史，例如：'上次修改支付配置是什么时候谁改的？' 或 '查找关于权限拦截器的提交'..."
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !aiSearching) {
+                  handleAiSearch();
+                }
+              }}
+              className="w-full pl-8 pr-8 py-1 rounded border border-purple-500/30 bg-[var(--color-bg)] text-xs focus:outline-none focus:border-purple-400 select-text font-sans placeholder:text-[var(--color-text-muted)]"
+            />
+            {aiQuery && (
+              <button
+                type="button"
+                onClick={() => setAiQuery("")}
+                className="absolute right-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+              >
+                <CloseIcon width={12} height={12} />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleAiSearch}
+            disabled={aiSearching || !aiQuery.trim()}
+            className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
+          >
+            {aiSearching ? (
+              <>
+                <RefreshIcon width={12} height={12} className="animate-spin" />
+                <span>分析提交中...</span>
+              </>
+            ) : (
+              <>
+                <SparklesIcon width={12} height={12} />
+                <span>提问</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Error alert */}
       {error && (
@@ -320,6 +472,67 @@ export function LogView({
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Commit Graph List */}
         <div className="flex-1 flex flex-col border-r border-[var(--color-border)] overflow-hidden">
+          {/* AI 答案横幅卡片 */}
+          {aiQueryResult && (
+            <div className="p-3 border-b border-purple-500/30 bg-purple-500/10 shrink-0 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-purple-300">
+                  <SparklesIcon width={13} height={13} className="text-purple-400" />
+                  <span>AI 历史洞察解答</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={filterMatchedOnly}
+                      onChange={(e) => setFilterMatchedOnly(e.target.checked)}
+                      className="rounded border-[var(--color-border)] text-purple-500 focus:ring-0 cursor-pointer"
+                    />
+                    <span>仅看匹配提交 ({aiQueryResult.matched_oids.length})</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiQueryResult(null);
+                      setFilterMatchedOnly(false);
+                    }}
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] p-0.5 cursor-pointer"
+                    title="关闭 AI 洞察结果"
+                  >
+                    <CloseIcon width={12} height={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="text-[11px] text-[var(--color-text)] leading-relaxed whitespace-pre-wrap select-text bg-[var(--color-bg)]/60 p-2 rounded border border-purple-500/20">
+                {aiQueryResult.answer}
+              </div>
+              {aiQueryResult.matched_oids.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-[var(--color-text-muted)]">相关提交：</span>
+                  {aiQueryResult.matched_oids.map((m) => {
+                    const isSelected = selectedOid === m.oid;
+                    return (
+                      <button
+                        key={m.oid}
+                        type="button"
+                        onClick={() => handleSelectCommit(m.oid)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-purple-600 text-white font-semibold"
+                            : "bg-[var(--color-bg)] border border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
+                        }`}
+                        title={m.reason}
+                      >
+                        <span>{m.oid.slice(0, 7)}</span>
+                        <span className="text-[9px] opacity-75">✨</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Table Header */}
           <div className="h-7 px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-[11px] font-semibold text-[var(--color-text-muted)] flex items-center shrink-0">
             <div className="w-16">图形</div>
@@ -331,18 +544,19 @@ export function LogView({
 
           {/* Table Rows List */}
           <div className="flex-1 overflow-y-auto">
-            {loading && commits.length === 0 ? (
+            {loading && displayCommits.length === 0 ? (
               <div className="py-12 text-center text-[var(--color-text-muted)]">
                 加载提交历史中...
               </div>
-            ) : commits.length === 0 ? (
+            ) : displayCommits.length === 0 ? (
               <div className="py-12 text-center text-[var(--color-text-muted)]">
-                没有匹配的提交记录
+                {filterMatchedOnly ? "没有匹配 AI 查询的提交记录" : "没有匹配的提交记录"}
               </div>
             ) : (
-              commits.map((commit) => {
+              displayCommits.map((commit) => {
                 const isSelected = commit.oid === selectedOid;
                 const formattedDate = formatDate(commit.timestamp);
+                const matchInfo = matchedCommitMap.get(commit.oid);
 
                 return (
                   <div
@@ -359,6 +573,8 @@ export function LogView({
                     className={`h-[28px] px-3 flex items-center border-b border-[var(--color-border)]/30 cursor-pointer font-mono text-[11px] transition-colors ${
                       isSelected
                         ? "bg-[var(--color-accent)]/15 text-[var(--color-text)] font-medium"
+                        : matchInfo
+                        ? "bg-purple-500/10 hover:bg-purple-500/15 text-[var(--color-text)]"
                         : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
                     }`}
                   >
@@ -384,6 +600,16 @@ export function LogView({
                           {r.name}
                         </span>
                       ))}
+
+                      {/* AI Match Badge */}
+                      {matchInfo && (
+                        <span
+                          className="px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                          title={`AI匹配原因: ${matchInfo.reason}`}
+                        >
+                          ✨ AI匹配
+                        </span>
+                      )}
 
                       {/* Summary */}
                       <span className="truncate font-sans font-normal text-[11px]">

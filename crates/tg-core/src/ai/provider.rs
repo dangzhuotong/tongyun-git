@@ -52,6 +52,33 @@ impl Default for AiSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewIssue {
+    pub level: String, // "danger" | "warning" | "info"
+    pub file: Option<String>,
+    pub message: String,
+    pub suggestion: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiffReviewResult {
+    pub summary: String,
+    pub issues: Vec<ReviewIssue>,
+    pub passed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AiLogMatch {
+    pub oid: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AiLogQueryResult {
+    pub answer: String,
+    pub matched_oids: Vec<AiLogMatch>,
+}
+
 pub struct AiService;
 
 impl AiService {
@@ -208,13 +235,13 @@ impl AiService {
         }
     }
 
-    /// Generate commit message from staged changes
-    pub async fn generate_commit_message(
+    /// Generic chat completion caller handling timeouts, authentication and errors
+    pub async fn send_chat_completion(
         settings: &AiSettings,
         keyring: &dyn KeyringStore,
-        branch: &str,
-        recent_commits: &[String],
-        sanitized_diff: &str,
+        system_prompt: &str,
+        user_prompt: &str,
+        temperature: f32,
     ) -> Result<String> {
         let provider_name = settings.provider.as_str();
         let api_key = keyring.get_key(provider_name)?;
@@ -237,9 +264,6 @@ impl AiService {
             &settings.model,
         );
 
-        let system_prompt = Self::build_system_prompt(settings);
-        let user_prompt = Self::build_user_prompt(branch, recent_commits, sanitized_diff);
-
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(settings.timeout_seconds.clamp(10, 120)))
             .build()
@@ -251,7 +275,7 @@ impl AiService {
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.2
+            "temperature": temperature
         }));
 
         if let Some(ref key) = api_key {
@@ -262,7 +286,7 @@ impl AiService {
 
         let res = req.send().await.map_err(|e| {
             if e.is_timeout() {
-                CoreError::AiError("AI 生成超时，请检查网络或提供方状态".to_string())
+                CoreError::AiError("AI 请求超时，请检查网络或提供方状态".to_string())
             } else {
                 CoreError::AiError(format!("请求失败: {}", e))
             }
@@ -290,8 +314,169 @@ impl AiService {
             .and_then(|txt| txt.as_str())
             .ok_or_else(|| CoreError::AiError("接口未返回有效文本内容".to_string()))?;
 
-        let cleaned = Self::clean_commit_message(content);
+        Ok(content.to_string())
+    }
+
+    /// Generate commit message from staged changes
+    pub async fn generate_commit_message(
+        settings: &AiSettings,
+        keyring: &dyn KeyringStore,
+        branch: &str,
+        recent_commits: &[String],
+        sanitized_diff: &str,
+    ) -> Result<String> {
+        let system_prompt = Self::build_system_prompt(settings);
+        let user_prompt = Self::build_user_prompt(branch, recent_commits, sanitized_diff);
+        let raw = Self::send_chat_completion(settings, keyring, &system_prompt, &user_prompt, 0.2)
+            .await?;
+        let cleaned = Self::clean_commit_message(&raw);
         Ok(cleaned)
+    }
+
+    /// Review staged diff for potential bugs, secrets, and code smells
+    pub async fn review_diff(
+        settings: &AiSettings,
+        keyring: &dyn KeyringStore,
+        sanitized_diff: &str,
+    ) -> Result<DiffReviewResult> {
+        if sanitized_diff.trim().is_empty() {
+            return Ok(DiffReviewResult {
+                summary: "暂存区没有可审查的代码改动。".to_string(),
+                issues: vec![],
+                passed: true,
+            });
+        }
+
+        let system_prompt = "你是一名顶级资深代码审查专家（Senior Code Reviewer）。\n\
+请对用户提供的 Git Staged Diff（暂存区待提交代码改动）进行严格审查。\n\
+审查重点：\n\
+1. 敏感信息泄露：硬编码密钥、密码、API Token、内部敏感 IP / 私钥等（level: \"danger\"）；\n\
+2. 严重逻辑 Bug 与运行时隐患：明显的空指针、下标越界、死循环、资源泄露、未处理的错误等（level: \"danger\" 或 \"warning\"）；\n\
+3. 代码异味与遗留调试代码：遗留的 console.log、print、println!、debugger、临时 TODO 等（level: \"warning\" 或 \"info\"）。\n\n\
+你必须严格以合法的 JSON 格式返回结果（不要添加任何 Markdown 代码块外的解释文字，必须能被 JSON 解析器直接解析）：\n\
+{\n\
+  \"summary\": \"审查总体结论（1-2句话概述代码质量状况）\",\n\
+  \"passed\": true 或 false（若存在任何 danger 级别问题，则为 false；若仅有建议或无问题则为 true）,\n\
+  \"issues\": [\n\
+    {\n\
+      \"level\": \"danger\" 或 \"warning\" 或 \"info\",\n\
+      \"file\": \"涉及的文件路径（若有，否则 null）\",\n\
+      \"message\": \"具体发现的问题描述\",\n\
+      \"suggestion\": \"具体的改进建议或修复参考（可选）\"\n\
+    }\n\
+  ]\n\
+}\n\
+若代码改动质量优秀且未发现明显缺陷，请返回：\n\
+{\n\
+  \"summary\": \"代码改动整洁规范，未检测到敏感信息或明显缺陷，可以安全提交。\",\n\
+  \"passed\": true,\n\
+  \"issues\": []\n\
+}";
+
+        let user_prompt = format!(
+            "以下是本次提交暂存区的 Diff 代码改动：\n---\n{}\n---\n请审查并输出 JSON。",
+            sanitized_diff
+        );
+
+        let raw =
+            Self::send_chat_completion(settings, keyring, system_prompt, &user_prompt, 0.1).await?;
+        Ok(Self::parse_review_response(&raw))
+    }
+
+    /// Parse AI review json response with fallback
+    pub fn parse_review_response(raw: &str) -> DiffReviewResult {
+        let trimmed = raw.trim();
+        let json_str = if let (Some(first_brace), Some(last_brace)) =
+            (trimmed.find('{'), trimmed.rfind('}'))
+        {
+            if first_brace <= last_brace {
+                &trimmed[first_brace..=last_brace]
+            } else {
+                trimmed
+            }
+        } else {
+            trimmed
+        };
+
+        if let Ok(res) = serde_json::from_str::<DiffReviewResult>(json_str) {
+            return res;
+        }
+
+        let is_danger = trimmed.to_lowercase().contains("level: danger")
+            || trimmed.to_lowercase().contains("\"danger\"")
+            || trimmed.contains("存在安全隐患")
+            || trimmed.contains("密码泄露");
+        DiffReviewResult {
+            summary: trimmed.to_string(),
+            issues: vec![],
+            passed: !is_danger,
+        }
+    }
+
+    /// Search and analyze git history using natural language query
+    pub async fn query_log(
+        settings: &AiSettings,
+        keyring: &dyn KeyringStore,
+        query: &str,
+        commits_summary: &str,
+    ) -> Result<AiLogQueryResult> {
+        if query.trim().is_empty() {
+            return Ok(AiLogQueryResult {
+                answer: "请输入您想查询的历史问题。".to_string(),
+                matched_oids: vec![],
+            });
+        }
+
+        let system_prompt = "你是一名 Git 提交历史分析助手。\n\
+用户会用自然语言询问关于代码仓库历史提交的问题（例如“上次改支付是什么时候谁改的”、“找出所有关于重构侧边栏的提交”等）。\n\
+你将收到用户的问题以及一份最近的 Git 提交列表摘要（格式：OID | 日期 | 作者 | 提交说明）。\n\n\
+请根据提供的提交列表回答用户问题，并挑出最匹配的一个或多个提交 OID。\n\
+你必须严格以 JSON 格式返回结果（必须能被 JSON 直接解析）：\n\
+{\n\
+  \"answer\": \"对用户问题的直接自然语言回答（包含是谁在何时改的，或者概括解答说明）\",\n\
+  \"matched_oids\": [\n\
+    {\n\
+      \"oid\": \"匹配到的提交哈希（完整或短 SHA）\",\n\
+      \"reason\": \"匹配此提交的原因简述\"\n\
+    }\n\
+  ]\n\
+}\n\
+若在列表中未找到相关提交，请在 answer 中礼貌说明未在最近历史中找到相关提交，matched_oids 返回空数组 []。";
+
+        let user_prompt = format!(
+            "用户问题：{}\n\n提交历史列表：\n{}\n\n请分析并以 JSON 格式输出结果。",
+            query.trim(),
+            commits_summary.trim()
+        );
+
+        let raw =
+            Self::send_chat_completion(settings, keyring, system_prompt, &user_prompt, 0.1).await?;
+        Ok(Self::parse_log_query_response(&raw))
+    }
+
+    /// Parse AI log query response with fallback
+    pub fn parse_log_query_response(raw: &str) -> AiLogQueryResult {
+        let trimmed = raw.trim();
+        let json_str = if let (Some(first_brace), Some(last_brace)) =
+            (trimmed.find('{'), trimmed.rfind('}'))
+        {
+            if first_brace <= last_brace {
+                &trimmed[first_brace..=last_brace]
+            } else {
+                trimmed
+            }
+        } else {
+            trimmed
+        };
+
+        if let Ok(res) = serde_json::from_str::<AiLogQueryResult>(json_str) {
+            return res;
+        }
+
+        AiLogQueryResult {
+            answer: trimmed.to_string(),
+            matched_oids: vec![],
+        }
     }
 
     /// Robustly clean AI generated commit messages:
@@ -490,5 +675,67 @@ mod tests {
             AiService::clean_commit_message(preamble_only),
             "docs: update readme"
         );
+    }
+
+    #[test]
+    fn test_parse_review_response_json_and_fallback() {
+        let json_input = r#"
+```json
+{
+  "summary": "发现潜在安全漏洞与临时调试代码",
+  "passed": false,
+  "issues": [
+    {
+      "level": "danger",
+      "file": "src/config.ts",
+      "message": "硬编码的明文 API 密钥",
+      "suggestion": "请移至环境变量或系统安全存储中"
+    },
+    {
+      "level": "warning",
+      "file": "src/utils.ts",
+      "message": "遗留 console.log 调试语句",
+      "suggestion": "提交前移除调试日志"
+    }
+  ]
+}
+```
+"#;
+        let parsed = AiService::parse_review_response(json_input);
+        assert!(!parsed.passed);
+        assert_eq!(parsed.issues.len(), 2);
+        assert_eq!(parsed.issues[0].level, "danger");
+        assert_eq!(parsed.issues[0].file.as_deref(), Some("src/config.ts"));
+
+        // Fallback test
+        let fallback_input = "代码质量良好，规范整洁，建议直接提交。";
+        let parsed_fallback = AiService::parse_review_response(fallback_input);
+        assert!(parsed_fallback.passed);
+        assert_eq!(parsed_fallback.summary, fallback_input);
+    }
+
+    #[test]
+    fn test_parse_log_query_response_json_and_fallback() {
+        let json_input = r#"
+{
+  "answer": "支付重构是由张三在 2026-10-05 完成的提交。",
+  "matched_oids": [
+    {
+      "oid": "abc1234",
+      "reason": "feat(pay): refactor payment gateway"
+    }
+  ]
+}
+"#;
+        let parsed = AiService::parse_log_query_response(json_input);
+        assert_eq!(parsed.matched_oids.len(), 1);
+        assert_eq!(parsed.matched_oids[0].oid, "abc1234");
+        assert!(parsed.answer.contains("张三"));
+
+        // Fallback test
+        let fallback_input = "未找到与此相关的提交记录。";
+        let parsed_fallback = AiService::parse_log_query_response(fallback_input);
+        assert_eq!(parsed_fallback.answer, fallback_input);
+        assert!(parsed_fallback.matched_oids.is_empty());
     }
 }

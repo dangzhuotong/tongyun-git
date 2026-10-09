@@ -3,14 +3,14 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 use tg_core::{
     clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
-    AbortResult, AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails,
-    CommitService, ConflictFileDetails, ConflictFileSummary, ConflictService, CoreError,
-    FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend, GitBackend, HeadInfo,
-    KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult, OperationLogEntry,
-    PullResult, PullStrategy, PushInspection, PushResult, RebaseItem, RebasePlan, RebaseResult,
-    RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter, StashApplyResult,
-    StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem, TagService,
-    ValidationResult, WorktreeItem, WorktreeService,
+    AbortResult, AiLogQueryResult, AiService, AiSettings, BranchItem, BranchService, CliRunner,
+    CommitDetails, CommitService, ConflictFileDetails, ConflictFileSummary, ConflictService,
+    CoreError, DiffReviewResult, FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend,
+    GitBackend, HeadInfo, KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult,
+    OperationLogEntry, PullResult, PullStrategy, PushInspection, PushResult, RebaseItem,
+    RebasePlan, RebaseResult, RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter,
+    StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem,
+    TagService, ValidationResult, WorktreeItem, WorktreeService,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -393,6 +393,77 @@ async fn generate_ai_commit_message(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn review_staged_diff(
+    root_path: String,
+    settings: AiSettings,
+) -> std::result::Result<DiffReviewResult, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+
+    let status_files = backend.status().map_err(|e| e.to_string())?;
+    let staged_files: Vec<_> = status_files
+        .into_iter()
+        .filter(|f| f.index.is_some())
+        .collect();
+
+    if staged_files.is_empty() {
+        return Err("当前没有已暂存的改动，请先暂存文件后再进行审查".to_string());
+    }
+
+    let mut staged_diffs = Vec::new();
+    for file in staged_files {
+        if let Ok(diff) = backend.diff_file(&file.path, true) {
+            staged_diffs.push(diff);
+        }
+    }
+
+    let sanitized_diff = SecretFilter::build_sanitized_diff(
+        &staged_diffs,
+        &settings.custom_secret_patterns,
+        settings.max_diff_chars,
+    );
+
+    let keyring = SystemKeyring;
+    AiService::review_diff(&settings, &keyring, &sanitized_diff)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_search_log(
+    root_path: String,
+    query: String,
+    settings: AiSettings,
+) -> std::result::Result<AiLogQueryResult, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+
+    let runner = CliRunner::new("git");
+    let log_res = runner.run(
+        p,
+        &[
+            "log",
+            "-n",
+            "60",
+            "--pretty=format:%h|%ad|%an|%s",
+            "--date=short",
+        ],
+        RunOptions::default(),
+    );
+
+    let commits_summary = match log_res {
+        Ok(out) if out.exit_code == Some(0) => out.stdout,
+        _ => return Err("未能读取仓库历史提交记录".to_string()),
+    };
+
+    let keyring = SystemKeyring;
+    AiService::query_log(&settings, &keyring, &query, &commits_summary)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -909,6 +980,8 @@ pub fn run() {
             test_ai_connection,
             fetch_ollama_models,
             generate_ai_commit_message,
+            review_staged_diff,
+            ai_search_log,
             list_branches,
             validate_branch_name,
             create_branch,

@@ -19,8 +19,10 @@ pub mod worktree;
 mod win_job;
 
 pub use ai::{
-    AiProviderType, AiService, AiSettings, KeyringStore, MemoryKeyring, SecretFilter, SystemKeyring,
+    AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings, DiffReviewResult,
+    KeyringStore, MemoryKeyring, ReviewIssue, SecretFilter, SystemKeyring,
 };
+
 pub use backend::{
     map_repo_state, ChangeKind, DiffHunk, DiffLine, FileDiff, FileStatus, Git2Backend, GitBackend,
     HeadInfo, RepoState,

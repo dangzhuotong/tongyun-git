@@ -279,6 +279,52 @@ export async function generateAiCommitMessage(
   });
 }
 
+export interface ReviewIssue {
+  level: "danger" | "warning" | "info";
+  file?: string | null;
+  message: string;
+  suggestion?: string | null;
+}
+
+export interface DiffReviewResult {
+  summary: string;
+  issues: ReviewIssue[];
+  passed: boolean;
+}
+
+export interface AiLogMatch {
+  oid: string;
+  reason: string;
+}
+
+export interface AiLogQueryResult {
+  answer: string;
+  matched_oids: AiLogMatch[];
+}
+
+export async function reviewStagedDiff(
+  rootPath: string,
+  settings: AiSettings
+): Promise<DiffReviewResult> {
+  return await invoke<DiffReviewResult>("review_staged_diff", {
+    rootPath,
+    settings,
+  });
+}
+
+export async function aiSearchLog(
+  rootPath: string,
+  query: string,
+  settings: AiSettings
+): Promise<AiLogQueryResult> {
+  return await invoke<AiLogQueryResult>("ai_search_log", {
+    rootPath,
+    query,
+    settings,
+  });
+}
+
+
 export interface BranchItem {
   name: string;
   is_remote: boolean;

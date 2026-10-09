@@ -4,18 +4,23 @@ import {
   inspectAmend,
   createCommit,
   generateAiCommitMessage,
+  reviewStagedDiff,
   getAiKeyStatus,
   type AmendStatus,
   type AiSettings,
+  type DiffReviewResult,
 } from "../../lib/host";
 import {
   SparklesIcon,
+  ShieldCheckIcon,
   AlertCircleIcon,
   CloseIcon,
 } from "../../components/icons";
 import { AiConsentModal } from "./AiConsentModal";
 import { PushedAmendWarningModal } from "./PushedAmendWarningModal";
 import { IdentityModal } from "./IdentityModal";
+import { AiReviewModal } from "./AiReviewModal";
+
 
 interface CommitPanelProps {
   rootPath: string;
@@ -41,13 +46,19 @@ export function CommitPanel({
   const [amendStatus, setAmendStatus] = useState<AmendStatus | null>(null);
   const [committing, setCommitting] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiReviewing, setAiReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<DiffReviewResult | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const [showPushedWarning, setShowPushedWarning] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
 
+  const pendingAiActionRef = useRef<"generate" | "review">("generate");
   const preAmendDraftRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
 
   // Sync state if rootPath changes without component unmount
   const [prevRootPath, setPrevRootPath] = useState(rootPath);
@@ -226,6 +237,7 @@ export function CommitPanel({
       return;
     }
 
+    pendingAiActionRef.current = "generate";
     // First use consent dialog (R-07 / AT-07f / S9)
     if (!settings.consented) {
       setShowConsentModal(true);
@@ -253,13 +265,63 @@ export function CommitPanel({
     }
   };
 
+  const handleAiReviewClick = async () => {
+    setError(null);
+    const settings = getAiSettings();
+
+    try {
+      const keyStatus = await getAiKeyStatus();
+      if (settings.provider === "kie" && !keyStatus.kie) {
+        setError("未配置 KIE 接口 key，请在设置中配置");
+        return;
+      }
+      if (settings.provider === "openai" && !keyStatus.openai) {
+        setError("未配置 OpenAI 接口 key，请在设置中配置");
+        return;
+      }
+    } catch (err: any) {
+      setError(err?.message || String(err));
+      return;
+    }
+
+    pendingAiActionRef.current = "review";
+    if (!settings.consented) {
+      setShowConsentModal(true);
+      return;
+    }
+
+    await doReviewStagedDiff(settings);
+  };
+
+  const doReviewStagedDiff = async (settings: AiSettings) => {
+    setAiReviewing(true);
+    setReviewError(null);
+    setReviewResult(null);
+    setShowReviewModal(true);
+
+    try {
+      const res = await reviewStagedDiff(rootPath, settings);
+      setReviewResult(res);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      setReviewError(msg);
+    } finally {
+      setAiReviewing(false);
+    }
+  };
+
   const handleConsentConfirm = async () => {
     setShowConsentModal(false);
     const settings = getAiSettings();
     settings.consented = true;
     localStorage.setItem("tongyun_ai_settings", JSON.stringify(settings));
-    await doGenerateAiMessage(settings);
+    if (pendingAiActionRef.current === "review") {
+      await doReviewStagedDiff(settings);
+    } else {
+      await doGenerateAiMessage(settings);
+    }
   };
+
 
   // Button disabled calculation
   const canCommit =
@@ -326,26 +388,50 @@ export function CommitPanel({
           )}
         </label>
 
-        {/* AI Generate Button (R-07) */}
-        <button
-          type="button"
-          onClick={handleAiGenerateClick}
-          disabled={!canAiGenerate}
-          title={
-            stagedCount === 0
-              ? "没有暂存的改动，暂无法生成"
-              : "基于暂存区改动通过 AI 生成提交信息"
-          }
-          className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[11px] text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
-        >
-          <SparklesIcon
-            width={13}
-            height={13}
-            className={aiGenerating ? "animate-spin text-[var(--color-accent)]" : "text-[var(--color-accent)]"}
-          />
-          <span>{aiGenerating ? "生成中..." : "AI 生成"}</span>
-        </button>
+        {/* AI Action Buttons */}
+        <div className="flex items-center gap-1.5">
+          {/* AI Review Button */}
+          <button
+            type="button"
+            onClick={handleAiReviewClick}
+            disabled={stagedCount === 0 || aiReviewing || disabled}
+            title={
+              stagedCount === 0
+                ? "没有暂存的改动，暂无法审查"
+                : "提交前通过 AI 审查暂存区中的潜在 Bug、密钥泄露与代码质量"
+            }
+            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[11px] text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+          >
+            <ShieldCheckIcon
+              width={13}
+              height={13}
+              className={aiReviewing ? "animate-pulse text-emerald-500" : "text-emerald-500"}
+            />
+            <span>{aiReviewing ? "审查中..." : "AI 审查"}</span>
+          </button>
+
+          {/* AI Generate Button (R-07) */}
+          <button
+            type="button"
+            onClick={handleAiGenerateClick}
+            disabled={!canAiGenerate}
+            title={
+              stagedCount === 0
+                ? "没有暂存的改动，暂无法生成"
+                : "基于暂存区改动通过 AI 生成提交信息"
+            }
+            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[11px] text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+          >
+            <SparklesIcon
+              width={13}
+              height={13}
+              className={aiGenerating ? "animate-spin text-[var(--color-accent)]" : "text-[var(--color-accent)]"}
+            />
+            <span>{aiGenerating ? "生成中..." : "AI 生成"}</span>
+          </button>
+        </div>
       </div>
+
 
       {/* Textarea for Commit Message */}
       <div className="relative p-2 flex flex-col">
@@ -431,6 +517,16 @@ export function CommitPanel({
         onConfirm={handleConsentConfirm}
         endpointUrl={getAiSettings().base_url || "https://api.kie.ai"}
       />
+
+      <AiReviewModal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        result={reviewResult}
+        loading={aiReviewing}
+        error={reviewError}
+        onProceedCommit={handleCommitClick}
+      />
     </div>
   );
 }
+
