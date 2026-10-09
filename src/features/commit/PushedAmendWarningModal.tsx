@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AlertCircleIcon, CloseIcon } from "../../components/icons";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface PushedAmendWarningModalProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ export function PushedAmendWarningModal({
   remoteBranches,
 }: PushedAmendWarningModalProps) {
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEscapeKey(onClose, isOpen);
 
   useEffect(() => {
     if (isOpen) {

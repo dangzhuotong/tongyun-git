@@ -11,12 +11,19 @@ import {
   CheckIcon,
 } from "../../components/icons";
 import { CreateBranchModal } from "./CreateBranchModal";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface BranchModalProps {
   isOpen: boolean;
   onClose: () => void;
   rootPath: string;
   onBranchSwitched: () => void;
+}
+
+export function BranchModal(props: BranchModalProps) {
+  useEscapeKey(props.onClose, props.isOpen);
+  if (!props.isOpen) return null;
+  return <BranchModalContent {...props} />;
 }
 
 function BranchModalContent({
@@ -331,9 +338,4 @@ function BranchModalContent({
       />
     </>
   );
-}
-
-export function BranchModal(props: BranchModalProps) {
-  if (!props.isOpen) return null;
-  return <BranchModalContent {...props} />;
 }

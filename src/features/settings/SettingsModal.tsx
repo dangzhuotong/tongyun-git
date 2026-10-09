@@ -17,6 +17,7 @@ import {
   CheckIcon,
   KeyIcon,
 } from "../../components/icons";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -51,6 +52,8 @@ export function SettingsModal({
   onGitPathChange,
   initialTab = "general",
 }: SettingsModalProps) {
+  useEscapeKey(onClose, isOpen);
+
   const [activeTab, setActiveTab] = useState<"general" | "ai">(initialTab);
 
   // General tab state

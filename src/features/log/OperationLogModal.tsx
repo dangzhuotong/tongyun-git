@@ -4,6 +4,7 @@ import {
   clearOperationLogs,
   OperationLogEntry,
 } from "../../lib/host";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface OperationLogModalProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ export const OperationLogModal: React.FC<OperationLogModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  useEscapeKey(onClose, isOpen);
+
   if (!isOpen) return null;
 
   return <OperationLogModalContent onClose={onClose} />;

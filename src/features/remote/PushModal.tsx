@@ -7,6 +7,7 @@ import {
   PushInspection,
   MultiPushItemResult,
 } from "../../lib/host";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface PushModalProps {
   isOpen: boolean;
@@ -21,6 +22,8 @@ export const PushModal: React.FC<PushModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  useEscapeKey(onClose, isOpen);
+
   if (!isOpen) return null;
 
   return (

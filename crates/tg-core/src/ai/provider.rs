@@ -172,7 +172,7 @@ impl AiService {
             "messages": [
                 {"role": "user", "content": "ping"}
             ],
-            "max_tokens": 5
+            "max_tokens": 16
         }));
 
         if let Some(ref key) = api_key {
@@ -290,20 +290,113 @@ impl AiService {
             .and_then(|txt| txt.as_str())
             .ok_or_else(|| CoreError::AiError("接口未返回有效文本内容".to_string()))?;
 
-        // Clean markdown backticks wrapper if generated
-        let cleaned = content.trim();
-        let unquoted = if cleaned.starts_with("```") {
-            let lines: Vec<&str> = cleaned.lines().collect();
-            if lines.len() >= 2 && lines.last().map(|l| l.trim() == "```").unwrap_or(false) {
-                lines[1..lines.len() - 1].join("\n")
-            } else {
-                cleaned.to_string()
-            }
-        } else {
-            cleaned.to_string()
-        };
+        let cleaned = Self::clean_commit_message(content);
+        Ok(cleaned)
+    }
 
-        Ok(unquoted.trim().to_string())
+    /// Robustly clean AI generated commit messages:
+    /// - Strips markdown code blocks (```...```) even when surrounded by preamble/postamble
+    /// - Strips common AI preamble lines ("好的，为您生成的提交信息如下：", "Commit message:")
+    /// - Strips outer quotes ("..." or '...')
+    /// - Strips git commit -m wrapper
+    pub fn clean_commit_message(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+
+        // 1. Check for markdown code fence (```...```) anywhere in the message
+        if let (Some(start), Some(end)) = (trimmed.find("```"), trimmed.rfind("```")) {
+            if start < end {
+                let inside = &trimmed[start + 3..end];
+                // Strip optional language identifier on the first line (e.g. ```git\n, ```text\n)
+                let content = if let Some(first_newline) = inside.find('\n') {
+                    let first_line = inside[..first_newline].trim();
+                    if first_line
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+                    {
+                        &inside[first_newline + 1..]
+                    } else {
+                        inside
+                    }
+                } else {
+                    inside
+                };
+                return Self::clean_commit_message(content);
+            }
+        }
+
+        // 2. Check for `git commit -m "..."` pattern
+        if let Some(pos) = trimmed.find("git commit -m") {
+            let rest = trimmed[pos + 13..].trim();
+            if rest.len() >= 2
+                && ((rest.starts_with('"') && rest.ends_with('"'))
+                    || (rest.starts_with('\'') && rest.ends_with('\'')))
+            {
+                return Self::clean_commit_message(&rest[1..rest.len() - 1]);
+            }
+        }
+
+        // 3. Line-by-line filtering of preamble and trailing commentary
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let mut filtered_lines: Vec<&str> = Vec::new();
+
+        let preamble_prefixes = [
+            "好的",
+            "根据以上",
+            "建议的提交信息",
+            "提交信息如下",
+            "生成的提交信息",
+            "commit message:",
+            "commit message：",
+            "here is the commit message",
+            "here's the commit message",
+        ];
+
+        let mut skipping_preamble = true;
+        for line in lines {
+            let l_trim = line.trim();
+            if skipping_preamble {
+                if l_trim.is_empty() {
+                    continue;
+                }
+                let lower = l_trim.to_lowercase();
+                let is_preamble = preamble_prefixes.iter().any(|prefix| {
+                    lower.starts_with(prefix)
+                        || lower.contains("提交信息如下")
+                        || lower.contains("commit message:")
+                });
+                if is_preamble {
+                    continue;
+                }
+                skipping_preamble = false;
+            }
+
+            let lower = l_trim.to_lowercase();
+            if lower.starts_with("说明：")
+                || lower.starts_with("说明:")
+                || lower.starts_with("解释：")
+                || lower.starts_with("解释:")
+                || lower.starts_with("note:")
+                || lower.starts_with("explanation:")
+            {
+                break;
+            }
+            filtered_lines.push(line);
+        }
+
+        let mut result = filtered_lines.join("\n").trim().to_string();
+
+        // 4. Strip outer double or single quotes if wrapped
+        if result.len() >= 2
+            && ((result.starts_with('"') && result.ends_with('"'))
+                || (result.starts_with('\'') && result.ends_with('\'')))
+        {
+            result = result[1..result.len() - 1].trim().to_string();
+        }
+
+        result
     }
 
     fn build_system_prompt(settings: &AiSettings) -> String {
@@ -349,5 +442,53 @@ impl AiService {
         prompt.push_str(sanitized_diff);
 
         prompt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_commit_message_variants() {
+        // Plain text
+        assert_eq!(
+            AiService::clean_commit_message("feat: add something"),
+            "feat: add something"
+        );
+
+        // Markdown code fence with language tag
+        let markdown = "```git\nfeat(core): support multi-remote\n```";
+        assert_eq!(
+            AiService::clean_commit_message(markdown),
+            "feat(core): support multi-remote"
+        );
+
+        // Code fence surrounded by conversational fluff
+        let fluff =
+            "好的，为你生成如下提交信息：\n```\nfix: correct branch switch\n```\n希望对你有帮助！";
+        assert_eq!(
+            AiService::clean_commit_message(fluff),
+            "fix: correct branch switch"
+        );
+
+        // Wrapped in double quotes
+        assert_eq!(
+            AiService::clean_commit_message("\"feat: update icons\""),
+            "feat: update icons"
+        );
+
+        // Wrapped in git commit -m
+        assert_eq!(
+            AiService::clean_commit_message("git commit -m \"refactor: improve ui\""),
+            "refactor: improve ui"
+        );
+
+        // Leading preamble without backticks
+        let preamble_only = "提交信息如下：\ndocs: update readme\n说明：更新了说明文档";
+        assert_eq!(
+            AiService::clean_commit_message(preamble_only),
+            "docs: update readme"
+        );
     }
 }

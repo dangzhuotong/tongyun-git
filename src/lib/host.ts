@@ -220,6 +220,15 @@ export async function checkCommitIdentity(
   return await invoke<GitIdentity | null>("check_commit_identity", { rootPath });
 }
 
+export async function setCommitIdentity(
+  rootPath: string,
+  name: string,
+  email: string,
+  global: boolean
+): Promise<void> {
+  return await invoke("set_commit_identity", { rootPath, name, email, global });
+}
+
 export async function getHeadMessage(rootPath: string): Promise<string | null> {
   return await invoke<string | null>("get_head_message", { rootPath });
 }

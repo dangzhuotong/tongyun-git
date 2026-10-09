@@ -52,6 +52,44 @@ impl CommitService {
         }
     }
 
+    /// Configure git user.name and user.email (locally or globally).
+    pub fn set_identity(
+        runner: &CliRunner,
+        repo_root: &Path,
+        name: &str,
+        email: &str,
+        global: bool,
+    ) -> Result<()> {
+        let name_args = if global {
+            vec!["config", "--global", "user.name", name]
+        } else {
+            vec!["config", "user.name", name]
+        };
+        let email_args = if global {
+            vec!["config", "--global", "user.email", email]
+        } else {
+            vec!["config", "user.email", email]
+        };
+
+        let res1 = runner.run(repo_root, &name_args, RunOptions::default())?;
+        if res1.exit_code != Some(0) {
+            return Err(CoreError::Cli {
+                exit_code: res1.exit_code,
+                stderr: format!("设置 user.name 失败: {}", res1.stderr),
+            });
+        }
+
+        let res2 = runner.run(repo_root, &email_args, RunOptions::default())?;
+        if res2.exit_code != Some(0) {
+            return Err(CoreError::Cli {
+                exit_code: res2.exit_code,
+                stderr: format!("设置 user.email 失败: {}", res2.stderr),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Read the full commit message of HEAD if HEAD exists.
     pub fn get_head_message(repo_root: &Path) -> Result<Option<String>> {
         let repo = match git2::Repository::open(repo_root) {

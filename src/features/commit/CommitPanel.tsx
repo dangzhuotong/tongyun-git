@@ -407,7 +407,12 @@ export function CommitPanel({
       {/* Modals */}
       <IdentityModal
         isOpen={showIdentityModal}
+        rootPath={rootPath}
         onClose={() => setShowIdentityModal(false)}
+        onConfigured={async () => {
+          setShowIdentityModal(false);
+          await executeCommit();
+        }}
       />
 
       <PushedAmendWarningModal

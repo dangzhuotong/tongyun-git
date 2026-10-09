@@ -1,4 +1,5 @@
 import { CloseIcon, AlertCircleIcon, SparklesIcon } from "../../components/icons";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface AiConsentModalProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ export function AiConsentModal({
   onConfirm,
   endpointUrl,
 }: AiConsentModalProps) {
+  useEscapeKey(onClose, isOpen);
+
   if (!isOpen) return null;
 
   return (

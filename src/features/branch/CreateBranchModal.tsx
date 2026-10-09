@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { validateBranchName, createBranch } from "../../lib/host";
 import { BranchIcon, CloseIcon, AlertCircleIcon } from "../../components/icons";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface CreateBranchModalProps {
   isOpen: boolean;
@@ -8,6 +9,12 @@ interface CreateBranchModalProps {
   rootPath: string;
   startPoint?: string | null;
   onBranchCreated: () => void;
+}
+
+export function CreateBranchModal(props: CreateBranchModalProps) {
+  useEscapeKey(props.onClose, props.isOpen);
+  if (!props.isOpen) return null;
+  return <CreateBranchModalContent {...props} />;
 }
 
 function CreateBranchModalContent({
@@ -167,9 +174,4 @@ function CreateBranchModalContent({
       </div>
     </div>
   );
-}
-
-export function CreateBranchModal(props: CreateBranchModalProps) {
-  if (!props.isOpen) return null;
-  return <CreateBranchModalContent {...props} />;
 }

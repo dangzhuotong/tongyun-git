@@ -2,6 +2,18 @@ import { useState, type FormEvent, useEffect } from "react";
 import { FolderIcon, AlertCircleIcon, CloseIcon } from "../../components/icons";
 import { selectFolder } from "../../lib/host";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
+
+function sanitizePath(p: string): string {
+  let cleaned = p.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
 
 interface OpenRepoModalProps {
   isOpen: boolean;
@@ -80,18 +92,23 @@ export function OpenRepoModal({
     };
   }, [isOpen, onOpenRepo]);
 
+  useEscapeKey(onClose, isOpen);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!inputPath.trim()) return;
-    onOpenRepo(inputPath.trim());
+    const clean = sanitizePath(inputPath);
+    if (!clean) return;
+    onOpenRepo(clean);
   };
 
   const handleCloneSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!cloneUrl.trim() || !cloneTargetDir.trim() || !onCloneRepo) return;
-    onCloneRepo(cloneUrl.trim(), cloneTargetDir.trim());
+    const cleanUrl = cloneUrl.trim();
+    const cleanDir = sanitizePath(cloneTargetDir);
+    if (!cleanUrl || !cleanDir || !onCloneRepo) return;
+    onCloneRepo(cleanUrl, cleanDir);
   };
 
   const handlePickFolder = async () => {

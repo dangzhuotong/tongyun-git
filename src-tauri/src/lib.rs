@@ -80,7 +80,8 @@ fn check_git(custom_path: Option<String>) -> GitCheckResult {
 
 #[tauri::command]
 fn open_repository(path: String) -> std::result::Result<RepoInfo, String> {
-    let p = Path::new(&path);
+    let clean_path = path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
     let backend = Git2Backend::open(p).map_err(|e| match e {
         CoreError::NotARepository => "这个文件夹不是 Git 仓库".to_string(),
         CoreError::BareRepository => "不支持裸仓库".to_string(),
@@ -226,9 +227,23 @@ pub struct AiKeyStatus {
 fn check_commit_identity(
     root_path: String,
 ) -> std::result::Result<Option<tg_core::GitIdentity>, String> {
-    let p = Path::new(&root_path);
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
     let runner = CliRunner::new("git");
     CommitService::check_identity(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_commit_identity(
+    root_path: String,
+    name: String,
+    email: String,
+    global: bool,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    CommitService::set_identity(&runner, p, &name, &email, global).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -590,6 +605,7 @@ pub fn run() {
             discard_files,
             undo_discard,
             check_commit_identity,
+            set_commit_identity,
             get_head_message,
             inspect_amend,
             create_commit,

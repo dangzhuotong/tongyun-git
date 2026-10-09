@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { DiscardCandidate } from "../../lib/host";
 import { AlertCircleIcon, CloseIcon } from "../../components/icons";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface DiscardConfirmModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export function DiscardConfirmModal({
   loading,
 }: DiscardConfirmModalProps) {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEscapeKey(onClose, isOpen);
 
   // Focus Cancel button by default on open (R-17 rule)
   useEffect(() => {

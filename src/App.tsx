@@ -263,11 +263,18 @@ export default function App() {
   // Open repository action
   const handleOpenRepo = useCallback(
     async (path: string) => {
-      setOpenAttemptPath(path);
+      let cleanPath = path.trim();
+      if (
+        (cleanPath.startsWith('"') && cleanPath.endsWith('"')) ||
+        (cleanPath.startsWith("'") && cleanPath.endsWith("'"))
+      ) {
+        cleanPath = cleanPath.slice(1, -1).trim();
+      }
+      setOpenAttemptPath(cleanPath);
       setOpenLoading(true);
       setOpenError(null);
       try {
-        const info = await openRepository(path);
+        const info = await openRepository(cleanPath);
         setCurrentRepo(info);
         saveRecentRepo(info.root_path);
         localStorage.setItem("tongyun_last_repo", info.root_path);
