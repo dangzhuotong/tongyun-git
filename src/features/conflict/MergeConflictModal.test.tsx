@@ -123,16 +123,19 @@ describe("MergeConflictModal", () => {
     );
 
     const resolveBtn = await screen.findByRole("button", { name: /标记此文件已解决/i });
+    const textarea = screen.getByPlaceholderText("在此编辑最终合并代码...");
+    fireEvent.change(textarea, { target: { value: "base line 1\nresolved clean code" } });
     fireEvent.click(resolveBtn);
 
     await waitFor(() => {
       expect(host.resolveConflictFile).toHaveBeenCalledWith(
         rootPath,
         "app.txt",
-        expect.any(String)
+        "base line 1\nresolved clean code"
       );
     });
   });
+
 
   it("displays complete merge button when no conflicts remain", async () => {
     vi.mocked(host.listConflicts).mockResolvedValue([]);
