@@ -138,16 +138,26 @@ mod tests {
     #[test]
     fn test_system_keyring_roundtrip() {
         let keyring = SystemKeyring;
+        // Entry::new can succeed on Linux even when Secret Service/DBus is missing;
+        // only treat the platform store as available if a probe write works.
         if !keyring.is_available() {
             return;
         }
         let provider = "test_roundtrip_provider";
         let secret = "sk-test-secret-value-789";
 
-        // 1. Set key
-        keyring
-            .set_key(provider, secret)
-            .expect("set_key should succeed");
+        // 1. Set key — skip when the OS has no usable secure storage (common on CI)
+        if let Err(e) = keyring.set_key(provider, secret) {
+            let msg = e.to_string();
+            if msg.contains("secure storage")
+                || msg.contains("DBus")
+                || msg.contains("org.freedesktop.secrets")
+                || msg.contains("No such secret")
+            {
+                return;
+            }
+            panic!("set_key should succeed: {e}");
+        }
 
         // 2. Read key
         let read_val = keyring.get_key(provider).expect("get_key should succeed");
