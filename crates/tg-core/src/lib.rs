@@ -3,6 +3,7 @@ pub mod backend;
 pub mod branch;
 pub mod cli;
 pub mod commit;
+pub mod conflict;
 pub mod discard;
 pub mod error;
 pub mod log;
@@ -28,6 +29,7 @@ pub use cli::{
     version_at_least, CliOutput, CliRunner, OperationLogEntry, RunOptions, MIN_GIT_VERSION,
 };
 pub use commit::{AmendStatus, CommitResult, CommitService, GitIdentity};
+pub use conflict::{ConflictFileDetails, ConflictFileSummary, ConflictHunk, ConflictService};
 pub use discard::{
     DiscardCandidate, DiscardResult, DiscardService, UndoDiscardResult, MAX_SINGLE_FILE_SNAPSHOT,
     MAX_SNAPSHOT_COUNT, MAX_TOTAL_SNAPSHOT,

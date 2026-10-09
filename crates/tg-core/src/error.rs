@@ -59,6 +59,9 @@ pub enum CoreError {
 
     #[error("reset error: {0}")]
     ResetError(String),
+
+    #[error("conflict error: {0}")]
+    ConflictError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

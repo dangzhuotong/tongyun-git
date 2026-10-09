@@ -1,16 +1,19 @@
 import React, { useState } from "react";
 import { abortMergeOrRebase, RepoState } from "../../lib/host";
+import { GitMergeIcon } from "../../components/icons";
 
 interface ConflictBannerProps {
   rootPath: string;
   repoState?: RepoState;
   onAbortSuccess: () => void;
+  onOpenResolveConflicts?: () => void;
 }
 
 export const ConflictBanner: React.FC<ConflictBannerProps> = ({
   rootPath,
   repoState,
   onAbortSuccess,
+  onOpenResolveConflicts,
 }) => {
   const [aborting, setAborting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -78,13 +81,25 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({
         {errorMsg && <span className="text-red-400 ml-2 font-medium">({errorMsg})</span>}
       </div>
 
-      <button
-        onClick={handleAbort}
-        disabled={aborting}
-        className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium cursor-pointer transition-colors shadow-sm"
-      >
-        {aborting ? "正在中止..." : labelInfo.action}
-      </button>
+      <div className="flex items-center gap-2">
+        {onOpenResolveConflicts && (
+          <button
+            type="button"
+            onClick={onOpenResolveConflicts}
+            className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
+          >
+            <GitMergeIcon width={13} height={13} />
+            <span>解决冲突 (三方合并器)</span>
+          </button>
+        )}
+        <button
+          onClick={handleAbort}
+          disabled={aborting}
+          className="px-3 py-1 rounded bg-amber-800 hover:bg-amber-700 disabled:opacity-50 text-white font-medium cursor-pointer transition-colors shadow-sm"
+        >
+          {aborting ? "正在中止..." : labelInfo.action}
+        </button>
+      </div>
     </div>
   );
 };

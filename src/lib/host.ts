@@ -731,3 +731,74 @@ export async function resetToCommit(
   return await invoke("reset_to_commit", { rootPath, oid, mode });
 }
 
+export interface ConflictFileSummary {
+  path: string;
+  has_ancestor: boolean;
+  has_our: boolean;
+  has_their: boolean;
+}
+
+export interface ConflictHunk {
+  hunk_index: number;
+  our_start_line: number;
+  our_lines: string[];
+  their_start_line: number;
+  their_lines: string[];
+  base_lines: string[];
+}
+
+export interface ConflictFileDetails {
+  path: string;
+  base_content: string | null;
+  our_content: string | null;
+  their_content: string | null;
+  worktree_content: string;
+  hunks: ConflictHunk[];
+  is_binary: boolean;
+}
+
+export async function listConflicts(rootPath: string): Promise<ConflictFileSummary[]> {
+  return await invoke<ConflictFileSummary[]>("list_conflicts", { rootPath });
+}
+
+export async function getConflictDetails(
+  rootPath: string,
+  filePath: string
+): Promise<ConflictFileDetails> {
+  return await invoke<ConflictFileDetails>("get_conflict_details", {
+    rootPath,
+    filePath,
+  });
+}
+
+export async function resolveConflictFile(
+  rootPath: string,
+  filePath: string,
+  resolvedContent: string
+): Promise<void> {
+  return await invoke("resolve_conflict_file", {
+    rootPath,
+    filePath,
+    resolvedContent,
+  });
+}
+
+export async function acceptOurs(
+  rootPath: string,
+  filePath: string
+): Promise<void> {
+  return await invoke("accept_ours", { rootPath, filePath });
+}
+
+export async function acceptTheirs(
+  rootPath: string,
+  filePath: string
+): Promise<void> {
+  return await invoke("accept_theirs", { rootPath, filePath });
+}
+
+export async function continueMergeOrRebase(rootPath: string): Promise<void> {
+  return await invoke("continue_merge_or_rebase", { rootPath });
+}
+
+

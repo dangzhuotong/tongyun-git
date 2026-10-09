@@ -9,6 +9,7 @@ import {
   TreeIcon,
   ListIcon,
   HistoryIcon,
+  GitMergeIcon,
 } from "../../components/icons";
 
 interface ChangesListProps {
@@ -19,6 +20,7 @@ interface ChangesListProps {
   onUnstageFiles: (paths: string[]) => Promise<void>;
   onDiscardFiles: (paths: string[]) => void;
   onOpenFileHistory?: (filePath: string) => void;
+  onResolveConflict?: (filePath?: string) => void;
 }
 
 export function ChangesList({
@@ -29,6 +31,7 @@ export function ChangesList({
   onUnstageFiles,
   onDiscardFiles,
   onOpenFileHistory,
+  onResolveConflict,
 }: ChangesListProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     return (localStorage.getItem("tongyun_view_mode") as ViewMode) || "flat";
@@ -218,8 +221,12 @@ export function ChangesList({
             count={conflictedFiles.length}
             expanded={expandedGroups.conflicted}
             onToggle={() => toggleGroup("conflicted")}
-            actionLabel="全部解决"
-            onAction={() => onStageFiles(conflictedFiles.map((f) => f.path))}
+            actionLabel={onResolveConflict ? "三方解决" : "全部解决"}
+            onAction={
+              onResolveConflict
+                ? () => onResolveConflict()
+                : () => onStageFiles(conflictedFiles.map((f) => f.path))
+            }
           >
             <GroupFileList
               files={conflictedFiles}
@@ -233,6 +240,7 @@ export function ChangesList({
               onUnstage={(p) => onUnstageFiles([p])}
               onDiscard={(p) => onDiscardFiles([p])}
               onOpenFileHistory={onOpenFileHistory}
+              onResolveConflict={onResolveConflict}
             />
           </GroupSection>
         )}
@@ -386,6 +394,7 @@ function GroupFileList({
   onUnstage,
   onDiscard,
   onOpenFileHistory,
+  onResolveConflict,
 }: {
   files: FileStatus[];
   staged: boolean;
@@ -398,6 +407,7 @@ function GroupFileList({
   onUnstage: (path: string) => void;
   onDiscard: (path: string) => void;
   onOpenFileHistory?: (path: string) => void;
+  onResolveConflict?: (path: string) => void;
 }) {
   if (files.length === 0) {
     return (
@@ -422,6 +432,7 @@ function GroupFileList({
           onUnstage={onUnstage}
           onDiscard={onDiscard}
           onOpenFileHistory={onOpenFileHistory}
+          onResolveConflict={onResolveConflict}
           depth={0}
         />
       </div>
@@ -449,6 +460,7 @@ function GroupFileList({
             onUnstage={() => onUnstage(file.path)}
             onDiscard={() => onDiscard(file.path)}
             onOpenFileHistory={onOpenFileHistory}
+            onResolveConflict={onResolveConflict}
           />
         );
       })}
@@ -467,6 +479,7 @@ function FileRowItem({
   onUnstage,
   onDiscard,
   onOpenFileHistory,
+  onResolveConflict,
   displayName,
   indent = 0,
 }: {
@@ -480,6 +493,7 @@ function FileRowItem({
   onUnstage: () => void;
   onDiscard: () => void;
   onOpenFileHistory?: (path: string) => void;
+  onResolveConflict?: (path: string) => void;
   displayName?: string;
   indent?: number;
 }) {
@@ -524,8 +538,37 @@ function FileRowItem({
       </div>
 
       <div className="flex items-center gap-1 shrink-0 ml-1">
+        {/* Conflicted Direct Resolve Button */}
+        {file.conflicted && onResolveConflict && (
+          <button
+            type="button"
+            title="打开三方合并冲突解决器"
+            onClick={(e) => {
+              e.stopPropagation();
+              onResolveConflict(file.path);
+            }}
+            className="px-1.5 py-0.5 rounded bg-[var(--color-status-conflict)]/15 hover:bg-[var(--color-status-conflict)]/25 text-[var(--color-status-conflict)] flex items-center gap-1 font-semibold text-[10px] cursor-pointer transition-colors"
+          >
+            <GitMergeIcon width={11} height={11} />
+            <span>解决</span>
+          </button>
+        )}
+
         {/* Inline Action Buttons (Hover) */}
         <div className="hidden group-hover:flex items-center gap-0.5">
+          {file.conflicted && onResolveConflict && (
+            <button
+              type="button"
+              title="使用三方合并器解决冲突"
+              onClick={(e) => {
+                e.stopPropagation();
+                onResolveConflict(file.path);
+              }}
+              className="p-0.5 px-1 rounded hover:bg-[var(--color-surface)] text-[var(--color-status-conflict)] cursor-pointer"
+            >
+              <GitMergeIcon width={12} height={12} />
+            </button>
+          )}
           {onOpenFileHistory && (
             <button
               type="button"
@@ -704,6 +747,7 @@ function TreeFolderView({
   onUnstage,
   onDiscard,
   onOpenFileHistory,
+  onResolveConflict,
   depth,
 }: {
   nodes: TreeNode[];
@@ -716,6 +760,7 @@ function TreeFolderView({
   onUnstage: (path: string) => void;
   onDiscard: (path: string) => void;
   onOpenFileHistory?: (path: string) => void;
+  onResolveConflict?: (path: string) => void;
   depth: number;
 }) {
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -756,6 +801,7 @@ function TreeFolderView({
                   onUnstage={onUnstage}
                   onDiscard={onDiscard}
                   onOpenFileHistory={onOpenFileHistory}
+                  onResolveConflict={onResolveConflict}
                   depth={depth + 1}
                 />
               )}
@@ -789,6 +835,7 @@ function TreeFolderView({
               onUnstage={() => onUnstage(node.fileStatus!.path)}
               onDiscard={() => onDiscard(node.fileStatus!.path)}
               onOpenFileHistory={onOpenFileHistory}
+              onResolveConflict={onResolveConflict}
               displayName={node.name}
               indent={depth}
             />

@@ -4,11 +4,12 @@ use tauri::{AppHandle, Manager};
 use tg_core::{
     clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
     AbortResult, AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails,
-    CommitService, CoreError, FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend,
-    GitBackend, HeadInfo, KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult,
-    OperationLogEntry, PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail,
-    RemoteService, RunOptions, SecretFilter, StashApplyResult, StashItem, StashService,
-    SwitchBranchResult, SystemKeyring, TagItem, TagService, ValidationResult,
+    CommitService, ConflictFileDetails, ConflictFileSummary, ConflictService, CoreError,
+    FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend, GitBackend, HeadInfo,
+    KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult, OperationLogEntry,
+    PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail, RemoteService, RunOptions,
+    SecretFilter, StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring,
+    TagItem, TagService, ValidationResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -735,6 +736,62 @@ fn reset_to_commit(
     CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_conflicts(root_path: String) -> std::result::Result<Vec<ConflictFileSummary>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    ConflictService::list_conflicts(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_conflict_details(
+    root_path: String,
+    file_path: String,
+) -> std::result::Result<ConflictFileDetails, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    ConflictService::get_conflict_details(p, &file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn resolve_conflict_file(
+    root_path: String,
+    file_path: String,
+    resolved_content: String,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    ConflictService::resolve_conflict_file(p, &file_path, &resolved_content)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn accept_ours(root_path: String, file_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    ConflictService::accept_ours(p, &file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn accept_theirs(root_path: String, file_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    ConflictService::accept_theirs(p, &file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn continue_merge_or_rebase(root_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    let out = ConflictService::continue_merge_or_rebase(&runner, p).map_err(|e| e.to_string())?;
+    if out.exit_code != Some(0) {
+        let err = format!("{}\n{}", out.stdout, out.stderr).trim().to_string();
+        return Err(err);
+    }
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -800,7 +857,13 @@ pub fn run() {
             delete_remote_tag,
             get_file_history,
             checkout_commit,
-            reset_to_commit
+            reset_to_commit,
+            list_conflicts,
+            get_conflict_details,
+            resolve_conflict_file,
+            accept_ours,
+            accept_theirs,
+            continue_merge_or_rebase
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

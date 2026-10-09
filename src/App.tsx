@@ -44,6 +44,7 @@ import { CreateTagModal } from "./features/tag/CreateTagModal";
 import { FileHistoryModal } from "./features/history/FileHistoryModal";
 import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
 import { AboutModal } from "./features/help/AboutModal";
+import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
@@ -128,6 +129,15 @@ export default function App() {
     snapshotRef: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // 3-Way Conflict Resolver (v2 Phase 1)
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflictModalTargetFile, setConflictModalTargetFile] = useState<string | null>(null);
+
+  const handleOpenConflictModal = useCallback((filePath?: string) => {
+    setConflictModalTargetFile(filePath || null);
+    setConflictModalOpen(true);
+  }, []);
 
   // 10-second undo countdown timer (R-17)
   const hasUndoToast = Boolean(undoToast);
@@ -663,6 +673,12 @@ export default function App() {
           action: () => setStashModalOpen(true),
         },
         {
+          id: "resolve-conflicts",
+          title: "三方合并冲突解决器 (Resolve Conflicts)",
+          description: "使用三栏视图解决合并与变基文件冲突",
+          action: () => handleOpenConflictModal(),
+        },
+        {
           id: "refresh-status",
           title: "刷新仓库状态 (Refresh Status)",
           shortcut: "F5",
@@ -672,7 +688,7 @@ export default function App() {
     }
 
     return list;
-  }, [currentRepo, handlePull, handleFetch, refreshStatus]);
+  }, [currentRepo, handlePull, handleFetch, refreshStatus, handleOpenConflictModal]);
 
   // Selection handler
   const handleSelectTarget = (target: SelectedFileTarget) => {
@@ -924,6 +940,7 @@ export default function App() {
           rootPath={currentRepo.root_path}
           repoState={currentRepo.head.repo_state}
           onAbortSuccess={() => refreshStatus(currentRepo.root_path)}
+          onOpenResolveConflicts={() => handleOpenConflictModal()}
         />
       )}
 
@@ -985,6 +1002,7 @@ export default function App() {
                       setHistoryFilePath(p);
                       setFileHistoryModalOpen(true);
                     }}
+                    onResolveConflict={handleOpenConflictModal}
                   />
                 </div>
 
@@ -1341,6 +1359,20 @@ export default function App() {
             }}
             rootPath={currentRepo.root_path}
             filePath={historyFilePath}
+          />
+          <MergeConflictModal
+            isOpen={conflictModalOpen}
+            onClose={() => {
+              setConflictModalOpen(false);
+              setConflictModalTargetFile(null);
+            }}
+            rootPath={currentRepo.root_path}
+            initialFilePath={conflictModalTargetFile}
+            onConflictsResolved={() => {
+              refreshStatus(currentRepo.root_path);
+              setSelectedTarget(null);
+              setDiff(null);
+            }}
           />
         </>
       )}
