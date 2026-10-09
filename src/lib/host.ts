@@ -843,5 +843,74 @@ export async function executeInteractiveRebase(
   });
 }
 
+export interface WorktreeItem {
+  name: string;
+  path: string;
+  head_oid?: string | null;
+  branch?: string | null;
+  is_main: boolean;
+  is_locked: boolean;
+  lock_reason?: string | null;
+  is_bare: boolean;
+  is_detached: boolean;
+}
+
+export async function listWorktrees(rootPath: string): Promise<WorktreeItem[]> {
+  return await invoke<WorktreeItem[]>("list_worktrees", { rootPath });
+}
+
+export async function addWorktree(
+  rootPath: string,
+  worktreePath: string,
+  branch?: string | null,
+  createBranch = false
+): Promise<void> {
+  return await invoke("add_worktree", {
+    rootPath,
+    worktreePath,
+    branch,
+    createBranch,
+  });
+}
+
+export async function removeWorktree(
+  rootPath: string,
+  worktreePath: string,
+  force = false
+): Promise<void> {
+  return await invoke("remove_worktree", {
+    rootPath,
+    worktreePath,
+    force,
+  });
+}
+
+export async function lockWorktree(
+  rootPath: string,
+  worktreePath: string,
+  reason?: string | null
+): Promise<void> {
+  return await invoke("lock_worktree", {
+    rootPath,
+    worktreePath,
+    reason,
+  });
+}
+
+export async function unlockWorktree(
+  rootPath: string,
+  worktreePath: string
+): Promise<void> {
+  return await invoke("unlock_worktree", {
+    rootPath,
+    worktreePath,
+  });
+}
+
+export async function pruneWorktrees(rootPath: string): Promise<void> {
+  return await invoke("prune_worktrees", { rootPath });
+}
+
+
 
 

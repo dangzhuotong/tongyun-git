@@ -65,6 +65,9 @@ pub enum CoreError {
 
     #[error("rebase error: {0}")]
     RebaseError(String),
+
+    #[error("worktree error: {0}")]
+    WorktreeError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

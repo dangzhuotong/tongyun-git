@@ -1,6 +1,7 @@
 import {
   BranchIcon,
   TagIcon,
+  WorktreeIcon,
   TerminalIcon,
   KeyboardIcon,
   InfoIcon,
@@ -17,10 +18,12 @@ interface StatusBarProps {
   isPulling?: boolean;
   onOpenBranchModal: () => void;
   onOpenTagModal: () => void;
+  onOpenWorktreeModal?: () => void;
   onOpenLogModal: () => void;
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
 }
+
 
 export function StatusBar({
   repo,
@@ -32,6 +35,7 @@ export function StatusBar({
   isPulling = false,
   onOpenBranchModal,
   onOpenTagModal,
+  onOpenWorktreeModal,
   onOpenLogModal,
   onOpenShortcuts,
   onOpenAbout,
@@ -88,6 +92,19 @@ export function StatusBar({
 
       {/* Right: Quick Tools & Info */}
       <div className="flex items-center gap-3">
+        {/* Worktree button */}
+        {activeRepo && onOpenWorktreeModal && (
+          <button
+            type="button"
+            onClick={onOpenWorktreeModal}
+            className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1.5 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+            title="管理 Git 工作区 (Git Worktrees)"
+          >
+            <WorktreeIcon width={12} height={12} />
+            <span>工作区</span>
+          </button>
+        )}
+
         {/* Tag button */}
         {activeRepo && (
           <button
@@ -100,6 +117,7 @@ export function StatusBar({
             <span>标签</span>
           </button>
         )}
+
 
         {/* Operation Log button */}
         <button

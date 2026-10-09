@@ -10,7 +10,7 @@ use tg_core::{
     PullResult, PullStrategy, PushInspection, PushResult, RebaseItem, RebasePlan, RebaseResult,
     RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter, StashApplyResult,
     StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem, TagService,
-    ValidationResult,
+    ValidationResult, WorktreeItem, WorktreeService,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -814,6 +814,69 @@ fn execute_interactive_rebase(
     RebaseService::execute_interactive_rebase(&runner, p, &plan).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_worktrees(root_path: String) -> std::result::Result<Vec<WorktreeItem>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::list_worktrees(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_worktree(
+    root_path: String,
+    worktree_path: String,
+    branch: Option<String>,
+    create_branch: bool,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::add_worktree(&runner, p, &worktree_path, branch.as_deref(), create_branch)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_worktree(
+    root_path: String,
+    worktree_path: String,
+    force: bool,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::remove_worktree(&runner, p, &worktree_path, force).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn lock_worktree(
+    root_path: String,
+    worktree_path: String,
+    reason: Option<String>,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::lock_worktree(&runner, p, &worktree_path, reason.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn unlock_worktree(root_path: String, worktree_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::unlock_worktree(&runner, p, &worktree_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn prune_worktrees(root_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    WorktreeService::prune_worktrees(&runner, p).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -887,7 +950,13 @@ pub fn run() {
             accept_theirs,
             continue_merge_or_rebase,
             get_rebase_commits,
-            execute_interactive_rebase
+            execute_interactive_rebase,
+            list_worktrees,
+            add_worktree,
+            remove_worktree,
+            lock_worktree,
+            unlock_worktree,
+            prune_worktrees
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

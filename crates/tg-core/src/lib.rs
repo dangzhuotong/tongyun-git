@@ -13,6 +13,7 @@ pub mod redact;
 pub mod remote;
 pub mod stash;
 pub mod tag;
+pub mod worktree;
 
 #[cfg(windows)]
 mod win_job;
@@ -49,6 +50,7 @@ pub use remote::{
 };
 pub use stash::{StashApplyResult, StashItem, StashService};
 pub use tag::{TagItem, TagService};
+pub use worktree::{WorktreeItem, WorktreeService};
 
 /// Thin wrapper preserving backwards compatibility for callers of `git_version`.
 pub fn git_version(git_path: &str) -> std::result::Result<String, String> {

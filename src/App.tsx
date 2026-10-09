@@ -46,6 +46,7 @@ import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
 import { AboutModal } from "./features/help/AboutModal";
 import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
 import { InteractiveRebaseModal } from "./features/rebase/InteractiveRebaseModal";
+import { WorktreeModal } from "./features/worktree/WorktreeModal";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
@@ -153,6 +154,10 @@ export default function App() {
     },
     []
   );
+
+  // Git Worktree Management (v2 Phase 3)
+  const [worktreeModalOpen, setWorktreeModalOpen] = useState(false);
+
 
   // 10-second undo countdown timer (R-17)
   const hasUndoToast = Boolean(undoToast);
@@ -688,6 +693,12 @@ export default function App() {
           action: () => setStashModalOpen(true),
         },
         {
+          id: "git-worktrees",
+          title: "管理 Git 工作区 (Git Worktrees)",
+          description: "查看与管理多工作树、切换工作区或新建 Worktree",
+          action: () => setWorktreeModalOpen(true),
+        },
+        {
           id: "resolve-conflicts",
           title: "三方合并冲突解决器 (Resolve Conflicts)",
           description: "使用三栏视图解决合并与变基文件冲突",
@@ -945,9 +956,11 @@ export default function App() {
         onOpenStashModal={() => setStashModalOpen(true)}
         onCreateStashClick={() => setCreateStashModalOpen(true)}
         onOpenTagModal={() => setTagModalOpen(true)}
+        onOpenWorktreeModal={() => setWorktreeModalOpen(true)}
         onOpenShortcuts={() => setShortcutsModalOpen(true)}
         onOpenAbout={() => setAboutModalOpen(true)}
       />
+
 
       {/* Conflict / In-Progress Action Banner (R-11, R-17) */}
       {currentRepo && (
@@ -1209,6 +1222,7 @@ export default function App() {
         gitVersion={appInfo?.git_version}
         onOpenBranchModal={() => setBranchModalOpen(true)}
         onOpenTagModal={() => setTagModalOpen(true)}
+        onOpenWorktreeModal={() => setWorktreeModalOpen(true)}
         onOpenLogModal={() => setLogModalOpen(true)}
         onOpenShortcuts={() => setShortcutsModalOpen(true)}
         onOpenAbout={() => setAboutModalOpen(true)}
@@ -1406,7 +1420,14 @@ export default function App() {
               setDiff(null);
             }}
           />
+          <WorktreeModal
+            isOpen={worktreeModalOpen}
+            onClose={() => setWorktreeModalOpen(false)}
+            rootPath={currentRepo.root_path}
+            onOpenRepo={handleOpenRepo}
+          />
         </>
+
       )}
 
       {/* Help & About Modals */}

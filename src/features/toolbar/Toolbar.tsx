@@ -10,6 +10,7 @@ import {
   ChevronDownIcon,
   ArchiveIcon,
   TagIcon,
+  WorktreeIcon,
   KeyboardIcon,
   InfoIcon,
 } from "../../components/icons";
@@ -36,9 +37,11 @@ interface ToolbarProps {
   onOpenStashModal?: () => void;
   onCreateStashClick?: () => void;
   onOpenTagModal?: () => void;
+  onOpenWorktreeModal?: () => void;
   onOpenShortcuts?: () => void;
   onOpenAbout?: () => void;
 }
+
 
 export function Toolbar({
   currentRepo,
@@ -62,6 +65,7 @@ export function Toolbar({
   onOpenStashModal,
   onCreateStashClick,
   onOpenTagModal,
+  onOpenWorktreeModal,
   onOpenShortcuts,
   onOpenAbout,
 }: ToolbarProps) {
@@ -282,6 +286,20 @@ export function Toolbar({
             <span className="hidden sm:inline font-medium text-[11px]">标签</span>
           </button>
         )}
+
+        {/* Worktree Button */}
+        {currentRepo && onOpenWorktreeModal && (
+          <button
+            type="button"
+            title="管理 Git 工作区 (Git Worktrees)"
+            onClick={onOpenWorktreeModal}
+            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] transition-colors border border-[var(--color-border)] cursor-pointer"
+          >
+            <WorktreeIcon width={13} height={13} className="text-[var(--color-accent)]" />
+            <span className="hidden sm:inline font-medium text-[11px]">工作区</span>
+          </button>
+        )}
+
 
         {/* Refresh Button */}
         <button
