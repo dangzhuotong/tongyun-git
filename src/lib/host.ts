@@ -638,3 +638,96 @@ export async function showStashDiff(
 ): Promise<string> {
   return await invoke<string>("show_stash_diff", { rootPath, index });
 }
+
+export interface TagItem {
+  name: string;
+  target_oid: string;
+  short_oid: string;
+  message?: string | null;
+  tagger_name?: string | null;
+  tagger_email?: string | null;
+  timestamp?: number | null;
+  is_annotated: boolean;
+}
+
+export interface FileHistoryItem {
+  oid: string;
+  short_oid: string;
+  author_name: string;
+  author_email: string;
+  timestamp: number;
+  summary: string;
+}
+
+export async function listTags(rootPath: string): Promise<TagItem[]> {
+  return await invoke<TagItem[]>("list_tags", { rootPath });
+}
+
+export async function createTag(
+  rootPath: string,
+  name: string,
+  targetOid?: string | null,
+  message?: string | null
+): Promise<TagItem> {
+  return await invoke<TagItem>("create_tag", {
+    rootPath,
+    name,
+    targetOid,
+    message,
+  });
+}
+
+export async function deleteTag(rootPath: string, name: string): Promise<void> {
+  return await invoke("delete_tag", { rootPath, name });
+}
+
+export async function pushTag(
+  rootPath: string,
+  name: string,
+  remote?: string | null
+): Promise<void> {
+  return await invoke("push_tag", { rootPath, name, remote });
+}
+
+export async function pushAllTags(
+  rootPath: string,
+  remote?: string | null
+): Promise<void> {
+  return await invoke("push_all_tags", { rootPath, remote });
+}
+
+export async function deleteRemoteTag(
+  rootPath: string,
+  name: string,
+  remote?: string | null
+): Promise<void> {
+  return await invoke("delete_remote_tag", { rootPath, name, remote });
+}
+
+export async function getFileHistory(
+  rootPath: string,
+  filePath: string,
+  limit = 50
+): Promise<FileHistoryItem[]> {
+  return await invoke<FileHistoryItem[]>("get_file_history", {
+    rootPath,
+    filePath,
+    limit,
+  });
+}
+
+export async function checkoutCommit(
+  rootPath: string,
+  oid: string
+): Promise<void> {
+  return await invoke("checkout_commit", { rootPath, oid });
+}
+
+export async function resetToCommit(
+  rootPath: string,
+  oid: string,
+  mode: "soft" | "mixed"
+): Promise<void> {
+  return await invoke("reset_to_commit", { rootPath, oid, mode });
+}
+

@@ -4,11 +4,11 @@ use tauri::{AppHandle, Manager};
 use tg_core::{
     clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
     AbortResult, AiService, AiSettings, BranchItem, BranchService, CliRunner, CommitDetails,
-    CommitService, CoreError, FetchResult, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
-    KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult, OperationLogEntry,
-    PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail, RemoteService, RunOptions,
-    SecretFilter, StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring,
-    ValidationResult,
+    CommitService, CoreError, FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend,
+    GitBackend, HeadInfo, KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult,
+    OperationLogEntry, PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail,
+    RemoteService, RunOptions, SecretFilter, StashApplyResult, StashItem, StashService,
+    SwitchBranchResult, SystemKeyring, TagItem, TagService, ValidationResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -641,6 +641,100 @@ fn show_stash_diff(root_path: String, index: usize) -> std::result::Result<Strin
     StashService::show_stash_diff(&runner, p, index).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_tags(root_path: String) -> std::result::Result<Vec<TagItem>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    TagService::list_tags(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_tag(
+    root_path: String,
+    name: String,
+    target_oid: Option<String>,
+    message: Option<String>,
+) -> std::result::Result<TagItem, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    TagService::create_tag(&runner, p, &name, target_oid.as_deref(), message.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_tag(root_path: String, name: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    TagService::delete_tag(&runner, p, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn push_tag(
+    root_path: String,
+    name: String,
+    remote: Option<String>,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    TagService::push_tag(&runner, p, &name, remote.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn push_all_tags(root_path: String, remote: Option<String>) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    TagService::push_all_tags(&runner, p, remote.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_remote_tag(
+    root_path: String,
+    name: String,
+    remote: Option<String>,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    TagService::delete_remote_tag(&runner, p, &name, remote.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_file_history(
+    root_path: String,
+    file_path: String,
+    limit: Option<usize>,
+) -> std::result::Result<Vec<FileHistoryItem>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    LogService::get_file_history(&runner, p, &file_path, limit.unwrap_or(50))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn checkout_commit(root_path: String, oid: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    CommitService::checkout_commit(&runner, p, &oid).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reset_to_commit(
+    root_path: String,
+    oid: String,
+    mode: String,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -697,7 +791,16 @@ pub fn run() {
             apply_stash,
             drop_stash,
             clear_stashes,
-            show_stash_diff
+            show_stash_diff,
+            list_tags,
+            create_tag,
+            delete_tag,
+            push_tag,
+            push_all_tags,
+            delete_remote_tag,
+            get_file_history,
+            checkout_commit,
+            reset_to_commit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

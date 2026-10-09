@@ -199,8 +199,8 @@ describe("App workspace and components", () => {
     fireEvent.click(submitBtn);
 
     // Verify repository is rendered
-    expect(await screen.findByText("my-repo")).toBeDefined();
-    expect(await screen.findByText("main")).toBeDefined();
+    expect((await screen.findAllByText("my-repo")).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText("main")).length).toBeGreaterThanOrEqual(1);
 
     // Verify files rendered in list
     expect(await screen.findByText("src/main.rs")).toBeDefined();
@@ -602,7 +602,7 @@ describe("App workspace and components", () => {
 
     await waitFor(() => {
       expect(host.initRepository).toHaveBeenCalledWith("/test/new-repo");
-      expect(screen.getByText("new-repo")).toBeDefined();
+      expect(screen.getAllByText("new-repo").length).toBeGreaterThanOrEqual(1);
     });
   });
 });

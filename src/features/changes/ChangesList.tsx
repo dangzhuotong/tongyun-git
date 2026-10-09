@@ -8,6 +8,7 @@ import {
   FileIcon,
   TreeIcon,
   ListIcon,
+  HistoryIcon,
 } from "../../components/icons";
 
 interface ChangesListProps {
@@ -17,6 +18,7 @@ interface ChangesListProps {
   onStageFiles: (paths: string[]) => Promise<void>;
   onUnstageFiles: (paths: string[]) => Promise<void>;
   onDiscardFiles: (paths: string[]) => void;
+  onOpenFileHistory?: (filePath: string) => void;
 }
 
 export function ChangesList({
@@ -26,6 +28,7 @@ export function ChangesList({
   onStageFiles,
   onUnstageFiles,
   onDiscardFiles,
+  onOpenFileHistory,
 }: ChangesListProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     return (localStorage.getItem("tongyun_view_mode") as ViewMode) || "flat";
@@ -229,6 +232,7 @@ export function ChangesList({
               onStage={(p) => onStageFiles([p])}
               onUnstage={(p) => onUnstageFiles([p])}
               onDiscard={(p) => onDiscardFiles([p])}
+              onOpenFileHistory={onOpenFileHistory}
             />
           </GroupSection>
         )}
@@ -254,6 +258,7 @@ export function ChangesList({
             onStage={(p) => onStageFiles([p])}
             onUnstage={(p) => onUnstageFiles([p])}
             onDiscard={(p) => onDiscardFiles([p])}
+            onOpenFileHistory={onOpenFileHistory}
           />
         </GroupSection>
 
@@ -278,6 +283,7 @@ export function ChangesList({
             onStage={(p) => onStageFiles([p])}
             onUnstage={(p) => onUnstageFiles([p])}
             onDiscard={(p) => onDiscardFiles([p])}
+            onOpenFileHistory={onOpenFileHistory}
           />
         </GroupSection>
 
@@ -302,6 +308,7 @@ export function ChangesList({
             onStage={(p) => onStageFiles([p])}
             onUnstage={(p) => onUnstageFiles([p])}
             onDiscard={(p) => onDiscardFiles([p])}
+            onOpenFileHistory={onOpenFileHistory}
           />
         </GroupSection>
       </div>
@@ -378,6 +385,7 @@ function GroupFileList({
   onStage,
   onUnstage,
   onDiscard,
+  onOpenFileHistory,
 }: {
   files: FileStatus[];
   staged: boolean;
@@ -389,6 +397,7 @@ function GroupFileList({
   onStage: (path: string) => void;
   onUnstage: (path: string) => void;
   onDiscard: (path: string) => void;
+  onOpenFileHistory?: (path: string) => void;
 }) {
   if (files.length === 0) {
     return (
@@ -412,6 +421,7 @@ function GroupFileList({
           onStage={onStage}
           onUnstage={onUnstage}
           onDiscard={onDiscard}
+          onOpenFileHistory={onOpenFileHistory}
           depth={0}
         />
       </div>
@@ -438,6 +448,7 @@ function GroupFileList({
             onStage={() => onStage(file.path)}
             onUnstage={() => onUnstage(file.path)}
             onDiscard={() => onDiscard(file.path)}
+            onOpenFileHistory={onOpenFileHistory}
           />
         );
       })}
@@ -455,6 +466,7 @@ function FileRowItem({
   onStage,
   onUnstage,
   onDiscard,
+  onOpenFileHistory,
   displayName,
   indent = 0,
 }: {
@@ -467,6 +479,7 @@ function FileRowItem({
   onStage: () => void;
   onUnstage: () => void;
   onDiscard: () => void;
+  onOpenFileHistory?: (path: string) => void;
   displayName?: string;
   indent?: number;
 }) {
@@ -513,6 +526,19 @@ function FileRowItem({
       <div className="flex items-center gap-1 shrink-0 ml-1">
         {/* Inline Action Buttons (Hover) */}
         <div className="hidden group-hover:flex items-center gap-0.5">
+          {onOpenFileHistory && (
+            <button
+              type="button"
+              title="查看文件提交历史"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFileHistory(file.path);
+              }}
+              className="p-0.5 px-1 rounded hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] cursor-pointer"
+            >
+              <HistoryIcon width={12} height={12} />
+            </button>
+          )}
           {staged ? (
             <button
               type="button"
@@ -677,6 +703,7 @@ function TreeFolderView({
   onStage,
   onUnstage,
   onDiscard,
+  onOpenFileHistory,
   depth,
 }: {
   nodes: TreeNode[];
@@ -688,6 +715,7 @@ function TreeFolderView({
   onStage: (path: string) => void;
   onUnstage: (path: string) => void;
   onDiscard: (path: string) => void;
+  onOpenFileHistory?: (path: string) => void;
   depth: number;
 }) {
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -727,6 +755,7 @@ function TreeFolderView({
                   onStage={onStage}
                   onUnstage={onUnstage}
                   onDiscard={onDiscard}
+                  onOpenFileHistory={onOpenFileHistory}
                   depth={depth + 1}
                 />
               )}
@@ -759,6 +788,7 @@ function TreeFolderView({
               onStage={() => onStage(node.fileStatus!.path)}
               onUnstage={() => onUnstage(node.fileStatus!.path)}
               onDiscard={() => onDiscard(node.fileStatus!.path)}
+              onOpenFileHistory={onOpenFileHistory}
               displayName={node.name}
               indent={depth}
             />

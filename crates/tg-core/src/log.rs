@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::backend::{ChangeKind, DiffHunk, DiffLine, FileDiff};
+use crate::cli::{CliRunner, RunOptions};
 use crate::error::{CoreError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -89,6 +90,16 @@ pub struct CommitDetails {
     pub commit_timestamp: i64,
     pub message: String,
     pub files: Vec<CommitFileChange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileHistoryItem {
+    pub oid: String,
+    pub short_oid: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub timestamp: i64,
+    pub summary: String,
 }
 
 pub struct LogService;
@@ -523,5 +534,59 @@ impl LogService {
             is_large: false,
             hunks,
         })
+    }
+
+    /// Retrieve commit history for a specific file (including tracking renames with --follow).
+    pub fn get_file_history(
+        runner: &CliRunner,
+        repo_path: &Path,
+        file_path: &str,
+        limit: usize,
+    ) -> Result<Vec<FileHistoryItem>> {
+        let trimmed_path = file_path.trim().replace('\\', "/");
+        if trimmed_path.is_empty() {
+            return Err(CoreError::LogError("文件路径不能为空".to_string()));
+        }
+
+        let limit_str = limit.max(1).to_string();
+        let format_arg = "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%at%x00%s";
+        let args = [
+            "log",
+            "-n",
+            &limit_str,
+            "--follow",
+            format_arg,
+            "--",
+            &trimmed_path,
+        ];
+
+        let out = runner.run(repo_path, &args, RunOptions::default())?;
+        if out.exit_code != Some(0) {
+            let combined = format!("{}\n{}", out.stdout.trim(), out.stderr.trim())
+                .trim()
+                .to_string();
+            return Err(CoreError::LogError(format!(
+                "获取文件历史失败: {}",
+                combined
+            )));
+        }
+
+        let mut items = Vec::new();
+        for line in out.stdout.lines() {
+            let parts: Vec<&str> = line.split('\0').collect();
+            if parts.len() >= 6 {
+                let timestamp = parts[4].parse::<i64>().unwrap_or(0);
+                items.push(FileHistoryItem {
+                    oid: parts[0].to_string(),
+                    short_oid: parts[1].to_string(),
+                    author_name: parts[2].to_string(),
+                    author_email: parts[3].to_string(),
+                    timestamp,
+                    summary: parts[5].to_string(),
+                });
+            }
+        }
+
+        Ok(items)
     }
 }

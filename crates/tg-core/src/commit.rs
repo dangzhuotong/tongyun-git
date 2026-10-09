@@ -237,4 +237,68 @@ impl CommitService {
             summary,
         })
     }
+
+    /// Checkout a specific commit in detached HEAD mode.
+    pub fn checkout_commit(runner: &CliRunner, repo_root: &Path, oid: &str) -> Result<()> {
+        let trimmed_oid = oid.trim();
+        if trimmed_oid.is_empty() {
+            return Err(CoreError::CommitError("提交标识不能为空".to_string()));
+        }
+
+        let out = runner.run(repo_root, &["checkout", trimmed_oid], RunOptions::default())?;
+        if out.exit_code != Some(0) {
+            let combined_err = format!("{}\n{}", out.stdout.trim(), out.stderr.trim())
+                .trim()
+                .to_string();
+            return Err(CoreError::Cli {
+                exit_code: out.exit_code,
+                stderr: combined_err,
+            });
+        }
+        Ok(())
+    }
+
+    /// Reset current branch to a specific commit. Prohibits destructive "hard" reset (only "soft" or "mixed").
+    pub fn reset_to_commit(
+        runner: &CliRunner,
+        repo_root: &Path,
+        oid: &str,
+        mode: &str,
+    ) -> Result<()> {
+        let trimmed_oid = oid.trim();
+        if trimmed_oid.is_empty() {
+            return Err(CoreError::ResetError("提交标识不能为空".to_string()));
+        }
+
+        let flag = match mode.to_lowercase().as_str() {
+            "soft" => "--soft",
+            "mixed" => "--mixed",
+            "hard" => {
+                return Err(CoreError::ResetError(
+                    "安全保护策略：应用禁止执行破坏性的硬重置 (hard reset)。如需丢弃改动请使用带安全快照的丢弃功能。".to_string(),
+                ));
+            }
+            _ => {
+                return Err(CoreError::ResetError(
+                    "不支持的重置模式，仅支持 'soft' 或 'mixed'".to_string(),
+                ));
+            }
+        };
+
+        let out = runner.run(
+            repo_root,
+            &["reset", flag, trimmed_oid],
+            RunOptions::default(),
+        )?;
+        if out.exit_code != Some(0) {
+            let combined_err = format!("{}\n{}", out.stdout.trim(), out.stderr.trim())
+                .trim()
+                .to_string();
+            return Err(CoreError::Cli {
+                exit_code: out.exit_code,
+                stderr: combined_err,
+            });
+        }
+        Ok(())
+    }
 }

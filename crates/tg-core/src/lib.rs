@@ -10,6 +10,7 @@ pub mod patch;
 pub mod redact;
 pub mod remote;
 pub mod stash;
+pub mod tag;
 
 #[cfg(windows)]
 mod win_job;
@@ -33,8 +34,8 @@ pub use discard::{
 };
 pub use error::{CoreError, Result};
 pub use log::{
-    CommitDetails, CommitFileChange, GraphEdge, LogCommit, LogQuery, LogResult, LogService,
-    RefBadge, RefKind,
+    CommitDetails, CommitFileChange, FileHistoryItem, GraphEdge, LogCommit, LogQuery, LogResult,
+    LogService, RefBadge, RefKind,
 };
 pub use patch::{apply_patch_to_index, build_selected_patch};
 pub use redact::redact_url_credentials;
@@ -43,6 +44,7 @@ pub use remote::{
     PushCommit, PushInspection, PushResult, RemoteDetail, RemoteService,
 };
 pub use stash::{StashApplyResult, StashItem, StashService};
+pub use tag::{TagItem, TagService};
 
 /// Thin wrapper preserving backwards compatibility for callers of `git_version`.
 pub fn git_version(git_path: &str) -> std::result::Result<String, String> {

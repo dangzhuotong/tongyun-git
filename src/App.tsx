@@ -39,6 +39,12 @@ import { OperationLogModal } from "./features/log/OperationLogModal";
 import { CommandPalette, CommandItem } from "./features/command/CommandPalette";
 import { StashModal } from "./features/stash/StashModal";
 import { CreateStashModal } from "./features/stash/CreateStashModal";
+import { TagModal } from "./features/tag/TagModal";
+import { CreateTagModal } from "./features/tag/CreateTagModal";
+import { FileHistoryModal } from "./features/history/FileHistoryModal";
+import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
+import { AboutModal } from "./features/help/AboutModal";
+import { StatusBar } from "./features/statusbar/StatusBar";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
@@ -98,6 +104,19 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
+
+  // Tag Management
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [createTagModalOpen, setCreateTagModalOpen] = useState(false);
+  const [createTagTargetOid, setCreateTagTargetOid] = useState<string | null>(null);
+
+  // File History
+  const [fileHistoryModalOpen, setFileHistoryModalOpen] = useState(false);
+  const [historyFilePath, setHistoryFilePath] = useState("");
+
+  // Shortcuts & About
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [aboutModalOpen, setAboutModalOpen] = useState(false);
 
   // Discard & Undo state (R-17)
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
@@ -478,6 +497,16 @@ export default function App() {
         setActiveView("log");
         return;
       }
+
+      // Shortcuts Help: F1 or ?
+      if (e.key === "F1" || (e.key === "?" && !e.ctrlKey && !e.metaKey)) {
+        const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (targetTag !== "input" && targetTag !== "textarea") {
+          e.preventDefault();
+          setShortcutsModalOpen((prev) => !prev);
+          return;
+        }
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -551,6 +580,17 @@ export default function App() {
           setSettingsModalVisible(true);
         },
       },
+      {
+        id: "keyboard-shortcuts",
+        title: "查看键盘快捷键帮助 (Shortcuts Help)",
+        shortcut: "? / F1",
+        action: () => setShortcutsModalOpen(true),
+      },
+      {
+        id: "about-app",
+        title: "关于 橦云 Git (About)",
+        action: () => setAboutModalOpen(true),
+      },
     ];
 
     if (currentRepo) {
@@ -587,6 +627,21 @@ export default function App() {
           action: () => {
             setCreateBranchStartPoint(null);
             setCreateBranchModalOpen(true);
+          },
+        },
+        {
+          id: "git-tags",
+          title: "管理 Git 标签 (Manage Tags)",
+          description: "查看标签列表、推送标签至远程或删除标签",
+          action: () => setTagModalOpen(true),
+        },
+        {
+          id: "git-create-tag",
+          title: "新建 Git 标签 (Create Tag)",
+          description: "在当前 HEAD 创建轻量或附注标签",
+          action: () => {
+            setCreateTagTargetOid(null);
+            setCreateTagModalOpen(true);
           },
         },
         {
@@ -858,6 +913,9 @@ export default function App() {
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onOpenStashModal={() => setStashModalOpen(true)}
         onCreateStashClick={() => setCreateStashModalOpen(true)}
+        onOpenTagModal={() => setTagModalOpen(true)}
+        onOpenShortcuts={() => setShortcutsModalOpen(true)}
+        onOpenAbout={() => setAboutModalOpen(true)}
       />
 
       {/* Conflict / In-Progress Action Banner (R-11, R-17) */}
@@ -923,6 +981,10 @@ export default function App() {
                     onStageFiles={handleStageFiles}
                     onUnstageFiles={handleUnstageFiles}
                     onDiscardFiles={handleOpenDiscardModal}
+                    onOpenFileHistory={(p) => {
+                      setHistoryFilePath(p);
+                      setFileHistoryModalOpen(true);
+                    }}
                   />
                 </div>
 
@@ -969,26 +1031,37 @@ export default function App() {
                   setCreateBranchStartPoint(oid);
                   setCreateBranchModalOpen(true);
                 }}
+                onOpenCreateTag={(oid) => {
+                  setCreateTagTargetOid(oid);
+                  setCreateTagModalOpen(true);
+                }}
+                onOpenFileHistory={(filePath) => {
+                  setHistoryFilePath(filePath);
+                  setFileHistoryModalOpen(true);
+                }}
+                onRefreshRepo={() => refreshStatus(currentRepo.root_path)}
               />
             </div>
           )
         ) : (
           /* Empty Workspace State */
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[var(--color-bg)]">
-            <div className="max-w-md w-full p-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-4">
-              <div className="w-12 h-12 mx-auto rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)] flex items-center justify-center">
-                <FolderIcon width={24} height={24} />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-[var(--color-text)]">
-                  没有打开的仓库
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[var(--color-bg)] overflow-y-auto">
+            <div className="max-w-xl w-full p-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-md space-y-6">
+              <div className="space-y-2">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20 flex items-center justify-center shadow-xs">
+                  <FolderIcon width={28} height={28} />
+                </div>
+                <h2 className="text-lg font-bold text-[var(--color-text)]">
+                  欢迎使用 橦云 Git
                 </h2>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  可将本地 Git 仓库文件夹直接拖拽放进窗口，或点击下方按钮选择。
+                <span className="sr-only">没有打开的仓库</span>
+                <p className="text-xs text-[var(--color-text-muted)] max-w-md mx-auto">
+                  对标 IntelliJ IDEA 的独立桌面 Git 客户端 · 深度键盘流与本地 AI 助手
                 </p>
               </div>
 
-              <div className="flex items-center justify-center gap-3 pt-1">
+              {/* Quick Actions */}
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                 <button
                   type="button"
                   disabled={!gitAvailable}
@@ -996,10 +1069,24 @@ export default function App() {
                     setOpenModalTab("open");
                     setOpenModalVisible(true);
                   }}
-                  className="px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
                 >
                   <FolderIcon width={14} height={14} />
                   <span>打开本地仓库</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!gitAvailable}
+                  onClick={() => {
+                    setOpenModalTab("clone");
+                    setOpenModalVisible(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>从 Git 克隆仓库</span>
                 </button>
                 <button
                   type="button"
@@ -1010,29 +1097,88 @@ export default function App() {
                       handleOpenRepo(selected);
                     }
                   }}
-                  className="px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
                 >
-                  直接选文件夹
+                  浏览文件夹...
                 </button>
+              </div>
+
+              {/* Recent Repositories */}
+              {recentRepos.length > 0 && (
+                <div className="pt-4 border-t border-[var(--color-border)] text-left space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-semibold text-[var(--color-text-muted)]">
+                      最近打开的仓库
+                    </span>
+                    <span className="text-[11px] text-[var(--color-text-muted)] font-mono">
+                      {recentRepos.length} 个
+                    </span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] divide-y divide-[var(--color-border)]/50">
+                    {recentRepos.map((repoPath) => {
+                      const name = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoPath;
+                      return (
+                        <div
+                          key={repoPath}
+                          onClick={() => handleOpenRepo(repoPath)}
+                          className="px-3 py-2 flex items-center justify-between hover:bg-[var(--color-surface)] cursor-pointer transition-colors group"
+                        >
+                          <div className="min-w-0 flex items-center gap-2">
+                            <FolderIcon width={13} height={13} className="text-[var(--color-accent)] shrink-0" />
+                            <span className="text-xs font-medium text-[var(--color-text)] shrink-0">
+                              {name}
+                            </span>
+                            <span className="text-[11px] font-mono text-[var(--color-text-muted)] truncate max-w-[280px]">
+                              {repoPath}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            title="从最近列表移除"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeRecentRepo(repoPath);
+                            }}
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-opacity cursor-pointer"
+                          >
+                            <CloseIcon width={12} height={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Keyboard shortcuts hints footer */}
+              <div className="pt-2 text-[11px] text-[var(--color-text-muted)] flex items-center justify-center gap-3">
+                <span>💡 提示：按 <kbd className="px-1.5 py-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono text-[10px]">Ctrl+Shift+P</kbd> 打开命令面板</span>
+                <span>·</span>
                 <button
                   type="button"
-                  disabled={!gitAvailable}
-                  onClick={() => {
-                    setOpenModalTab("clone");
-                    setOpenModalVisible(true);
-                  }}
-                  className="px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  onClick={() => setShortcutsModalOpen(true)}
+                  className="text-[var(--color-accent)] hover:underline cursor-pointer"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>从 Git 克隆</span>
+                  按 ? 查看快捷键
                 </button>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Bottom Status Bar */}
+      <StatusBar
+        currentRepo={currentRepo}
+        isRefreshing={isRefreshing}
+        isPulling={isPulling}
+        gitVersion={appInfo?.git_version}
+        onOpenBranchModal={() => setBranchModalOpen(true)}
+        onOpenTagModal={() => setTagModalOpen(true)}
+        onOpenLogModal={() => setLogModalOpen(true)}
+        onOpenShortcuts={() => setShortcutsModalOpen(true)}
+        onOpenAbout={() => setAboutModalOpen(true)}
+      />
 
       {/* Discard Confirmation Modal (R-17) */}
       <DiscardConfirmModal
@@ -1166,8 +1312,49 @@ export default function App() {
             rootPath={currentRepo.root_path}
             onSuccess={() => refreshStatus(currentRepo.root_path)}
           />
+          <TagModal
+            isOpen={tagModalOpen}
+            onClose={() => setTagModalOpen(false)}
+            rootPath={currentRepo.root_path}
+            onCreateTagClick={(oid?: string | null) => {
+              setCreateTagTargetOid(oid || null);
+              setCreateTagModalOpen(true);
+            }}
+          />
+          <CreateTagModal
+            isOpen={createTagModalOpen}
+            onClose={() => {
+              setCreateTagModalOpen(false);
+              setCreateTagTargetOid(null);
+            }}
+            rootPath={currentRepo.root_path}
+            targetOid={createTagTargetOid || undefined}
+            onSuccess={() => {
+              refreshStatus(currentRepo.root_path);
+            }}
+          />
+          <FileHistoryModal
+            isOpen={fileHistoryModalOpen}
+            onClose={() => {
+              setFileHistoryModalOpen(false);
+              setHistoryFilePath("");
+            }}
+            rootPath={currentRepo.root_path}
+            filePath={historyFilePath}
+          />
         </>
       )}
+
+      {/* Help & About Modals */}
+      <ShortcutsHelpModal
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
+      />
+      <AboutModal
+        isOpen={aboutModalOpen}
+        onClose={() => setAboutModalOpen(false)}
+        appInfo={appInfo}
+      />
 
       {/* Command Palette (R-16) */}
       <CommandPalette

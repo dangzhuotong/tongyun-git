@@ -3,6 +3,8 @@ import {
   getCommitLog,
   getCommitDetails,
   getCommitFileDiff,
+  checkoutCommit,
+  resetToCommit,
   type LogCommit,
   type CommitDetails,
   type FileDiff,
@@ -15,14 +17,24 @@ import {
   CloseIcon,
   AlertCircleIcon,
   FileIcon,
+  HistoryIcon,
 } from "../../components/icons";
 
 interface LogViewProps {
   rootPath: string;
   onOpenCreateBranch: (oid: string) => void;
+  onOpenCreateTag?: (oid: string) => void;
+  onOpenFileHistory?: (filePath: string) => void;
+  onRefreshRepo?: () => void;
 }
 
-export function LogView({ rootPath, onOpenCreateBranch }: LogViewProps) {
+export function LogView({
+  rootPath,
+  onOpenCreateBranch,
+  onOpenCreateTag,
+  onOpenFileHistory,
+  onRefreshRepo,
+}: LogViewProps) {
   // Query state
   const [allBranches, setAllBranches] = useState(true);
   const [filterText, setFilterText] = useState("");
@@ -447,38 +459,55 @@ export function LogView({ rootPath, onOpenCreateBranch }: LogViewProps) {
                   改动文件 ({details.files.length})
                 </div>
                 {details.files.map((file) => (
-                  <button
+                  <div
                     key={file.path}
-                    type="button"
-                    onClick={() => handleSelectFile(file.path)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left font-mono text-[11px] transition-colors cursor-pointer ${
+                    className={`group w-full flex items-center justify-between px-2 py-1 rounded font-mono text-[11px] transition-colors ${
                       selectedFile === file.path
                         ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)] font-semibold"
                         : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 truncate">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectFile(file.path)}
+                      className="flex-1 flex items-center gap-1.5 truncate text-left cursor-pointer"
+                    >
                       <FileIcon width={12} height={12} className="shrink-0 text-[var(--color-text-muted)]" />
                       <span className="truncate">{file.path}</span>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold ${
-                        file.kind === "Added"
-                          ? "text-[var(--color-status-added)]"
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {onOpenFileHistory && (
+                        <button
+                          type="button"
+                          title="查看文件提交历史"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenFileHistory(file.path);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-opacity cursor-pointer"
+                        >
+                          <HistoryIcon width={11} height={11} />
+                        </button>
+                      )}
+                      <span
+                        className={`text-[10px] font-bold ${
+                          file.kind === "Added"
+                            ? "text-[var(--color-status-added)]"
+                            : file.kind === "Deleted"
+                            ? "text-[var(--color-danger)]"
+                            : "text-[var(--color-status-modified)]"
+                        }`}
+                      >
+                        {file.kind === "Added"
+                          ? "A"
                           : file.kind === "Deleted"
-                          ? "text-[var(--color-danger)]"
-                          : "text-[var(--color-status-modified)]"
-                      }`}
-                    >
-                      {file.kind === "Added"
-                        ? "A"
-                        : file.kind === "Deleted"
-                        ? "D"
-                        : file.kind === "Renamed"
-                        ? "R"
-                        : "M"}
-                    </span>
-                  </button>
+                          ? "D"
+                          : file.kind === "Renamed"
+                          ? "R"
+                          : "M"}
+                      </span>
+                    </div>
+                  </div>
                 ))}
               </div>
 
@@ -509,7 +538,7 @@ export function LogView({ rootPath, onOpenCreateBranch }: LogViewProps) {
       {contextMenu && (
         <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-50 w-44 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg py-1 text-xs select-none"
+          className="fixed z-50 w-56 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg py-1 text-xs select-none"
         >
           <button
             type="button"
@@ -519,7 +548,7 @@ export function LogView({ rootPath, onOpenCreateBranch }: LogViewProps) {
             }}
             className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
           >
-            复制哈希 (SHA)
+            复制哈希 ({contextMenu.commit.short_oid})
           </button>
           <button
             type="button"
@@ -530,6 +559,67 @@ export function LogView({ rootPath, onOpenCreateBranch }: LogViewProps) {
             className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
           >
             从这里新建分支...
+          </button>
+          {onOpenCreateTag && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenCreateTag(contextMenu.commit.oid);
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
+            >
+              从这里新建标签...
+            </button>
+          )}
+          <div className="h-px bg-[var(--color-border)] my-1" />
+          <button
+            type="button"
+            onClick={async () => {
+              const oid = contextMenu.commit.oid;
+              setContextMenu(null);
+              try {
+                await checkoutCommit(rootPath, oid);
+                onRefreshRepo?.();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              }
+            }}
+            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
+          >
+            检出此提交 (分离 HEAD)
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const oid = contextMenu.commit.oid;
+              setContextMenu(null);
+              try {
+                await resetToCommit(rootPath, oid, "soft");
+                onRefreshRepo?.();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              }
+            }}
+            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
+          >
+            重置当前分支到这里 (Soft 保留暂存区)
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const oid = contextMenu.commit.oid;
+              setContextMenu(null);
+              try {
+                await resetToCommit(rootPath, oid, "mixed");
+                onRefreshRepo?.();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              }
+            }}
+            className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
+          >
+            重置当前分支到这里 (Mixed 移出暂存区)
           </button>
         </div>
       )}

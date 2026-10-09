@@ -10,7 +10,8 @@ import {
 interface DiffViewerProps {
   diff: FileDiff | null;
   loading: boolean;
-  error: string | null;
+  error?: string | null;
+  readOnly?: boolean;
   onStageHunkLines?: (
     hunkIndex: number,
     lineIndices: number[],
@@ -21,7 +22,8 @@ interface DiffViewerProps {
 export function DiffViewer({
   diff,
   loading,
-  error,
+  error = null,
+  readOnly = false,
   onStageHunkLines,
 }: DiffViewerProps) {
   const [layout, setLayout] = useState<DiffLayout>(() => {
@@ -52,7 +54,7 @@ export function DiffViewer({
   // Keyboard shortcut: 'a' selects all change lines in active/first hunk, ' ' stages/unstages selection
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (!diff || !onStageHunkLines || diff.is_binary) return;
+      if (!diff || !onStageHunkLines || readOnly || diff.is_binary) return;
       const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (targetTag === "input" || targetTag === "textarea") return;
 
@@ -87,7 +89,7 @@ export function DiffViewer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [diff, activeHunkIndex, selectedLineIndices, onStageHunkLines]);
+  }, [diff, activeHunkIndex, selectedLineIndices, onStageHunkLines, readOnly]);
 
   if (loading) {
     return (
@@ -275,11 +277,15 @@ export function DiffViewer({
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
             onLineClick={handleLineClick}
-            onStageHunk={(hunkIdx) => {
-              if (onStageHunkLines) {
-                onStageHunkLines(hunkIdx, [], diff.staged);
-              }
-            }}
+            onStageHunk={
+              readOnly
+                ? undefined
+                : (hunkIdx) => {
+                    if (onStageHunkLines) {
+                      onStageHunkLines(hunkIdx, [], diff.staged);
+                    }
+                  }
+            }
             staged={diff.staged}
           />
         ) : (
@@ -289,11 +295,15 @@ export function DiffViewer({
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
             onLineClick={handleLineClick}
-            onStageHunk={(hunkIdx) => {
-              if (onStageHunkLines) {
-                onStageHunkLines(hunkIdx, [], diff.staged);
-              }
-            }}
+            onStageHunk={
+              readOnly
+                ? undefined
+                : (hunkIdx) => {
+                    if (onStageHunkLines) {
+                      onStageHunkLines(hunkIdx, [], diff.staged);
+                    }
+                  }
+            }
             staged={diff.staged}
           />
         )}
@@ -316,7 +326,7 @@ function UnifiedDiffView({
   activeHunkIndex: number | null;
   selectedLineIndices: Set<number>;
   onLineClick: (hunkIdx: number, lineIdx: number, e: React.MouseEvent) => void;
-  onStageHunk: (hunkIdx: number) => void;
+  onStageHunk?: (hunkIdx: number) => void;
   staged: boolean;
 }) {
   return (
@@ -326,13 +336,15 @@ function UnifiedDiffView({
           {/* Hunk Header with Quick Hunk Stage Button */}
           <div className="px-3 py-1 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
             <span>{hunk.header}</span>
-            <button
-              type="button"
-              onClick={() => onStageHunk(hunkIdx)}
-              className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
-            >
-              {staged ? "取消暂存此块" : "暂存此块 (a)"}
-            </button>
+            {onStageHunk && (
+              <button
+                type="button"
+                onClick={() => onStageHunk(hunkIdx)}
+                className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
+              >
+                {staged ? "取消暂存此块" : "暂存此块 (a)"}
+              </button>
+            )}
           </div>
 
           {/* Hunk Lines */}
@@ -414,7 +426,7 @@ function SplitDiffView({
   activeHunkIndex: number | null;
   selectedLineIndices: Set<number>;
   onLineClick: (hunkIdx: number, lineIdx: number, e: React.MouseEvent) => void;
-  onStageHunk: (hunkIdx: number) => void;
+  onStageHunk?: (hunkIdx: number) => void;
   staged: boolean;
 }) {
   return (
@@ -427,13 +439,15 @@ function SplitDiffView({
             {/* Hunk Header */}
             <div className="px-3 py-1 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
               <span>{hunk.header}</span>
-              <button
-                type="button"
-                onClick={() => onStageHunk(hunkIdx)}
-                className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
-              >
-                {staged ? "取消暂存此块" : "暂存此块 (a)"}
-              </button>
+              {onStageHunk && (
+                <button
+                  type="button"
+                  onClick={() => onStageHunk(hunkIdx)}
+                  className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
+                >
+                  {staged ? "取消暂存此块" : "暂存此块 (a)"}
+                </button>
+              )}
             </div>
 
             {/* Split Rows */}

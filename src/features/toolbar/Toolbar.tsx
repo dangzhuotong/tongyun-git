@@ -9,6 +9,9 @@ import {
   MoonIcon,
   ChevronDownIcon,
   ArchiveIcon,
+  TagIcon,
+  KeyboardIcon,
+  InfoIcon,
 } from "../../components/icons";
 
 interface ToolbarProps {
@@ -32,6 +35,9 @@ interface ToolbarProps {
   onOpenCommandPalette?: () => void;
   onOpenStashModal?: () => void;
   onCreateStashClick?: () => void;
+  onOpenTagModal?: () => void;
+  onOpenShortcuts?: () => void;
+  onOpenAbout?: () => void;
 }
 
 export function Toolbar({
@@ -55,6 +61,9 @@ export function Toolbar({
   onOpenCommandPalette,
   onOpenStashModal,
   onCreateStashClick,
+  onOpenTagModal,
+  onOpenShortcuts,
+  onOpenAbout,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -261,6 +270,19 @@ export function Toolbar({
           </div>
         )}
 
+        {/* Tag Button */}
+        {currentRepo && onOpenTagModal && (
+          <button
+            type="button"
+            title="标签管理 (Git Tags)"
+            onClick={onOpenTagModal}
+            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] transition-colors border border-[var(--color-border)] cursor-pointer"
+          >
+            <TagIcon width={13} height={13} className="text-amber-500" />
+            <span className="hidden sm:inline font-medium text-[11px]">标签</span>
+          </button>
+        )}
+
         {/* Refresh Button */}
         <button
           type="button"
@@ -314,6 +336,18 @@ export function Toolbar({
           </button>
         )}
 
+        {/* Keyboard Shortcuts Button */}
+        {onOpenShortcuts && (
+          <button
+            type="button"
+            title="键盘快捷键帮助 (? 或 F1)"
+            onClick={onOpenShortcuts}
+            className="p-1.5 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <KeyboardIcon width={14} height={14} />
+          </button>
+        )}
+
         {/* Theme Toggle Button */}
         <button
           type="button"
@@ -337,6 +371,18 @@ export function Toolbar({
         >
           <SettingsIcon width={14} height={14} />
         </button>
+
+        {/* About App Button */}
+        {onOpenAbout && (
+          <button
+            type="button"
+            title="关于 橦云 Git"
+            onClick={onOpenAbout}
+            className="p-1.5 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <InfoIcon width={14} height={14} />
+          </button>
+        )}
       </div>
     </header>
   );

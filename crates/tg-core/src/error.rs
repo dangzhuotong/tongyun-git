@@ -53,6 +53,12 @@ pub enum CoreError {
 
     #[error("log error: {0}")]
     LogError(String),
+
+    #[error("tag error: {0}")]
+    TagError(String),
+
+    #[error("reset error: {0}")]
+    ResetError(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
