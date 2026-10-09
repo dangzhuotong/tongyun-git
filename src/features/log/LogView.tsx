@@ -18,6 +18,7 @@ import {
   AlertCircleIcon,
   FileIcon,
   HistoryIcon,
+  BranchIcon,
 } from "../../components/icons";
 
 interface LogViewProps {
@@ -25,6 +26,7 @@ interface LogViewProps {
   onOpenCreateBranch: (oid: string) => void;
   onOpenCreateTag?: (oid: string) => void;
   onOpenFileHistory?: (filePath: string) => void;
+  onOpenInteractiveRebase?: (baseOid: string, baseSummary?: string) => void;
   onRefreshRepo?: () => void;
 }
 
@@ -33,6 +35,7 @@ export function LogView({
   onOpenCreateBranch,
   onOpenCreateTag,
   onOpenFileHistory,
+  onOpenInteractiveRebase,
   onRefreshRepo,
 }: LogViewProps) {
   // Query state
@@ -434,9 +437,29 @@ export function LogView({
               {/* Commit Meta Header */}
               <div className="p-3 border-b border-[var(--color-border)] space-y-2 shrink-0 bg-[var(--color-bg)]/30">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-[var(--color-text)]">
-                    提交 {details.short_oid}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-[var(--color-text)]">
+                      提交 {details.short_oid}
+                    </span>
+                    {onOpenInteractiveRebase && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const baseOid =
+                            details.parents.length > 0
+                              ? details.parents[0]
+                              : details.oid;
+                          const summary = details.message.split("\n")[0];
+                          onOpenInteractiveRebase(baseOid, summary);
+                        }}
+                        className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-raised)] hover:bg-[var(--color-bg)] text-[10px] text-[var(--color-text)] flex items-center gap-1 cursor-pointer transition-colors"
+                        title="从此提交开始交互式变基"
+                      >
+                        <BranchIcon width={11} height={11} className="text-[var(--color-accent)]" />
+                        <span>交互式变基</span>
+                      </button>
+                    )}
+                  </div>
                   <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
                     {formatFullDate(details.author_timestamp)}
                   </span>
@@ -570,6 +593,23 @@ export function LogView({
               className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)]"
             >
               从这里新建标签...
+            </button>
+          )}
+          {onOpenInteractiveRebase && (
+            <button
+              type="button"
+              onClick={() => {
+                const baseOid =
+                  contextMenu.commit.parents.length > 0
+                    ? contextMenu.commit.parents[0]
+                    : contextMenu.commit.oid;
+                onOpenInteractiveRebase(baseOid, contextMenu.commit.summary);
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] cursor-pointer text-[var(--color-text)] flex items-center gap-1.5"
+            >
+              <BranchIcon width={13} height={13} className="text-[var(--color-accent)]" />
+              <span>从此处交互式变基 (Interactive Rebase)...</span>
             </button>
           )}
           <div className="h-px bg-[var(--color-border)] my-1" />

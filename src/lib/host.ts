@@ -801,4 +801,47 @@ export async function continueMergeOrRebase(rootPath: string): Promise<void> {
   return await invoke("continue_merge_or_rebase", { rootPath });
 }
 
+export type RebaseAction = "pick" | "reword" | "squash" | "fixup" | "drop";
+
+export interface RebaseItem {
+  oid: string;
+  short_oid: string;
+  summary: string;
+  author_name: string;
+  action: RebaseAction;
+  new_message?: string | null;
+}
+
+export interface RebasePlan {
+  base_oid: string;
+  items: RebaseItem[];
+}
+
+export interface RebaseResult {
+  success: boolean;
+  has_conflict: boolean;
+  message: string;
+}
+
+export async function getRebaseCommits(
+  rootPath: string,
+  baseOid: string
+): Promise<RebaseItem[]> {
+  return await invoke<RebaseItem[]>("get_rebase_commits", {
+    rootPath,
+    baseOid,
+  });
+}
+
+export async function executeInteractiveRebase(
+  rootPath: string,
+  plan: RebasePlan
+): Promise<RebaseResult> {
+  return await invoke<RebaseResult>("execute_interactive_rebase", {
+    rootPath,
+    plan,
+  });
+}
+
+
 

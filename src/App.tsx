@@ -45,6 +45,7 @@ import { FileHistoryModal } from "./features/history/FileHistoryModal";
 import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
 import { AboutModal } from "./features/help/AboutModal";
 import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
+import { InteractiveRebaseModal } from "./features/rebase/InteractiveRebaseModal";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
@@ -138,6 +139,20 @@ export default function App() {
     setConflictModalTargetFile(filePath || null);
     setConflictModalOpen(true);
   }, []);
+
+  // Interactive Rebase (v2 Phase 2)
+  const [rebaseModalOpen, setRebaseModalOpen] = useState(false);
+  const [rebaseBaseOid, setRebaseBaseOid] = useState<string>("");
+  const [rebaseBaseSummary, setRebaseBaseSummary] = useState<string | undefined>(undefined);
+
+  const handleOpenInteractiveRebase = useCallback(
+    (baseOid: string, baseSummary?: string) => {
+      setRebaseBaseOid(baseOid);
+      setRebaseBaseSummary(baseSummary);
+      setRebaseModalOpen(true);
+    },
+    []
+  );
 
   // 10-second undo countdown timer (R-17)
   const hasUndoToast = Boolean(undoToast);
@@ -1057,6 +1072,7 @@ export default function App() {
                   setHistoryFilePath(filePath);
                   setFileHistoryModalOpen(true);
                 }}
+                onOpenInteractiveRebase={handleOpenInteractiveRebase}
                 onRefreshRepo={() => refreshStatus(currentRepo.root_path)}
               />
             </div>
@@ -1369,6 +1385,22 @@ export default function App() {
             rootPath={currentRepo.root_path}
             initialFilePath={conflictModalTargetFile}
             onConflictsResolved={() => {
+              refreshStatus(currentRepo.root_path);
+              setSelectedTarget(null);
+              setDiff(null);
+            }}
+          />
+          <InteractiveRebaseModal
+            isOpen={rebaseModalOpen}
+            onClose={() => {
+              setRebaseModalOpen(false);
+              setRebaseBaseOid("");
+              setRebaseBaseSummary(undefined);
+            }}
+            rootPath={currentRepo.root_path}
+            baseOid={rebaseBaseOid}
+            baseSummary={rebaseBaseSummary}
+            onRebaseSuccess={() => {
               refreshStatus(currentRepo.root_path);
               setSelectedTarget(null);
               setDiff(null);

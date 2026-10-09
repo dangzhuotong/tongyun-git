@@ -8,6 +8,7 @@ pub mod discard;
 pub mod error;
 pub mod log;
 pub mod patch;
+pub mod rebase;
 pub mod redact;
 pub mod remote;
 pub mod stash;
@@ -40,6 +41,7 @@ pub use log::{
     LogService, RefBadge, RefKind,
 };
 pub use patch::{apply_patch_to_index, build_selected_patch};
+pub use rebase::{RebaseAction, RebaseItem, RebasePlan, RebaseResult, RebaseService};
 pub use redact::redact_url_credentials;
 pub use remote::{
     AbortResult, CloneResult, FetchResult, MultiPushItemResult, PullResult, PullStrategy,
