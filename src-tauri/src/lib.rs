@@ -7,7 +7,8 @@ use tg_core::{
     CommitService, CoreError, FetchResult, FileDiff, FileStatus, Git2Backend, GitBackend, HeadInfo,
     KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult, OperationLogEntry,
     PullResult, PullStrategy, PushInspection, PushResult, RemoteDetail, RemoteService, RunOptions,
-    SecretFilter, SwitchBranchResult, SystemKeyring, ValidationResult,
+    SecretFilter, StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring,
+    ValidationResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -583,6 +584,63 @@ fn push_multiple_remotes(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_stashes(root_path: String) -> std::result::Result<Vec<StashItem>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::list_stashes(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_stash(
+    root_path: String,
+    message: Option<String>,
+    include_untracked: bool,
+) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::create_stash(&runner, p, message.as_deref(), include_untracked)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn apply_stash(
+    root_path: String,
+    index: usize,
+    pop: bool,
+) -> std::result::Result<StashApplyResult, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::apply_stash(&runner, p, index, pop).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn drop_stash(root_path: String, index: usize) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::drop_stash(&runner, p, index).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_stashes(root_path: String) -> std::result::Result<(), String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::clear_stashes(&runner, p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn show_stash_diff(root_path: String, index: usize) -> std::result::Result<String, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let runner = CliRunner::new("git");
+    StashService::show_stash_diff(&runner, p, index).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -633,7 +691,13 @@ pub fn run() {
             init_repository,
             clone_repository,
             list_remotes,
-            push_multiple_remotes
+            push_multiple_remotes,
+            list_stashes,
+            create_stash,
+            apply_stash,
+            drop_stash,
+            clear_stashes,
+            show_stash_diff
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

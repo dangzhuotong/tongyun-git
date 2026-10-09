@@ -9,6 +9,7 @@ pub mod log;
 pub mod patch;
 pub mod redact;
 pub mod remote;
+pub mod stash;
 
 #[cfg(windows)]
 mod win_job;
@@ -41,6 +42,7 @@ pub use remote::{
     AbortResult, CloneResult, FetchResult, MultiPushItemResult, PullResult, PullStrategy,
     PushCommit, PushInspection, PushResult, RemoteDetail, RemoteService,
 };
+pub use stash::{StashApplyResult, StashItem, StashService};
 
 /// Thin wrapper preserving backwards compatibility for callers of `git_version`.
 pub fn git_version(git_path: &str) -> std::result::Result<String, String> {

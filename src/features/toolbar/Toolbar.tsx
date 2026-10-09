@@ -8,6 +8,7 @@ import {
   SunIcon,
   MoonIcon,
   ChevronDownIcon,
+  ArchiveIcon,
 } from "../../components/icons";
 
 interface ToolbarProps {
@@ -29,6 +30,8 @@ interface ToolbarProps {
   onPushClick?: () => void;
   onOpenLogModal?: () => void;
   onOpenCommandPalette?: () => void;
+  onOpenStashModal?: () => void;
+  onCreateStashClick?: () => void;
 }
 
 export function Toolbar({
@@ -50,6 +53,8 @@ export function Toolbar({
   onPushClick,
   onOpenLogModal,
   onOpenCommandPalette,
+  onOpenStashModal,
+  onCreateStashClick,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -227,6 +232,33 @@ export function Toolbar({
             </svg>
             <span>推送</span>
           </button>
+        )}
+
+        {/* Stash Button Group */}
+        {currentRepo && (onOpenStashModal || onCreateStashClick) && (
+          <div className="flex items-center rounded border border-[var(--color-border)] bg-[var(--color-bg)] overflow-hidden">
+            {onCreateStashClick && (
+              <button
+                type="button"
+                title="贮藏当前工作区改动 (Stash)"
+                onClick={onCreateStashClick}
+                className="flex items-center gap-1 px-2.5 py-1 font-medium text-xs text-[var(--color-text)] hover:bg-[var(--color-surface-raised)] transition-colors cursor-pointer"
+              >
+                <ArchiveIcon width={13} height={13} />
+                <span>贮藏</span>
+              </button>
+            )}
+            {onOpenStashModal && (
+              <button
+                type="button"
+                title="管理贮藏记录 (Stashes)"
+                onClick={onOpenStashModal}
+                className="px-1.5 py-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-raised)] border-l border-[var(--color-border)] cursor-pointer"
+              >
+                <ChevronDownIcon width={11} height={11} />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Refresh Button */}

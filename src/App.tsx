@@ -37,6 +37,8 @@ import { PushModal } from "./features/remote/PushModal";
 import { ConflictBanner } from "./features/remote/ConflictBanner";
 import { OperationLogModal } from "./features/log/OperationLogModal";
 import { CommandPalette, CommandItem } from "./features/command/CommandPalette";
+import { StashModal } from "./features/stash/StashModal";
+import { CreateStashModal } from "./features/stash/CreateStashModal";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
@@ -91,6 +93,8 @@ export default function App() {
   // Remote & Sync state (R-11, R-12, R-15, R-16)
   const [pushModalOpen, setPushModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
+  const [stashModalOpen, setStashModalOpen] = useState(false);
+  const [createStashModalOpen, setCreateStashModalOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
@@ -592,6 +596,18 @@ export default function App() {
           action: () => setLogModalOpen(true),
         },
         {
+          id: "git-stash",
+          title: "贮藏当前工作区改动 (Stash Changes)",
+          description: "临时保存未提交改动并还原工作区至干净状态",
+          action: () => setCreateStashModalOpen(true),
+        },
+        {
+          id: "git-stashes",
+          title: "管理贮藏记录 (Manage Stashes)",
+          description: "查看历史贮藏、恢复弹出 (Pop/Apply) 或删除",
+          action: () => setStashModalOpen(true),
+        },
+        {
           id: "refresh-status",
           title: "刷新仓库状态 (Refresh Status)",
           shortcut: "F5",
@@ -840,6 +856,8 @@ export default function App() {
         onPushClick={() => setPushModalOpen(true)}
         onOpenLogModal={() => setLogModalOpen(true)}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        onOpenStashModal={() => setStashModalOpen(true)}
+        onCreateStashClick={() => setCreateStashModalOpen(true)}
       />
 
       {/* Conflict / In-Progress Action Banner (R-11, R-17) */}
@@ -1132,6 +1150,24 @@ export default function App() {
         isOpen={logModalOpen}
         onClose={() => setLogModalOpen(false)}
       />
+
+      {/* Stash Modals */}
+      {currentRepo && (
+        <>
+          <StashModal
+            isOpen={stashModalOpen}
+            onClose={() => setStashModalOpen(false)}
+            rootPath={currentRepo.root_path}
+            onStashApplied={() => refreshStatus(currentRepo.root_path)}
+          />
+          <CreateStashModal
+            isOpen={createStashModalOpen}
+            onClose={() => setCreateStashModalOpen(false)}
+            rootPath={currentRepo.root_path}
+            onSuccess={() => refreshStatus(currentRepo.root_path)}
+          />
+        </>
+      )}
 
       {/* Command Palette (R-16) */}
       <CommandPalette

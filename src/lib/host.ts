@@ -581,3 +581,60 @@ export async function pushMultipleRemotes(
     setUpstream,
   });
 }
+
+export interface StashItem {
+  index: number;
+  name: string;
+  branch: string;
+  message: string;
+  date: string | null;
+}
+
+export interface StashApplyResult {
+  success: boolean;
+  has_conflict: boolean;
+  message: string | null;
+}
+
+export async function listStashes(rootPath: string): Promise<StashItem[]> {
+  return await invoke<StashItem[]>("list_stashes", { rootPath });
+}
+
+export async function createStash(
+  rootPath: string,
+  message?: string | null,
+  includeUntracked = false
+): Promise<void> {
+  return await invoke("create_stash", {
+    rootPath,
+    message,
+    includeUntracked,
+  });
+}
+
+export async function applyStash(
+  rootPath: string,
+  index: number,
+  pop = false
+): Promise<StashApplyResult> {
+  return await invoke<StashApplyResult>("apply_stash", {
+    rootPath,
+    index,
+    pop,
+  });
+}
+
+export async function dropStash(rootPath: string, index: number): Promise<void> {
+  return await invoke("drop_stash", { rootPath, index });
+}
+
+export async function clearStashes(rootPath: string): Promise<void> {
+  return await invoke("clear_stashes", { rootPath });
+}
+
+export async function showStashDiff(
+  rootPath: string,
+  index: number
+): Promise<string> {
+  return await invoke<string>("show_stash_diff", { rootPath, index });
+}
