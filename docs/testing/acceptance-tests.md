@@ -66,16 +66,16 @@
 | AT-06e | R-06 | 临时 HOME，无 user.name | 提交 | 显示配置提示和命令；没有生成提交；全局 git 配置未被改动 | L1 | not_run |
 | AT-06f | R-06 amend | `amend` 未推送分支，再暂存一个文件 | 勾选「修改上一次提交」，改信息后执行 | 信息框先出现 HEAD 原信息；`git rev-list --count HEAD` 不变；`git log -1 --format=%B` 是新信息；`git show --name-only HEAD` 含该文件；`HEAD^` 不变 | L1+L3 | not_run |
 | AT-06g | R-06 amend | 同上，无已暂存改动 | 勾选后只改信息并执行 | `git rev-parse HEAD^{tree}` 不变，只有信息变化 | L1 | not_run |
-| AT-06h | R-06 amend | `amend` HEAD 已推送到 origin/main | 勾选并执行 | 出现已推送警告，默认焦点在「取消」，回车不确认；取消 → `git rev-parse HEAD` 不变；确认 → 修改成功，显示 ↑1 ↓1 | L1（检测已推送）+ L3（对话框） | not_run |
-| AT-06i | R-06 amend | `amend` 空仓库（无提交） | 看提交区 | 勾选框不可用并显示原因 | L3 | not_run |
+| AT-06h | R-06 amend | `amend` HEAD 已推送到 origin/main | 勾选并执行 | 出现已推送警告，默认焦点在「取消」，回车不确认；取消 → `git rev-parse HEAD` 不变；确认 → 修改成功，显示 ↑1 ↓1 | L1（检测已推送）+ L3（对话框） | not_run（L2 vitest 已覆盖：默认焦点在取消、取消/确认/Esc；回车不确认与真实 amend 待 L3/L4） |
+| AT-06i | R-06 amend | `amend` 空仓库（无提交） | 看提交区 | 勾选框不可用并显示原因 | L3 | not_run（L2 vitest 已覆盖：勾选框禁用并显示原因；待 L3） |
 | AT-06j | R-06 amend | `hooks` 失败的 pre-commit | 勾选 amend 并执行 | 显示 hook 输出；`git rev-parse HEAD` 不变；信息框和暂存状态不变 | L1 | not_run |
-| AT-06k | R-06 amend | 勾选后取消勾选 | 观察信息框 | 恢复为勾选前的草稿 | L2 | not_run |
+| AT-06k | R-06 amend | 勾选后取消勾选 | 观察信息框 | 恢复为勾选前的草稿 | L2 | passed (L2 vitest) |
 | AT-07a | R-07 | 阿橦本机，在设置里填自己的 key（KIE 或其他 OpenAI 兼容服务至少一种；装了 Ollama 时再测一次） | AI 生成 | 30 秒内出现非空信息，可编辑并提交 | L4 | not_run |
 | AT-07b | R-07 | `secrets`，测试替身接口 | AI 生成 | 替身收到的请求体里有 `.env`、`id_rsa` 文件名，没有其内容 | L1 | not_run |
 | AT-07c | R-07 | 提供方为 KIE 或 OpenAI 兼容，钥匙串里没有 key | AI 生成 | 提示未配置；替身未收到任何请求 | L1+L3 | not_run |
 | AT-07d | R-07 | 替身延迟 40 秒 | AI 生成 | 30 秒提示超时；信息框原内容保留 | L1+L3 | not_run |
 | AT-07e | R-07 | 替身返回 401 / 500 | AI 生成 | 显示对应原因和设置入口 | L1 | not_run |
-| AT-07f | R-07 | 首次使用 | AI 生成 | 出现发送确认（S9）；取消则替身未收到请求 | L3 | not_run |
+| AT-07f | R-07 | 首次使用 | AI 生成 | 出现发送确认（S9）；取消则替身未收到请求 | L3 | not_run（L2 vitest 已覆盖：首次弹确认、取消不发请求；待 L3） |
 | AT-07g | R-07、N-02 | 用过 AI 后 | 在仓库、应用配置目录、日志目录里搜索 key 明文 | 搜不到 | L1+L4 | not_run |
 | AT-07h | R-07、D1 | 环境变量 `KIE_API_KEY=假值`，钥匙串里没有 key，提供方选 KIE | AI 生成 | 提示未配置；替身未收到任何请求（证明不读环境变量） | L1 | not_run |
 | AT-08a | R-08 | `remote` 干净工作区 | 切到另一本地分支 | `git branch --show-current` 一致 | L1+L3 | not_run |
