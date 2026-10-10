@@ -151,7 +151,7 @@ describe("CommitPanel component", () => {
     expect(host.createCommit).not.toHaveBeenCalled();
   });
 
-  it("AT-06f & AT-06k: toggles amend to load HEAD message and restores draft upon unchecking", async () => {
+  it("AT-06f: toggles amend to load HEAD message and restores draft upon unchecking", async () => {
     vi.mocked(host.inspectAmend).mockResolvedValue({
       can_amend: true,
       disabled_reason: null,
@@ -181,10 +181,79 @@ describe("CommitPanel component", () => {
     expect(textarea.value).toBe("fix: previous head commit\n\nbody message");
     expect(screen.getByRole("button", { name: "修改提交" })).toBeDefined();
 
-    // Uncheck amend (AT-06k)
+    // Uncheck amend
     fireEvent.click(amendCheckbox);
     expect(textarea.value).toBe("wip draft message");
     expect(screen.getByRole("button", { name: "提交 (1)" })).toBeDefined();
+  });
+
+  it("AT-06k: unchecking amend restores the user-typed commit message draft", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: release 1.0.0",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    const textarea = (await screen.findByPlaceholderText(
+      /提交信息 \(首行标题/
+    )) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "my in-progress draft" } });
+
+    const amendCheckbox = screen.getByLabelText("修改上一次提交");
+
+    // Check amend
+    fireEvent.click(amendCheckbox);
+    expect(textarea.value).toBe("chore: release 1.0.0");
+
+    // Uncheck amend: must restore "my in-progress draft"
+    fireEvent.click(amendCheckbox);
+    expect(textarea.value).toBe("my in-progress draft");
+    expect(localStorage.getItem(`tongyun_commit_draft_${rootPath}`)).toBe(
+      "my in-progress draft"
+    );
+  });
+
+  it("AT-06i: disables amend checkbox and displays reason when repository has no commits", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: false,
+      disabled_reason: "初始空仓库（尚未产生任何提交）",
+      head_message: null,
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    const amendCheckbox = (await screen.findByLabelText(
+      "修改上一次提交"
+    )) as HTMLInputElement;
+
+    // Checkbox is disabled
+    expect(amendCheckbox.disabled).toBe(true);
+
+    // Parent label displays disabled reason as title tooltip
+    const label = amendCheckbox.closest("label");
+    expect(label?.title).toBe("初始空仓库（尚未产生任何提交）");
+    expect(label?.className).toContain("opacity-50");
+    expect(label?.className).toContain("cursor-not-allowed");
   });
 
   it("AT-06g: allows amending commit message even when stagedCount is 0", async () => {
@@ -376,5 +445,56 @@ describe("CommitPanel component", () => {
       /提交信息 \(首行标题/
     ) as HTMLTextAreaElement;
     expect(textarea.value).toBe("feat: ai generated commit summary");
+  });
+
+  it("AT-07f: dismisses consent modal without triggering AI request when cancelled", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: false,
+      disabled_reason: null,
+      head_message: null,
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: true,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText(
+      /提交信息 \(首行标题/
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "my previous draft" } });
+
+    const aiBtn = screen.getByRole("button", { name: "AI 生成" });
+    fireEvent.click(aiBtn);
+
+    // Consent modal opens
+    expect(await screen.findByText("AI 生成提交信息授权")).toBeDefined();
+
+    // Cancel consent
+    const cancelBtn = screen.getByRole("button", { name: "取消" });
+    fireEvent.click(cancelBtn);
+
+    // Modal closes
+    await waitFor(() => {
+      expect(screen.queryByText("AI 生成提交信息授权")).toBeNull();
+    });
+
+    // AI generation must NOT have been called
+    expect(host.generateAiCommitMessage).not.toHaveBeenCalled();
+
+    // Textarea draft remains untouched
+    expect(textarea.value).toBe("my previous draft");
   });
 });
