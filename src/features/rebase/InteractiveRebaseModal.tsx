@@ -35,31 +35,31 @@ const ACTION_OPTIONS: { value: RebaseAction; label: string; desc: string; badgeC
     value: "pick",
     label: "Pick (保留)",
     desc: "正常保留此提交",
-    badgeClass: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
+    badgeClass: "bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-[var(--color-accent)]/30",
   },
   {
     value: "reword",
     label: "Reword (修改信息)",
     desc: "保留此提交但修改提交说明",
-    badgeClass: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+    badgeClass: "bg-[var(--color-status-added)]/15 text-[var(--color-status-added)] border-[var(--color-status-added)]/30",
   },
   {
     value: "squash",
     label: "Squash (压缩合并)",
     desc: "合并进上一个提交并保留/合并说明",
-    badgeClass: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    badgeClass: "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border-[var(--ty-honey)]/30",
   },
   {
     value: "fixup",
     label: "Fixup (丢弃说明合并)",
     desc: "合并进上一个提交并丢弃本次说明",
-    badgeClass: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30",
+    badgeClass: "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border-[var(--ty-sky)]/30",
   },
   {
     value: "drop",
     label: "Drop (丢弃)",
     desc: "彻底删除该提交",
-    badgeClass: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30",
+    badgeClass: "bg-[var(--color-danger)]/15 text-[var(--color-danger)] border-[var(--color-danger)]/30",
   },
 ];
 
@@ -283,7 +283,7 @@ function InteractiveRebaseModalContent({
 
         {/* Warning & Error Alerts */}
         {isInvalidFirst && (
-          <div className="px-5 py-2 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 shrink-0">
+          <div className="px-5 py-2 bg-[var(--color-danger)]/10 border-b border-[var(--color-danger)]/20 text-[var(--color-danger)] text-xs flex items-center gap-2 shrink-0">
             <AlertCircleIcon width={14} height={14} className="shrink-0" />
             <span>首个保留的提交不能为 Squash 或 Fixup，请将其设为 Pick 或 Reword。</span>
           </div>

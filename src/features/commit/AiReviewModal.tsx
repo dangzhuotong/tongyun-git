@@ -54,7 +54,7 @@ function AiReviewModalContent({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <div className="p-1.5 rounded-lg bg-[var(--color-status-added)]/10 text-[var(--color-status-added)]">
               <ShieldCheckIcon width={18} height={18} />
             </div>
             <div>
@@ -81,7 +81,7 @@ function AiReviewModalContent({
             <div className="py-12 flex flex-col items-center justify-center gap-3 text-[var(--color-text-muted)]">
               <div className="w-8 h-8 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
               <div className="font-medium text-xs">AI 正在深度审查暂存区代码...</div>
-              <div className="text-[11px] text-gray-500">
+              <div className="text-[11px] text-[var(--color-text-muted)]">
                 正在排查代码逻辑、潜在边界越界、空引用与凭据泄露
               </div>
             </div>
@@ -89,7 +89,7 @@ function AiReviewModalContent({
 
           {/* Error State */}
           {!loading && error && (
-            <div className="p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 space-y-2">
+            <div className="p-3.5 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] space-y-2">
               <div className="flex items-center gap-2 font-semibold">
                 <AlertCircleIcon width={16} height={16} />
                 <span>审查失败</span>
@@ -105,15 +105,15 @@ function AiReviewModalContent({
               <div
                 className={`p-3 rounded-lg border flex items-start gap-2.5 ${
                   result.passed
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                    : "border-red-500/30 bg-red-500/10 text-red-300"
+                    ? "border-[var(--color-status-added)]/30 bg-[var(--color-status-added)]/10 text-[var(--color-status-added)]"
+                    : "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
                 }`}
               >
                 <div className="mt-0.5">
                   {result.passed ? (
-                    <CheckIcon width={16} height={16} className="text-emerald-400" />
+                    <CheckIcon width={16} height={16} className="text-[var(--color-status-added)]" />
                   ) : (
-                    <AlertCircleIcon width={16} height={16} className="text-red-400" />
+                    <AlertCircleIcon width={16} height={16} className="text-[var(--color-danger)]" />
                   )}
                 </div>
                 <div className="flex-1 space-y-1">
@@ -148,8 +148,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("danger")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "danger"
-                          ? "bg-red-500/20 text-red-400 shadow-xs"
-                          : "text-red-400/70 hover:text-red-400"
+                          ? "bg-[var(--color-danger)]/20 text-[var(--color-danger)] shadow-xs"
+                          : "text-[var(--color-danger)]/70 hover:text-[var(--color-danger)]"
                       }`}
                     >
                       高危 ({dangerCount})
@@ -161,8 +161,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("warning")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "warning"
-                          ? "bg-amber-500/20 text-amber-400 shadow-xs"
-                          : "text-amber-400/70 hover:text-amber-400"
+                          ? "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] shadow-xs"
+                          : "text-[var(--ty-honey)]/70 hover:text-[var(--ty-honey)]"
                       }`}
                     >
                       警告 ({warningCount})
@@ -174,8 +174,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("info")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "info"
-                          ? "bg-blue-500/20 text-blue-400 shadow-xs"
-                          : "text-blue-400/70 hover:text-blue-400"
+                          ? "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] shadow-xs"
+                          : "text-[var(--ty-sky)]/70 hover:text-[var(--ty-sky)]"
                       }`}
                     >
                       建议 ({infoCount})
@@ -205,10 +205,10 @@ function AiReviewModalContent({
                         key={idx}
                         className={`p-3 rounded-lg border space-y-1.5 transition-colors ${
                           isDanger
-                            ? "border-red-500/30 bg-red-500/5"
+                            ? "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5"
                             : isWarning
-                            ? "border-amber-500/30 bg-amber-500/5"
-                            : "border-blue-500/20 bg-blue-500/5"
+                            ? "border-[var(--ty-honey)]/30 bg-[var(--ty-honey-tint)]/40"
+                            : "border-[var(--ty-sky)]/30 bg-[var(--ty-sky-tint)]/40"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -216,10 +216,10 @@ function AiReviewModalContent({
                             <span
                               className={`px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase ${
                                 isDanger
-                                  ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                                  ? "bg-[var(--color-danger)]/20 text-[var(--color-danger)] border border-[var(--color-danger)]/30"
                                   : isWarning
-                                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                                  : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                  ? "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border border-[var(--ty-honey)]/30"
+                                  : "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/30"
                               }`}
                             >
                               {isDanger ? "高危漏洞" : isWarning ? "缺陷警告" : "改进建议"}
@@ -239,7 +239,7 @@ function AiReviewModalContent({
                         {issue.suggestion && (
                           <div className="p-2 rounded bg-[var(--color-bg)]/80 border border-[var(--color-border)]/60 text-[11px] text-[var(--color-text-muted)] space-y-1">
                             <div className="font-medium text-[var(--color-text)] text-[10px]">修复建议：</div>
-                            <div className="font-mono leading-relaxed select-text text-emerald-400 dark:text-emerald-300">
+                            <div className="font-mono leading-relaxed select-text text-[var(--color-status-added)]">
                               {issue.suggestion}
                             </div>
                           </div>

@@ -376,12 +376,12 @@ export function LogView({
             }}
             className={`px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
               aiSearchOpen
-                ? "bg-purple-600/20 text-purple-400 border border-purple-500/40 shadow-xs"
-                : "bg-[var(--color-bg)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-purple-400 hover:border-purple-400/40"
+                ? "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/40 shadow-xs"
+                : "bg-[var(--color-bg)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--ty-sky)] hover:border-[var(--ty-sky)]/40"
             }`}
             title="使用自然语言向 AI 提问 Git 历史（例如：上次改支付配置是什么时候？）"
           >
-            <SparklesIcon width={12} height={12} className={aiSearchOpen ? "text-purple-400 animate-pulse" : ""} />
+            <SparklesIcon width={12} height={12} className={aiSearchOpen ? "text-[var(--ty-sky)] animate-pulse" : ""} />
             <span>AI 问历史</span>
           </button>
         </div>
@@ -405,9 +405,9 @@ export function LogView({
 
       {/* AI Log Search Input Bar */}
       {aiSearchOpen && (
-        <div className="px-3 py-2 border-b border-purple-500/30 bg-purple-500/5 flex items-center gap-2 shrink-0">
+        <div className="px-3 py-2 border-b border-[var(--ty-sky)]/30 bg-[var(--ty-sky-tint)]/30 flex items-center gap-2 shrink-0">
           <div className="relative flex-1 flex items-center">
-            <SparklesIcon width={14} height={14} className="absolute left-2.5 text-purple-400 shrink-0" />
+            <SparklesIcon width={14} height={14} className="absolute left-2.5 text-[var(--ty-sky)] shrink-0" />
             <input
               type="text"
               placeholder="用自然语言提问历史，例如：'上次修改支付配置是什么时候谁改的？' 或 '查找关于权限拦截器的提交'..."
@@ -418,7 +418,7 @@ export function LogView({
                   handleAiSearch();
                 }
               }}
-              className="w-full pl-8 pr-8 py-1 rounded border border-purple-500/30 bg-[var(--color-bg)] text-xs focus:outline-none focus:border-purple-400 select-text font-sans placeholder:text-[var(--color-text-muted)]"
+              className="w-full pl-8 pr-8 py-1 rounded border border-[var(--ty-sky)]/30 bg-[var(--color-bg)] text-xs focus:outline-none focus:border-[var(--ty-sky)] select-text font-sans placeholder:text-[var(--color-text-muted)]"
             />
             {aiQuery && (
               <button
@@ -434,7 +434,7 @@ export function LogView({
             type="button"
             onClick={handleAiSearch}
             disabled={aiSearching || !aiQuery.trim()}
-            className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
+            className="px-3 py-1 rounded bg-[var(--ty-sky)] hover:opacity-90 disabled:opacity-50 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-opacity shadow-2xs"
           >
             {aiSearching ? (
               <>
@@ -474,10 +474,10 @@ export function LogView({
         <div className="flex-1 flex flex-col border-r border-[var(--color-border)] overflow-hidden">
           {/* AI 答案横幅卡片 */}
           {aiQueryResult && (
-            <div className="p-3 border-b border-purple-500/30 bg-purple-500/10 shrink-0 space-y-2">
+            <div className="p-3 border-b border-[var(--ty-sky)]/30 bg-[var(--ty-sky-tint)]/25 shrink-0 space-y-2">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-1.5 font-semibold text-xs text-purple-300">
-                  <SparklesIcon width={13} height={13} className="text-purple-400" />
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-[var(--ty-sky)]">
+                  <SparklesIcon width={13} height={13} className="text-[var(--ty-sky)]" />
                   <span>AI 历史洞察解答</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ export function LogView({
                       type="checkbox"
                       checked={filterMatchedOnly}
                       onChange={(e) => setFilterMatchedOnly(e.target.checked)}
-                      className="rounded border-[var(--color-border)] text-purple-500 focus:ring-0 cursor-pointer"
+                      className="rounded border-[var(--color-border)] accent-[var(--ty-sky)] focus:ring-0 cursor-pointer"
                     />
                     <span>仅看匹配提交 ({aiQueryResult.matched_oids.length})</span>
                   </label>
@@ -503,7 +503,7 @@ export function LogView({
                   </button>
                 </div>
               </div>
-              <div className="text-[11px] text-[var(--color-text)] leading-relaxed whitespace-pre-wrap select-text bg-[var(--color-bg)]/60 p-2 rounded border border-purple-500/20">
+              <div className="text-[11px] text-[var(--color-text)] leading-relaxed whitespace-pre-wrap select-text bg-[var(--color-bg)]/60 p-2 rounded border border-[var(--ty-sky)]/20">
                 {aiQueryResult.answer}
               </div>
               {aiQueryResult.matched_oids.length > 0 && (
@@ -518,8 +518,8 @@ export function LogView({
                         onClick={() => handleSelectCommit(m.oid)}
                         className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors ${
                           isSelected
-                            ? "bg-purple-600 text-white font-semibold"
-                            : "bg-[var(--color-bg)] border border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
+                            ? "bg-[var(--ty-sky)] text-white font-semibold"
+                            : "bg-[var(--color-bg)] border border-[var(--ty-sky)]/30 text-[var(--ty-sky)] hover:bg-[var(--ty-sky-tint)]"
                         }`}
                         title={m.reason}
                       >
@@ -574,7 +574,7 @@ export function LogView({
                       isSelected
                         ? "bg-[var(--color-accent)]/15 text-[var(--color-text)] font-medium"
                         : matchInfo
-                        ? "bg-purple-500/10 hover:bg-purple-500/15 text-[var(--color-text)]"
+                        ? "bg-[var(--ty-sky-tint)]/40 hover:bg-[var(--ty-sky-tint)]/60 text-[var(--color-text)]"
                         : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
                     }`}
                   >
@@ -604,7 +604,7 @@ export function LogView({
                       {/* AI Match Badge */}
                       {matchInfo && (
                         <span
-                          className="px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                          className="px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/30"
                           title={`AI匹配原因: ${matchInfo.reason}`}
                         >
                           ✨ AI匹配
@@ -739,12 +739,14 @@ export function LogView({
                         </button>
                       )}
                       <span
-                        className={`text-[10px] font-bold ${
+                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-none ${
                           file.kind === "Added"
-                            ? "text-[var(--color-status-added)]"
+                            ? "bg-[var(--color-status-added)]/12 text-[var(--color-status-added)]"
                             : file.kind === "Deleted"
-                            ? "text-[var(--color-danger)]"
-                            : "text-[var(--color-status-modified)]"
+                            ? "bg-[var(--color-status-deleted)]/12 text-[var(--color-status-deleted)]"
+                            : file.kind === "Renamed"
+                            ? "bg-[var(--color-status-renamed)]/12 text-[var(--color-status-renamed)]"
+                            : "bg-[var(--color-status-modified)]/12 text-[var(--color-status-modified)]"
                         }`}
                       >
                         {file.kind === "Added"
@@ -923,9 +925,9 @@ function getRefBadgeClass(badge: RefBadge): string {
     case "LocalBranch":
       return "bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30";
     case "RemoteBranch":
-      return "bg-purple-500/15 text-purple-400 border border-purple-500/30";
+      return "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/30";
     case "Tag":
-      return "bg-amber-500/15 text-amber-400 border border-amber-500/30";
+      return "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border border-[var(--ty-honey)]/30";
     default:
       return "bg-[var(--color-surface-raised)] text-[var(--color-text-muted)]";
   }
