@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./tongyun-tokens.css";
+@import "./file-tree.css";
 
 :root {
   --color-bg: var(--ty-bg);

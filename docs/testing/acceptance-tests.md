@@ -121,6 +121,11 @@
 | AT-17g | R-17 | `discard` 的 60 MB 未跟踪文件 | 丢弃 | 确认框标出「丢弃后无法恢复」；该文件没有进快照 | L1+L3 | not_run |
 | AT-17h | R-17、N-03 | `discard` | 丢弃并确认 | `git rev-parse HEAD`、`git branch --show-current`、`git stash list`、用户 git 配置文件都不变；操作日志有一条记录（含快照引用名） | L1 | not_run |
 | AT-17i | R-17 | 连续丢弃 21 次 | 查快照 | `refs/tongyun/discard` 下只保留最近 20 个 | L1 | not_run |
+| AT-18a | R-18 | 打开仓库 | 查看主界面最左列 | 出现「项目」文件树，包含文件与目录结构，改动文件带状态徽标 | L2+L3 | not_run |
+| AT-18b | R-18 | `basic` 已打开 | 点击树中有改动的文件 | 右侧「改动」标签页展示该文件的 diff，改动列表同步高亮 | L2+L3 | not_run |
+| AT-18c | R-18 | `basic` 已打开 | 点击树中无改动的文件 | 右侧显示占位提示与「查看历史」按钮；点击后切到「历史」标签 | L2 | not_run |
+| AT-18d | R-18 | `basic` 已打开，选中文件 | 点击「历史」标签 | 展示该文件的提交历史列表和提交 diff；切换文件保持「历史」标签 | L2 | not_run |
+| AT-18e | R-18 | — | 调整树面板宽度与收起/展开 | 宽度可调且写入 localStorage；收起为 28px 竖条并可展开恢复 | L2+L3 | not_run |
 | AT-N3 | N-03 | 全部界面 | 逐个检查菜单和按钮 | 不存在 reset --hard、clean、强制推送入口；丢弃改动只有 R-17 一个入口（右键菜单、快捷键、命令面板都走同一个确认框）；amend 已推送时有警告 | L4 | not_run |
 | AT-N4a | N-04 | `longpath`（Windows） | 打开、暂存、提交 | 正常完成 | L4（Windows） | not_run |
 | AT-N4b | N-04 | Linux 安装包 | 外部修改文件 | 改动列表自动刷新 | L4（Linux） | not_run |

@@ -35,6 +35,8 @@ vi.mock("./lib/host.ts", () => ({
   fetchRemote: vi.fn(),
   selectFolder: vi.fn(),
   initRepository: vi.fn(),
+  listRepoFiles: vi.fn(),
+  getFileHistory: vi.fn(),
 }));
 
 describe("App workspace and components", () => {
@@ -70,6 +72,8 @@ describe("App workspace and components", () => {
       has_more: false,
       total_matched: 0,
     });
+    vi.mocked(host.listRepoFiles).mockResolvedValue([]);
+    vi.mocked(host.getFileHistory).mockResolvedValue([]);
   });
 
   it("renders empty workspace when no repository is opened", async () => {
@@ -204,7 +208,7 @@ describe("App workspace and components", () => {
 
     // Verify files rendered in list
     expect(await screen.findByText("src/main.rs")).toBeDefined();
-    expect(screen.getByText("README.md")).toBeDefined();
+    expect(screen.getAllByText("README.md").length).toBeGreaterThanOrEqual(1);
 
     // Click on src/main.rs to load diff
     fireEvent.click(screen.getByText("src/main.rs"));
