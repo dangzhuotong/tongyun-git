@@ -1677,7 +1677,7 @@ export default function App() {
           aria-live="polite"
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-xs animate-in fade-in slide-in-from-bottom-2 ${
             syncToast.isError
-              ? "bg-red-950/90 border-red-800 text-red-200"
+              ? "bg-[var(--ty-peach-tint)] border-[var(--color-danger-border)] text-[var(--ty-peach-text)]"
               : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
           }`}
         >
@@ -1685,7 +1685,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setSyncToast(null)}
-            className="p-1 rounded text-gray-400 hover:text-gray-200 cursor-pointer"
+            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
           >
             ✕
           </button>

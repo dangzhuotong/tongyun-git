@@ -30,6 +30,12 @@
 
   --color-danger: var(--ty-peach);
   --color-danger-border: var(--ty-peach-soft);
+
+  --log-bg: #2b2620;
+  --log-bar: #332d26;
+  --log-text: #e9dfd0;
+  --log-muted: #a99b88;
+  --log-border: #463e34;
 }
 
 [data-theme="dark"],
