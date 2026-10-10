@@ -75,11 +75,11 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-3xl rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-2xl text-gray-100 flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+      <div className="w-full max-w-3xl rounded-xl border border-[var(--log-border)] bg-[var(--log-bg)] p-6 shadow-2xl text-[var(--log-text)] flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between border-b border-[var(--log-border)] pb-3">
           <div className="flex items-center gap-2">
             <svg
-              className="w-5 h-5 text-gray-400"
+              className="w-5 h-5 text-[var(--log-muted)]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -96,19 +96,19 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={handleRefresh}
-              className="px-2.5 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-300 cursor-pointer"
+              className="px-2.5 py-1 text-xs rounded bg-[var(--log-bar)] hover:bg-[var(--log-border)] text-[var(--log-text)] cursor-pointer"
             >
               刷新
             </button>
             <button
               onClick={handleClear}
-              className="px-2.5 py-1 text-xs rounded bg-gray-800 hover:bg-red-900/50 hover:text-red-300 text-gray-400 cursor-pointer"
+              className="px-2.5 py-1 text-xs rounded bg-[var(--log-bar)] hover:bg-[var(--log-border)] text-[var(--log-muted)] hover:text-[#f0b4a5] cursor-pointer"
             >
               清空
             </button>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-200 text-xl font-bold cursor-pointer"
+              className="text-[var(--log-muted)] hover:text-[var(--log-text)] text-xl font-bold cursor-pointer"
             >
               ✕
             </button>
@@ -117,9 +117,9 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
 
         <div className="flex-1 overflow-y-auto mt-4 space-y-2 pr-1">
           {loading ? (
-            <div className="py-12 text-center text-gray-500">正在读取日志...</div>
+            <div className="py-12 text-center text-[var(--log-muted)]">正在读取日志...</div>
           ) : logs.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">
+            <div className="py-12 text-center text-[var(--log-muted)]">
               暂无 Git 命令行执行记录
             </div>
           ) : (
@@ -128,35 +128,35 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
               return (
                 <div
                   key={log.id}
-                  className="rounded-lg border border-gray-800/80 bg-gray-950/60 p-3 text-xs font-mono transition-colors hover:border-gray-700"
+                  className="rounded-lg border border-[var(--log-border)] bg-[var(--log-bar)] p-3 text-xs font-mono transition-colors"
                 >
-                  <div className="flex items-center justify-between text-gray-400 mb-1.5">
+                  <div className="flex items-center justify-between text-[var(--log-muted)] mb-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-500">{formatTime(log.timestamp_ms)}</span>
+                      <span className="text-[var(--log-muted)]">{formatTime(log.timestamp_ms)}</span>
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                           isSuccess
-                            ? "bg-green-950 text-green-400 border border-green-800"
-                            : "bg-red-950 text-red-400 border border-red-800"
+                            ? "bg-[var(--ty-matcha)]/20 text-[#c4d7b2]"
+                            : "bg-[var(--ty-peach)]/20 text-[#f0b4a5]"
                         }`}
                       >
                         {isSuccess ? "成功" : `退出码: ${log.exit_code ?? "Err"}`}
                       </span>
                     </div>
-                    <span className="text-gray-500">{log.duration_ms} ms</span>
+                    <span className="text-[var(--log-muted)]">{log.duration_ms} ms</span>
                   </div>
 
-                  <div className="text-blue-300 select-all break-all font-semibold">
+                  <div className="text-[#c4d7b2] select-all break-all font-semibold">
                     {log.command_line}
                   </div>
 
                   {log.error_message && (
-                    <div className="mt-1 text-red-400 break-all bg-red-950/30 p-1.5 rounded border border-red-900/40">
+                    <div className="mt-1 text-[#f0b4a5] break-all bg-[var(--ty-peach)]/10 p-1.5 rounded border border-[var(--ty-peach)]/20">
                       {log.error_message}
                     </div>
                   )}
 
-                  <div className="mt-1 text-[11px] text-gray-500 truncate">
+                  <div className="mt-1 text-[11px] text-[var(--log-muted)] truncate">
                     工作目录: {log.cwd}
                   </div>
                 </div>
@@ -165,10 +165,10 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
           )}
         </div>
 
-        <div className="flex justify-end pt-3 border-t border-gray-800 mt-4">
+        <div className="flex justify-end pt-3 border-t border-[var(--log-border)] mt-4">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 cursor-pointer"
+            className="px-4 py-1.5 rounded-lg bg-[var(--log-bar)] hover:bg-[var(--log-border)] text-sm text-[var(--log-text)] cursor-pointer"
           >
             关闭
           </button>

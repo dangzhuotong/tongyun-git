@@ -298,7 +298,7 @@ export function ChangesList({
         {/* Untracked */}
         <GroupSection
           title="未跟踪"
-          badgeColor="bg-[var(--color-text-muted)]/15 text-[var(--color-text-muted)]"
+          badgeColor="bg-[var(--color-status-untracked)]/15 text-[var(--color-status-untracked)]"
           count={untrackedFiles.length}
           expanded={expandedGroups.untracked}
           onToggle={() => toggleGroup("untracked")}
@@ -624,7 +624,7 @@ function FileRowItem({
 
         {/* Status Badge */}
         <span
-          className={`px-1 py-0.2 rounded text-[10px] font-mono font-bold leading-none ${badge.className}`}
+          className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold leading-none ${badge.className}`}
           title={badge.title}
         >
           {badge.label}
@@ -639,7 +639,7 @@ function getStatusBadge(kind: ChangeKind, conflicted: boolean) {
     return {
       label: "!",
       title: "冲突",
-      className: "bg-[var(--color-status-conflict)]/20 text-[var(--color-status-conflict)]",
+      className: "bg-[var(--color-status-conflict)]/12 text-[var(--color-status-conflict)]",
     };
   }
   switch (kind) {
@@ -647,43 +647,43 @@ function getStatusBadge(kind: ChangeKind, conflicted: boolean) {
       return {
         label: "A",
         title: "新增",
-        className: "bg-[var(--color-status-added)]/20 text-[var(--color-status-added)]",
+        className: "bg-[var(--color-status-added)]/12 text-[var(--color-status-added)]",
       };
     case "Modified":
       return {
         label: "M",
         title: "修改",
-        className: "bg-[var(--color-status-modified)]/20 text-[var(--color-status-modified)]",
+        className: "bg-[var(--color-status-modified)]/12 text-[var(--color-status-modified)]",
       };
     case "Deleted":
       return {
         label: "D",
         title: "删除",
-        className: "bg-[var(--color-status-deleted)]/20 text-[var(--color-status-deleted)]",
+        className: "bg-[var(--color-status-deleted)]/12 text-[var(--color-status-deleted)]",
       };
     case "Renamed":
       return {
         label: "R",
         title: "重命名",
-        className: "bg-[var(--color-status-renamed)]/20 text-[var(--color-status-renamed)]",
+        className: "bg-[var(--color-status-renamed)]/12 text-[var(--color-status-renamed)]",
       };
     case "TypeChange":
       return {
         label: "T",
         title: "类型改变",
-        className: "bg-[var(--color-accent)]/20 text-[var(--color-accent)]",
+        className: "bg-[var(--color-accent)]/12 text-[var(--color-accent)]",
       };
     case "Untracked":
       return {
         label: "U",
         title: "未跟踪",
-        className: "bg-[var(--color-status-added)]/20 text-[var(--color-status-added)]",
+        className: "bg-[var(--color-status-untracked)]/12 text-[var(--color-status-untracked)]",
       };
     default:
       return {
         label: "?",
         title: "未知",
-        className: "bg-gray-500/20 text-gray-500",
+        className: "bg-[var(--color-text-muted)]/12 text-[var(--color-text-muted)]",
       };
   }
 }

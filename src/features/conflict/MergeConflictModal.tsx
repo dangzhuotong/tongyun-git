@@ -286,7 +286,7 @@ function MergeConflictModalContent({
         {/* Header Bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface-raised)] shrink-0">
           <div className="flex items-center gap-3">
-            <span className="p-1.5 rounded-md bg-amber-500/15 text-amber-500">
+            <span className="p-1.5 rounded-md bg-[var(--ty-honey-tint)] text-[var(--ty-honey)]">
               <GitMergeIcon width={16} height={16} />
             </span>
             <div>
@@ -295,11 +295,11 @@ function MergeConflictModalContent({
                   三方合并冲突解决器 (3-Way Merge Tool)
                 </h2>
                 {hasRemainingConflicts ? (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                  <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--ty-honey-tint)] text-[var(--ty-honey)]">
                     剩余 {conflictFiles.length} 个冲突文件
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[var(--color-status-added)]/15 text-[var(--color-status-added)] flex items-center gap-1">
                     <CheckIcon width={12} height={12} />
                     <span>所有冲突已全部解决！</span>
                   </span>
@@ -421,7 +421,7 @@ function MergeConflictModalContent({
         )}
 
         {successMsg && (
-          <div className="px-4 py-1.5 border-b border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs shrink-0 flex items-center justify-between">
+          <div className="px-4 py-1.5 border-b border-[var(--color-status-added)]/30 bg-[var(--color-status-added)]/10 text-[var(--color-status-added)] text-xs shrink-0 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CheckIcon width={14} height={14} />
               <span>{successMsg}</span>
@@ -444,7 +444,7 @@ function MergeConflictModalContent({
             </div>
           ) : !hasRemainingConflicts ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-[var(--color-status-added)]/10 text-[var(--color-status-added)] flex items-center justify-center">
                 <CheckIcon width={24} height={24} />
               </div>
               <h3 className="text-base font-bold text-[var(--color-text)]">
@@ -476,7 +476,7 @@ function MergeConflictModalContent({
               <div className="flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
                 <div className="px-3 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-raised)] flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
                     <span className="text-xs font-semibold text-[var(--color-text)]">
                       本地分支 (Ours)
                     </span>
@@ -492,23 +492,23 @@ function MergeConflictModalContent({
                       {details.hunks.map((hunk, idx) => (
                         <div
                           key={idx}
-                          className="rounded border border-blue-500/30 bg-blue-500/5 p-2 space-y-1.5"
+                          className="rounded border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-2 space-y-1.5"
                         >
-                          <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
-                            <span className="text-[10px] text-blue-500 font-bold">
+                          <div className="flex items-center justify-between border-b border-[var(--color-accent)]/20 pb-1">
+                            <span className="text-[10px] text-[var(--color-accent)] font-bold">
                               冲突块 #{idx + 1}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleAcceptHunkOurs(idx)}
-                              className="px-2 py-0.5 rounded bg-blue-500 text-white text-[10px] font-medium hover:bg-blue-600 transition-colors cursor-pointer flex items-center gap-1"
+                              className="px-2 py-0.5 rounded bg-[var(--color-accent)] text-white text-[10px] font-medium hover:bg-[var(--ty-matcha-hover)] transition-colors cursor-pointer flex items-center gap-1"
                               title="采纳此块到中间合并结果"
                             >
                               <span>采纳此块</span>
                               <ArrowRightIcon width={10} height={10} />
                             </button>
                           </div>
-                          <pre className="whitespace-pre-wrap break-all text-blue-900 dark:text-blue-200">
+                          <pre className="whitespace-pre-wrap break-all text-[var(--color-text)]">
                             {hunk.our_lines.join("\n") || "(空内容)"}
                           </pre>
                         </div>
@@ -551,7 +551,7 @@ function MergeConflictModalContent({
               <div className="flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
                 <div className="px-3 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-raised)] flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                    <span className="w-2 h-2 rounded-full bg-[var(--ty-sky)]" />
                     <span className="text-xs font-semibold text-[var(--color-text)]">
                       传入分支 (Theirs)
                     </span>
@@ -567,23 +567,23 @@ function MergeConflictModalContent({
                       {details.hunks.map((hunk, idx) => (
                         <div
                           key={idx}
-                          className="rounded border border-purple-500/30 bg-purple-500/5 p-2 space-y-1.5"
+                          className="rounded border border-[var(--ty-sky)]/30 bg-[var(--ty-sky-tint)]/40 p-2 space-y-1.5"
                         >
-                          <div className="flex items-center justify-between border-b border-purple-500/20 pb-1">
+                          <div className="flex items-center justify-between border-b border-[var(--ty-sky)]/20 pb-1">
                             <button
                               type="button"
                               onClick={() => handleAcceptHunkTheirs(idx)}
-                              className="px-2 py-0.5 rounded bg-purple-500 text-white text-[10px] font-medium hover:bg-purple-600 transition-colors cursor-pointer flex items-center gap-1"
+                              className="px-2 py-0.5 rounded bg-[var(--ty-sky)] text-white text-[10px] font-medium hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1"
                               title="采纳此块到中间合并结果"
                             >
                               <ArrowLeftIcon width={10} height={10} />
                               <span>采纳此块</span>
                             </button>
-                            <span className="text-[10px] text-purple-500 font-bold">
+                            <span className="text-[10px] text-[var(--ty-sky)] font-bold">
                               冲突块 #{idx + 1}
                             </span>
                           </div>
-                          <pre className="whitespace-pre-wrap break-all text-purple-900 dark:text-purple-200">
+                          <pre className="whitespace-pre-wrap break-all text-[var(--color-text)]">
                             {hunk.their_lines.join("\n") || "(空内容)"}
                           </pre>
                         </div>

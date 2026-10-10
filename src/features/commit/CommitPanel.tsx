@@ -405,7 +405,7 @@ export function CommitPanel({
             <ShieldCheckIcon
               width={13}
               height={13}
-              className={aiReviewing ? "animate-pulse text-emerald-500" : "text-emerald-500"}
+              className={aiReviewing ? "animate-pulse text-[var(--color-status-added)]" : "text-[var(--color-status-added)]"}
             />
             <span>{aiReviewing ? "审查中..." : "AI 审查"}</span>
           </button>
@@ -477,7 +477,7 @@ export function CommitPanel({
               className={`px-3 py-1.5 rounded font-medium text-xs text-white shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 isAmend
                   ? "bg-[var(--color-status-modified)] hover:opacity-90"
-                  : "bg-[var(--color-accent)] hover:opacity-90"
+                  : "bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)]"
               }`}
             >
               {committing

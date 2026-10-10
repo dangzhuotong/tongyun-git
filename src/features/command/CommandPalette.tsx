@@ -72,12 +72,12 @@ const CommandPaletteContent: React.FC<CommandPaletteContentProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-xl border border-gray-700 bg-gray-900 shadow-2xl text-gray-100 overflow-hidden flex flex-col"
+        className="w-full max-w-xl rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl text-[var(--color-text)] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center border-b border-gray-800 px-4 py-3 gap-3">
+        <div className="flex items-center border-b border-[var(--color-border)] px-4 py-3 gap-3 bg-[var(--color-bg)]">
           <svg
-            className="w-5 h-5 text-gray-400 shrink-0"
+            className="w-5 h-5 text-[var(--color-text-muted)] shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -99,16 +99,16 @@ const CommandPaletteContent: React.FC<CommandPaletteContentProps> = ({
             }}
             onKeyDown={handleKeyDown}
             placeholder="搜索命令或操作..."
-            className="w-full bg-transparent text-sm focus:outline-none placeholder-gray-500 text-gray-100"
+            className="w-full bg-transparent text-sm focus:outline-none placeholder-[var(--color-text-muted)] text-[var(--color-text)]"
           />
-          <kbd className="text-[10px] bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-400">
+          <kbd className="text-[10px] bg-[var(--color-surface-raised)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[var(--color-text-muted)]">
             Esc
           </kbd>
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filtered.length === 0 ? (
-            <div className="py-8 text-center text-xs text-gray-500">
+            <div className="py-8 text-center text-xs text-[var(--color-text-muted)]">
               未找到匹配的命令
             </div>
           ) : (
@@ -124,20 +124,20 @@ const CommandPaletteContent: React.FC<CommandPaletteContentProps> = ({
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
                     isSelected
-                      ? "bg-blue-600/30 text-blue-200 border border-blue-500/40"
-                      : "text-gray-300 hover:bg-gray-800/60 border border-transparent"
+                      ? "bg-[var(--color-selection)] text-[var(--color-text)] border border-[var(--color-border-strong)]"
+                      : "text-[var(--color-text)] hover:bg-[var(--color-surface-raised)] border border-transparent"
                   }`}
                 >
                   <div className="flex flex-col gap-0.5 truncate">
                     <span className="font-medium truncate">{cmd.title}</span>
                     {cmd.description && (
-                      <span className="text-[11px] text-gray-400 truncate">
+                      <span className="text-[11px] text-[var(--color-text-muted)] truncate">
                         {cmd.description}
                       </span>
                     )}
                   </div>
                   {cmd.shortcut && (
-                    <kbd className="ml-3 shrink-0 text-[10px] bg-gray-800 border border-gray-700/80 rounded px-1.5 py-0.5 font-mono text-gray-400">
+                    <kbd className="ml-3 shrink-0 text-[10px] bg-[var(--color-surface-raised)] border border-[var(--color-border)] rounded px-1.5 py-0.5 font-mono text-[var(--color-text-muted)]">
                       {cmd.shortcut}
                     </kbd>
                   )}
@@ -147,7 +147,7 @@ const CommandPaletteContent: React.FC<CommandPaletteContentProps> = ({
           )}
         </div>
 
-        <div className="border-t border-gray-800/80 px-4 py-2 bg-gray-950/40 flex justify-between text-[11px] text-gray-500">
+        <div className="border-t border-[var(--color-border)] px-4 py-2 bg-[var(--color-surface-raised)] flex justify-between text-[11px] text-[var(--color-text-muted)]">
           <span>上下键导航</span>
           <span>Enter 确认执行</span>
         </div>

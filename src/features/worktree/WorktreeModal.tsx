@@ -286,7 +286,7 @@ function WorktreeModalContent({
 
         {/* Banners */}
         {error && (
-          <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-xs flex items-center justify-between">
+          <div className="px-4 py-2 bg-[var(--color-danger)]/10 border-b border-[var(--color-danger)]/20 text-[var(--color-danger)] text-xs flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircleIcon width={14} height={14} className="shrink-0" />
               <span>{error}</span>
@@ -301,7 +301,7 @@ function WorktreeModalContent({
           </div>
         )}
         {successMsg && (
-          <div className="px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-400 text-xs flex items-center justify-between">
+          <div className="px-4 py-2 bg-[var(--color-status-added)]/10 border-b border-[var(--color-status-added)]/20 text-[var(--color-status-added)] text-xs flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CheckIcon width={14} height={14} className="shrink-0" />
               <span>{successMsg}</span>
@@ -497,21 +497,21 @@ function WorktreeModalContent({
                               <span>{wt.branch}</span>
                             </span>
                           ) : wt.head_oid ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border border-[var(--ty-honey)]/20">
                               <span>游离 HEAD ({wt.head_oid.slice(0, 7)})</span>
                             </span>
                           ) : null}
 
                           {/* Main badge */}
                           {wt.is_main && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/20">
                               主工作区
                             </span>
                           )}
 
                           {/* Active badge */}
                           {isCurrent && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-[var(--color-status-added)]/10 text-[var(--color-status-added)] border border-[var(--color-status-added)]/20">
                               当前已打开
                             </span>
                           )}
@@ -519,7 +519,7 @@ function WorktreeModalContent({
                           {/* Locked badge */}
                           {wt.is_locked && (
                             <span
-                              className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border border-[var(--ty-honey)]/20"
                               title={wt.lock_reason || "已锁定"}
                             >
                               🔒 已锁定 {wt.lock_reason ? `(${wt.lock_reason})` : ""}
@@ -589,7 +589,7 @@ function WorktreeModalContent({
                             type="button"
                             onClick={() => setRemovingTarget(wt)}
                             disabled={actionLoading}
-                            className="px-2 py-1 rounded border border-red-500/20 text-red-400 hover:bg-red-500/10 text-[11px] transition-colors cursor-pointer disabled:opacity-50"
+                            className="px-2 py-1 rounded border border-[var(--color-danger)]/20 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 text-[11px] transition-colors cursor-pointer disabled:opacity-50"
                             title="移除此工作树"
                           >
                             移除
@@ -646,8 +646,8 @@ function WorktreeModalContent({
         {/* Remove Worktree Confirmation Dialog */}
         {removingTarget && (
           <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-sm rounded-lg border border-red-500/30 bg-[var(--color-surface)] shadow-2xl p-4 space-y-3 animate-in fade-in zoom-in-95">
-              <div className="flex items-center gap-2 text-red-400 font-semibold text-sm">
+            <div className="w-full max-w-sm rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-surface)] shadow-2xl p-4 space-y-3 animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-2 text-[var(--color-danger)] font-semibold text-sm">
                 <AlertCircleIcon width={16} height={16} />
                 <span>确认移除工作区？</span>
               </div>
@@ -662,9 +662,9 @@ function WorktreeModalContent({
                   type="checkbox"
                   checked={forceRemove}
                   onChange={(e) => setForceRemove(e.target.checked)}
-                  className="accent-red-500"
+                  className="accent-[var(--color-danger)]"
                 />
-                <span className="text-[11px] text-red-400">
+                <span className="text-[11px] text-[var(--color-danger)]">
                   强制删除（即便工作区含有未提交或未推送的改动）
                 </span>
               </label>
@@ -683,7 +683,7 @@ function WorktreeModalContent({
                   type="button"
                   onClick={handleRemove}
                   disabled={actionLoading}
-                  className="px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 rounded bg-[var(--color-danger)] text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
                 >
                   确认移除
                 </button>

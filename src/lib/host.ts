@@ -101,6 +101,15 @@ export async function getRepoStatus(rootPath: string): Promise<RepoStatusResult>
   return await invoke<RepoStatusResult>("get_repo_status", { rootPath });
 }
 
+export interface TreeFile {
+  path: string;
+  deleted_on_disk: boolean;
+}
+
+export async function listRepoFiles(rootPath: string): Promise<TreeFile[]> {
+  return await invoke<TreeFile[]>("list_repo_files", { rootPath });
+}
+
 export async function getFileDiff(
   rootPath: string,
   path: string,
