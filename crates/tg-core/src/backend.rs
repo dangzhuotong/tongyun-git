@@ -92,6 +92,12 @@ pub struct FileDiff {
     pub hunks: Vec<DiffHunk>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TreeFile {
+    pub path: String,
+    pub deleted_on_disk: bool,
+}
+
 pub trait GitBackend: Send + Sync {
     fn repo_root(&self) -> &Path;
     fn head(&self) -> Result<HeadInfo>;
@@ -99,6 +105,7 @@ pub trait GitBackend: Send + Sync {
     fn diff_file(&self, path: &str, staged: bool) -> Result<FileDiff>;
     fn stage_files(&self, paths: &[&str]) -> Result<()>;
     fn unstage_files(&self, paths: &[&str]) -> Result<()>;
+    fn list_repo_files(&self) -> Result<Vec<TreeFile>>;
 }
 
 pub struct Git2Backend {
@@ -169,6 +176,96 @@ impl Git2Backend {
             repo: Mutex::new(repo),
             repo_root,
         })
+    }
+
+    pub fn list_repo_files(&self) -> Result<Vec<TreeFile>> {
+        let repo = self.repo.lock().unwrap_or_else(|p| p.into_inner());
+
+        let mut paths_set = std::collections::BTreeSet::new();
+
+        // 1. All entries in the index
+        if let Ok(mut index) = repo.index() {
+            let _ = index.read(false);
+            for entry in index.iter() {
+                let path_str = String::from_utf8_lossy(&entry.path).replace('\\', "/");
+                let clean = path_str
+                    .trim_start_matches("./")
+                    .trim_start_matches('/')
+                    .to_string();
+                if !clean.is_empty() {
+                    paths_set.insert(clean);
+                }
+            }
+        }
+
+        // 2. Statuses: untracked files and staged deletions
+        let mut opts = git2::StatusOptions::new();
+        opts.include_untracked(true)
+            .recurse_untracked_dirs(true)
+            .include_ignored(false);
+
+        let statuses = repo.statuses(Some(&mut opts))?;
+        for entry in statuses.iter() {
+            let status = entry.status();
+
+            // Staged deletions (HEAD has it, index deleted it)
+            if status.contains(git2::Status::INDEX_DELETED)
+                || status.contains(git2::Status::INDEX_RENAMED)
+            {
+                let old_path = entry
+                    .head_to_index()
+                    .and_then(|diff| {
+                        diff.old_file()
+                            .path()
+                            .map(|p| p.to_string_lossy().to_string())
+                    })
+                    .or_else(|| entry.path().ok().map(|s| s.to_string()));
+
+                if let Some(raw) = old_path {
+                    let normalized = raw.replace('\\', "/");
+                    let clean = normalized
+                        .trim_start_matches("./")
+                        .trim_start_matches('/')
+                        .to_string();
+                    if !clean.is_empty() {
+                        paths_set.insert(clean);
+                    }
+                }
+            }
+
+            // Untracked files (not ignored)
+            if status.contains(git2::Status::WT_NEW) {
+                let path_str = entry.path().ok().map(|s| s.to_string()).or_else(|| {
+                    entry
+                        .index_to_workdir()
+                        .and_then(|d| d.new_file().path().map(|p| p.to_string_lossy().to_string()))
+                });
+
+                if let Some(raw) = path_str {
+                    let normalized = raw.replace('\\', "/");
+                    let clean = normalized
+                        .trim_start_matches("./")
+                        .trim_start_matches('/')
+                        .to_string();
+                    if !clean.is_empty() {
+                        paths_set.insert(clean);
+                    }
+                }
+            }
+        }
+
+        // 3. Construct TreeFile with deleted_on_disk check
+        let mut result = Vec::with_capacity(paths_set.len());
+        for path in paths_set {
+            let full_path = self.repo_root.join(Path::new(&path));
+            let deleted_on_disk = full_path.symlink_metadata().is_err();
+            result.push(TreeFile {
+                path,
+                deleted_on_disk,
+            });
+        }
+
+        Ok(result)
     }
 }
 
@@ -521,5 +618,9 @@ impl GitBackend for Git2Backend {
 
         repo.reset_default(head_obj.as_ref(), &normalized_paths)?;
         Ok(())
+    }
+
+    fn list_repo_files(&self) -> Result<Vec<TreeFile>> {
+        Git2Backend::list_repo_files(self)
     }
 }

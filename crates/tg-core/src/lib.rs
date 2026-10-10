@@ -25,7 +25,7 @@ pub use ai::{
 
 pub use backend::{
     map_repo_state, ChangeKind, DiffHunk, DiffLine, FileDiff, FileStatus, Git2Backend, GitBackend,
-    HeadInfo, RepoState,
+    HeadInfo, RepoState, TreeFile,
 };
 pub use branch::{BranchItem, BranchService, SwitchBranchResult, ValidationResult};
 pub use cli::{
