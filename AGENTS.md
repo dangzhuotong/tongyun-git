@@ -17,6 +17,7 @@
 | 测试 | [docs/testing/acceptance-tests.md](docs/testing/acceptance-tests.md) |
 | 命令、CI、发版、许可证 | [docs/development.md](docs/development.md) |
 | 排期 | [docs/plan.md](docs/plan.md) |
+| 产品内 AI / 外部 Agent 边界 | [.agents/skills/tongyun-git/SKILL.md](.agents/skills/tongyun-git/SKILL.md) |
 
 ## 开发与验证
 
