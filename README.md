@@ -47,6 +47,7 @@ npx tauri build --no-bundle
 | 文档 | 内容 |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | AI 协作开发规则（改代码前先读） |
+| [.agents/skills/tongyun-git/SKILL.md](.agents/skills/tongyun-git/SKILL.md) | App 内 AI 用法与外部 Agent 边界 |
 | [docs/prd.md](docs/prd.md) | 产品需求、MVP 与 v2 范围、竞品、验收条件 |
 | [docs/user-flows.md](docs/user-flows.md) | 用户流程 |
 | [docs/design/ui-direction.md](docs/design/ui-direction.md) | 界面方向与设计规则 |
