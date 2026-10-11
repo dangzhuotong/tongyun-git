@@ -9,6 +9,7 @@ interface DiscardConfirmModalProps {
   onConfirm: () => Promise<void>;
   candidates: DiscardCandidate[];
   loading: boolean;
+  lineCount?: number;
 }
 
 export function DiscardConfirmModal({
@@ -17,6 +18,7 @@ export function DiscardConfirmModal({
   onConfirm,
   candidates,
   loading,
+  lineCount,
 }: DiscardConfirmModalProps) {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -67,9 +69,9 @@ export function DiscardConfirmModal({
         {/* Content Body */}
         <div className="p-4 space-y-4">
           <p className="text-xs text-[var(--color-text)] leading-relaxed">
-            确定要丢弃所选文件的全部改动吗？
+            {lineCount ? `确定丢弃选中的 ${lineCount} 行改动吗？` : "确定要丢弃所选文件的全部改动吗？"}
             <span className="font-semibold text-[var(--color-danger)] ml-1">
-              已暂存和未暂存的部分都会被丢弃。
+              {lineCount ? "只改变工作区，暂存区保持不变；可从仓库工具的撤回备份恢复。" : "已暂存和未暂存的部分都会被丢弃。"}
             </span>
           </p>
 
@@ -77,7 +79,7 @@ export function DiscardConfirmModal({
           {toRestore.length > 0 && (
             <div className="space-y-1">
               <span className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase">
-                将恢复至 HEAD ({toRestore.length})
+                {lineCount ? "所选行所在文件" : "将恢复至 HEAD"} ({toRestore.length})
               </span>
               <div className="max-h-28 overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] space-y-1">
                 {toRestore.map((c) => (

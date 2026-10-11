@@ -1,4 +1,5 @@
 use serde::Serialize;
+mod workspace;
 use std::path::Path;
 use tauri::{AppHandle, Manager};
 use tg_core::{
@@ -967,6 +968,7 @@ pub fn run() {
             }
         }))
         .invoke_handler(tauri::generate_handler![
+            workspace::workspace_task,
             app_info,
             check_git,
             open_repository,

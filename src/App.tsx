@@ -17,12 +17,14 @@ import {
   selectFolder,
   initRepository,
   cloneRepository,
+  workspaceTask,
   type AppInfo,
   type RepoInfo,
   type FileStatus,
   type FileDiff,
   type DiscardCandidate,
 } from "./lib/host";
+import { WorkspaceTools, type WorkspaceTab } from "./features/workspace/WorkspaceTools";
 import { Toolbar } from "./features/toolbar/Toolbar";
 import { ChangesList } from "./features/changes/ChangesList";
 import { DiffViewer } from "./features/changes/DiffViewer";
@@ -71,6 +73,17 @@ export default function App() {
       return [];
     }
   });
+
+  const [workspaceTools, setWorkspaceTools] = useState<{ tab: WorkspaceTab; target?: string } | null>(null);
+  const [logSelectedOid, setLogSelectedOid] = useState<string | null>(null);
+  const [favoriteRepos, setFavoriteRepos] = useState<string[]>(() => {
+    try { const value: unknown = JSON.parse(localStorage.getItem("tongyun_favorite_repos") || "[]"); return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []; } catch { return []; }
+  });
+  const toggleFavorite = () => {
+    if (!currentRepo) return;
+    const next = favoriteRepos.includes(currentRepo.root_path) ? favoriteRepos.filter(p => p !== currentRepo.root_path) : [...favoriteRepos, currentRepo.root_path];
+    setFavoriteRepos(next); localStorage.setItem("tongyun_favorite_repos", JSON.stringify(next));
+  };
 
   // Diff state
   const [selectedTarget, setSelectedTarget] = useState<SelectedFileTarget | null>(null);
@@ -146,6 +159,7 @@ export default function App() {
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
 
   // Discard & Undo state (R-17)
+  const [lineDiscard, setLineDiscard] = useState<{ expected: FileDiff; hunkIndex: number; indices: number[] } | null>(null);
   const [discardModalVisible, setDiscardModalVisible] = useState(false);
   const [discardCandidates, setDiscardCandidates] = useState<DiscardCandidate[]>([]);
   const [discardLoading, setDiscardLoading] = useState(false);
@@ -719,6 +733,11 @@ export default function App() {
           action: () => setStashModalOpen(true),
         },
         {
+          id: "workspace-tools",
+          title: "仓库工具：会话快照、搁置、分支比较和 blame",
+          action: () => setWorkspaceTools({ tab: "overview" }),
+        },
+        {
           id: "git-worktrees",
           title: "管理 Git 工作区 (Git Worktrees)",
           description: "查看与管理多工作树、切换工作区或新建 Worktree",
@@ -933,6 +952,7 @@ export default function App() {
       if (!currentRepo || paths.length === 0) return;
       try {
         const candidates = await inspectDiscard(currentRepo.root_path, paths);
+        setLineDiscard(null);
         setDiscardCandidates(candidates);
         setDiscardModalVisible(true);
       } catch (err: unknown) {
@@ -947,6 +967,14 @@ export default function App() {
     setDiscardLoading(true);
     try {
       const paths = discardCandidates.map((c) => c.path);
+      if (lineDiscard) {
+        await workspaceTask(currentRepo.root_path, { type: "discard_lines", expected: lineDiscard.expected, hunk_index: lineDiscard.hunkIndex, selected: lineDiscard.indices });
+        setDiscardModalVisible(false); setLineDiscard(null);
+        await refreshStatus(currentRepo.root_path);
+        setDiff(await getFileDiff(currentRepo.root_path, lineDiscard.expected.path, false));
+        setSyncToast({ message: "已丢弃所选行，可在仓库工具的撤回备份中恢复" });
+        return;
+      }
       const result = await discardFiles(currentRepo.root_path, paths);
       setDiscardModalVisible(false);
       await refreshStatus(currentRepo.root_path);
@@ -977,7 +1005,7 @@ export default function App() {
     } finally {
       setDiscardLoading(false);
     }
-  }, [currentRepo, discardCandidates, refreshStatus, selectedTarget]);
+  }, [currentRepo, discardCandidates, refreshStatus, selectedTarget, lineDiscard]);
 
   const handleUndoDiscard = useCallback(async () => {
     if (!currentRepo) return;
@@ -1012,7 +1040,7 @@ export default function App() {
       {/* Top Toolbar */}
       <Toolbar
         currentRepo={currentRepo}
-        recentRepos={recentRepos}
+        recentRepos={[...favoriteRepos, ...recentRepos.filter(p => !favoriteRepos.includes(p))]}
         onOpenRepo={handleOpenRepo}
         onOpenModalClick={() => {
           setOpenError(null);
@@ -1041,6 +1069,9 @@ export default function App() {
         onOpenWorktreeModal={() => setWorktreeModalOpen(true)}
         onOpenShortcuts={() => setShortcutsModalOpen(true)}
         onOpenAbout={() => setAboutModalOpen(true)}
+        onOpenWorkspaceTools={() => setWorkspaceTools({ tab: "overview" })}
+        favorite={!!currentRepo && favoriteRepos.includes(currentRepo.root_path)}
+        onToggleFavorite={toggleFavorite}
       />
 
 
@@ -1286,6 +1317,9 @@ export default function App() {
                     loading={diffLoading}
                     error={diffError}
                     onStageHunkLines={handleStageHunkLines}
+                    onDiscardHunkLines={(hunkIndex, indices) => {
+                      if (diff) { setLineDiscard({ expected: diff, hunkIndex, indices }); setDiscardCandidates([{ path: diff.path, will_delete: false, unrestorable: false, size: diff.new_size || 0 }]); setDiscardModalVisible(true); }
+                    }}
                   />
                 )}
               </div>
@@ -1294,7 +1328,10 @@ export default function App() {
             /* Log View (R-10) */
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
               <LogView
+                key={`${currentRepo.root_path}:${logSelectedOid || "history"}`}
                 rootPath={currentRepo.root_path}
+                initialSelectedOid={logSelectedOid}
+                onOpenHistoryTools={oid => setWorkspaceTools({ tab: "history", target: oid })}
                 onOpenCreateBranch={(oid) => {
                   setCreateBranchStartPoint(oid);
                   setCreateBranchModalOpen(true);
@@ -1457,6 +1494,7 @@ export default function App() {
         onConfirm={handleConfirmDiscard}
         candidates={discardCandidates}
         loading={discardLoading}
+        lineCount={lineDiscard?.indices.length}
       />
 
       {/* 10-Second Undo Discard Notification Toast (R-17) */}
@@ -1490,6 +1528,7 @@ export default function App() {
         </div>
       )}
 
+      {currentRepo && workspaceTools && <WorkspaceTools key={currentRepo.root_path} rootPath={currentRepo.root_path} initialTab={workspaceTools.tab} initialTarget={workspaceTools.target} initialFile={selectedTarget?.path || ""} onClose={() => setWorkspaceTools(null)} onChanged={() => { void refreshStatus(currentRepo.root_path); if (selectedTarget) void getFileDiff(currentRepo.root_path, selectedTarget.path, selectedTarget.staged).then(setDiff).catch(() => setDiff(null)); }} onOpenRepo={handleOpenRepo} onShowCommit={oid => { setLogSelectedOid(oid); setActiveView("log"); setWorkspaceTools(null); }} />}
       {/* Open Repo Modal */}
       <OpenRepoModal
         isOpen={openModalVisible}

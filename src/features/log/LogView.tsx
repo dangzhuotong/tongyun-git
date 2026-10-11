@@ -34,6 +34,8 @@ interface LogViewProps {
   onOpenFileHistory?: (filePath: string) => void;
   onOpenInteractiveRebase?: (baseOid: string, baseSummary?: string) => void;
   onRefreshRepo?: () => void;
+  initialSelectedOid?: string | null;
+  onOpenHistoryTools?: (oid: string) => void;
 }
 
 export function LogView({
@@ -43,6 +45,7 @@ export function LogView({
   onOpenFileHistory,
   onOpenInteractiveRebase,
   onRefreshRepo,
+  initialSelectedOid, onOpenHistoryTools,
 }: LogViewProps) {
   // Query state
   const [allBranches, setAllBranches] = useState(true);
@@ -54,7 +57,7 @@ export function LogView({
   const [error, setError] = useState<string | null>(null);
 
   // Selected commit state
-  const [selectedOid, setSelectedOid] = useState<string | null>(null);
+  const [selectedOid, setSelectedOid] = useState<string | null>(initialSelectedOid || null);
   const [details, setDetails] = useState<CommitDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
@@ -111,7 +114,7 @@ export function LogView({
 
         if (res.commits.length > 0) {
           setSelectedOid((prev) => {
-            if (prev && res.commits.some((c) => c.oid === prev)) {
+            if (prev && (prev === initialSelectedOid || res.commits.some((c) => c.oid === prev))) {
               return prev;
             }
             return res.commits[0].oid;
@@ -132,7 +135,7 @@ export function LogView({
     return () => {
       canceled = true;
     };
-  }, [rootPath, allBranches, filterText]);
+  }, [rootPath, allBranches, filterText, initialSelectedOid]);
 
   // Refresh handler (event-driven)
   const handleRefresh = async () => {
@@ -150,7 +153,7 @@ export function LogView({
       setHasMore(res.has_more);
       if (res.commits.length > 0) {
         setSelectedOid((prev) => {
-          if (prev && res.commits.some((c) => c.oid === prev)) {
+          if (prev && (prev === initialSelectedOid || res.commits.some((c) => c.oid === prev))) {
             return prev;
           }
           return res.commits[0].oid;
@@ -823,6 +826,7 @@ export function LogView({
               从这里新建标签...
             </button>
           )}
+          {onOpenHistoryTools && <button type="button" className="block w-full text-left px-3 py-2 hover:bg-[var(--color-surface-raised)] text-xs" onClick={() => { onOpenHistoryTools(contextMenu.commit.oid); setContextMenu(null); }}>应用、撤销或比较此提交…</button>}
           {onOpenInteractiveRebase && (
             <button
               type="button"

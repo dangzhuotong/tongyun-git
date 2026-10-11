@@ -41,6 +41,9 @@ interface ToolbarProps {
   onOpenWorktreeModal?: () => void;
   onOpenShortcuts?: () => void;
   onOpenAbout?: () => void;
+  onOpenWorkspaceTools?: () => void;
+  favorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 
@@ -69,6 +72,7 @@ export function Toolbar({
   onOpenWorktreeModal,
   onOpenShortcuts,
   onOpenAbout,
+  onOpenWorkspaceTools, favorite, onToggleFavorite,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -191,6 +195,10 @@ export function Toolbar({
         )}
       </div>
 
+      {currentRepo && <div className="flex items-center gap-2">
+        <button type="button" aria-label={favorite ? "取消收藏仓库" : "收藏仓库"} onClick={onToggleFavorite} className="px-2 py-1 rounded hover:bg-[var(--color-surface-raised)]">{favorite ? "★" : "☆"}</button>
+        <button type="button" onClick={onOpenWorkspaceTools} className="px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-raised)]">仓库工具</button>
+      </div>}
       {/* Right: Actions & Tools */}
       <div className="flex items-center gap-1.5">
         {/* Open Folder Button */}

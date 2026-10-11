@@ -12,6 +12,7 @@ interface DiffViewerProps {
   loading: boolean;
   error?: string | null;
   readOnly?: boolean;
+  onDiscardHunkLines?: (hunkIndex: number, indices: number[]) => void;
   onStageHunkLines?: (
     hunkIndex: number,
     lineIndices: number[],
@@ -25,6 +26,7 @@ export function DiffViewer({
   error = null,
   readOnly = false,
   onStageHunkLines,
+  onDiscardHunkLines,
 }: DiffViewerProps) {
   const [layout, setLayout] = useState<DiffLayout>(() => {
     return (localStorage.getItem("tongyun_diff_layout") as DiffLayout) || "unified";
@@ -75,6 +77,10 @@ export function DiffViewer({
         }
       }
 
+      if (e.key.toLowerCase() === "d" && !diff.staged && activeHunkIndex != null && onDiscardHunkLines && !diff.is_crlf_change && !diff.old_path) {
+        const selected = Array.from(selectedLineIndices).filter(i => ["+", "-"].includes(diff.hunks[activeHunkIndex].lines[i]?.origin));
+        if (selected.length) { e.preventDefault(); onDiscardHunkLines(activeHunkIndex, selected); }
+      }
       // Space: Stage or Unstage selected lines
       if (e.key === " " && activeHunkIndex != null && selectedLineIndices.size > 0) {
         e.preventDefault();
@@ -89,7 +95,7 @@ export function DiffViewer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [diff, activeHunkIndex, selectedLineIndices, onStageHunkLines, readOnly]);
+  }, [diff, activeHunkIndex, selectedLineIndices, onStageHunkLines, onDiscardHunkLines, readOnly]);
 
   if (loading) {
     return (
@@ -193,6 +199,7 @@ export function DiffViewer({
             </button>
           )}
 
+          {!readOnly && !diff.staged && !diff.is_binary && !diff.is_crlf_change && !diff.old_path && activeHunkIndex != null && selectedLineIndices.size > 0 && onDiscardHunkLines && <button type="button" className="text-[var(--color-danger)]" onClick={() => onDiscardHunkLines(activeHunkIndex, Array.from(selectedLineIndices).filter(i => ["+", "-"].includes(diff.hunks[activeHunkIndex].lines[i]?.origin)))}>丢弃所选行 (D)</button>}
           {/* Ignore Whitespace Toggle */}
           <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
             <input

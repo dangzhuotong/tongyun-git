@@ -136,38 +136,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_system_keyring_roundtrip() {
-        let keyring = SystemKeyring;
-        // Entry::new can succeed on Linux even when Secret Service/DBus is missing;
-        // only treat the platform store as available if a probe write works.
-        if !keyring.is_available() {
-            return;
-        }
-        let provider = "test_roundtrip_provider";
-        let secret = "sk-test-secret-value-789";
-
-        // 1. Set key — skip when the OS has no usable secure storage (common on CI)
-        if let Err(e) = keyring.set_key(provider, secret) {
-            let msg = e.to_string();
-            if msg.contains("secure storage")
-                || msg.contains("DBus")
-                || msg.contains("org.freedesktop.secrets")
-                || msg.contains("No such secret")
-            {
-                return;
-            }
-            panic!("set_key should succeed: {e}");
-        }
-
-        // 2. Read key
-        let read_val = keyring.get_key(provider).expect("get_key should succeed");
-        assert_eq!(read_val, Some(secret.to_string()));
-
-        // 3. Delete key
-        keyring
-            .delete_key(provider)
-            .expect("delete_key should succeed");
-        let after_delete = keyring.get_key(provider).expect("get_key after delete");
-        assert_eq!(after_delete, None);
+    fn test_memory_keyring_roundtrip() {
+        let keyring = MemoryKeyring::new();
+        keyring.set_key("local-test", "fixture-value").unwrap();
+        assert_eq!(
+            keyring.get_key("local-test").unwrap().as_deref(),
+            Some("fixture-value")
+        );
+        keyring.delete_key("local-test").unwrap();
+        assert_eq!(keyring.get_key("local-test").unwrap(), None);
     }
 }

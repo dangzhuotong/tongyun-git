@@ -969,3 +969,36 @@ export async function pruneWorktrees(rootPath: string): Promise<void> {
 
 
 
+
+// Additional local workspace workflows. No AI requests or secrets cross this API.
+export interface SnapshotVersion { oid: string; mode: number }
+export interface WorkspaceSnapshot {
+  reference: string; label: string; kind: string; root: string; head: string | null;
+  created_ms: number; files: Record<string, SnapshotVersion | null>;
+}
+export interface SnapshotChange {
+  path: string; saved: SnapshotVersion | null; current: SnapshotVersion | null;
+  current_index: SnapshotVersion | null; can_restore: boolean;
+}
+export interface WorkspaceOverview {
+  worktrees: { path: string; branch: string | null; changed: string[]; ahead: number | null; behind: number | null; error: string | null }[];
+  overlaps: Record<string, string[]>;
+  hunk_overlaps: string[];
+}
+export interface BranchComparison { from: string; to: string; patch: string; files: number; additions: number; deletions: number }
+export interface BlameLine { line: number; oid: string; author: string; content: string }
+export type HistoryAction = "cherry_pick" | "revert" | "merge" | "continue" | "abort";
+export type WorkspaceRequest =
+  | { type: "overview" | "snapshots" }
+  | { type: "compare"; from: string; to: string }
+  | { type: "blame"; path: string; start: number; count: number }
+  | { type: "history"; action: HistoryAction; target: string }
+  | { type: "capture"; label: string }
+  | { type: "finish" | "changes" | "delete"; reference: string }
+  | { type: "restore"; reference: string; changes: SnapshotChange[] }
+  | { type: "shelve"; label: string; paths: string[] }
+  | { type: "discard_lines"; expected: FileDiff; hunk_index: number; selected: number[] }
+  | { type: "open"; application: "idea" | "terminal" | "folder" };
+export async function workspaceTask<T>(rootPath: string, request: WorkspaceRequest): Promise<T> {
+  return invoke<T>("workspace_task", { rootPath, request, gitPath: localStorage.getItem("tongyun_git_path") || null });
+}

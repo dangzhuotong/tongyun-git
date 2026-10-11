@@ -1,6 +1,6 @@
 # 开发、CI 与发版
 
-状态：M0 已建立命令和 CI（以 package.json 和 .github/workflows 为准）。
+状态：命令与 CI 已建立；当前功能验证见[工作流验证记录](testing/runs/2026-10-11-workflows.md)（以 package.json 和 .github/workflows 为准）。
 
 ## 技术栈（已定）
 
@@ -24,6 +24,7 @@
 | 前端构建 | `npm run build` | 依赖已装 | 生成 `dist/` 产物 | 已建立，2026-10-07 本地通过 |
 | 本地运行 | `npm run tauri dev` | 平台依赖（Linux 需 webkit2gtk-4.1 等，同 planner） | 窗口启动 | 已建立，2026-10-07 box（Debian 13 + Xvfb）窗口启动，见 [M0 验证记录](testing/runs/2026-10-07-m0.md) |
 | 打包 | `npm run tauri build` | 同上 | 产出对应平台安装包 | 已建立，2026-10-07 box 出 deb（3.96 MiB）并能启动；Windows / macOS 走 `build.yml` |
+| macOS 独立 QA 包 | `npm run tauri build -- --bundles app --config '{"identifier":"com.tongyun.git.qa","productName":"tongyun-git-qa"}'` | macOS 平台依赖 | 生成独立标识 `.app`，与日常应用设置隔离 | 本机验证见工作流记录；无签名公证 |
 | 性能基线 | `cargo run --release -p tg-core --example baseline -- <仓库> [条数]` | 系统 git | 输出一行 JSON | 已建立，结果见决策 0001 |
 | 端到端 | `npm run e2e` | 已打包的应用、tauri-driver | L3 用例通过 | 未建立（M6） |
 
