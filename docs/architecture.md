@@ -1,6 +1,6 @@
 # 架构（提案）
 
-状态：M0 已建立 `crates/tg-core`（GitBackend、Git2Backend、CliRunner、redact、patch spike）和 `src-tauri` 宿主；其余模块仍是提案。
+状态：当前宿主命令集中在 `src-tauri/src/lib.rs`；补充工作流命令在 `src-tauri/src/workspace.rs`。下方原 M0/计划目录保留为历史背景，当前模块以源码为准。
 
 ## 进程与依赖方向
 
@@ -115,3 +115,11 @@ tongyun-git/
 - key：只在系统钥匙串（macOS Keychain、Windows Credential Manager、Linux Secret Service），服务名取应用标识（`tauri.conf.json` 的 `identifier`），账户名 `ai-key:<提供方>`。钥匙串不可用时不能保存 key，设置页说明原因；不退回明文文件，也不读环境变量。
 - 应用名和标识只在 `src-tauri/tauri.conf.json` 维护（`productName`、`identifier`），Rust 和前端运行时从 Tauri 配置读取，不在代码里写死（PRD D4）。
 - 应用不写用户的 git 配置，不在工作区放任何文件。MVP 唯一写进仓库 `.git` 的是丢弃快照 `refs/tongyun/discard/*`（最多 20 个）；v2 的 shelve 和 agent 快照届时放在 `.git/tongyun/` 和 `refs/tongyun/`。
+
+## 2026-10-11 本地工作流
+
+- `crates/tg-core/src/workspace.rs`：提交搬运/撤销/合并、版本比较、分页 blame、跨 worktree 状态与共同祖先行范围重叠计算。
+- `crates/tg-core/src/snapshot.rs`：会话/搁置/按行丢弃的清单快照与条件恢复；格式与存放位置唯一维护于 [决策 0003](decisions/0003-workspace-snapshots.md)。
+- `src-tauri/src/workspace.rs`：带标签枚举的 IPC 参数，后台线程执行，串行锁，系统 Git 统一经 CliRunner；外部应用用固定启动器参数调用。
+- `src/features/workspace/WorkspaceTools.tsx`：总览、会话/搁置、提交/分支、blame 四个入口；复用现有主题变量。按行丢弃复用原确认框。
+- 整文件丢弃也采用清单格式，恢复工作区和 index 的独立 blob；旧有损快照保留但不自动恢复。此前关键数据流中有损恢复描述不再适用。

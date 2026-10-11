@@ -11,8 +11,10 @@ pub mod patch;
 pub mod rebase;
 pub mod redact;
 pub mod remote;
+pub mod snapshot;
 pub mod stash;
 pub mod tag;
+pub mod workspace;
 pub mod worktree;
 
 #[cfg(windows)]

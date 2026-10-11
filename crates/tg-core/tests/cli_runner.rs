@@ -331,7 +331,8 @@ fn test_timeout_and_normal_execution() {
         .expect("normal log execution");
     assert_eq!(normal_out.exit_code, Some(0));
 
-    // Timeout test on Unix using sleep in hook
+    // Test process-group termination independently of Git startup latency.
+    // Real Git hook execution is covered by test_hook_failure/test_hook_msg.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -339,10 +340,11 @@ fn test_timeout_and_normal_execution() {
         let hooks_dir = repo.path().join(".git").join("hooks");
         fs::create_dir_all(&hooks_dir).expect("create hooks dir");
         let hook_path = hooks_dir.join("pre-commit");
-        // A background grandchild. Killing only git would leave it writing.
+        // A launcher with a background child. Killing only the launcher leaves
+        // the child writing. Start the heartbeat before any Git startup work.
         fs::write(
             &hook_path,
-            "#!/bin/sh\n( i=0; while [ \"$i\" -lt 20 ]; do echo \"$i\" >> .tg-heartbeat; i=$((i+1)); sleep 1; done ) &\necho $! > .tg-sleep-pid\nwait\n",
+            "#!/bin/sh\necho ready > .tg-heartbeat\n( i=0; while [ \"$i\" -lt 20 ]; do echo \"$i\" >> .tg-heartbeat; i=$((i+1)); sleep 1; done ) &\necho $! > .tg-sleep-pid\nwait\n",
         )
         .expect("write sleeping hook");
 
@@ -354,9 +356,10 @@ fn test_timeout_and_normal_execution() {
         repo.git(&["add", "sleep_test.txt"]);
 
         let start = Instant::now();
-        let timeout_res = runner.run(
+        let timeout_runner = CliRunner::new("/bin/sh");
+        let timeout_res = timeout_runner.run(
             repo.path(),
-            &["commit", "-m", "should timeout"],
+            &[hook_path.to_str().expect("hook path"), "commit"],
             RunOptions {
                 timeout: Some(Duration::from_secs(1)),
                 ..Default::default()
