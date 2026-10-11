@@ -11,7 +11,7 @@ use tg_core::{
     OperationLogEntry, PullResult, PullStrategy, PushInspection, PushResult, RebaseItem,
     RebasePlan, RebaseResult, RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter,
     StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem,
-    TagService, ValidationResult, WorktreeItem, WorktreeService,
+    TagService, TreeFile, ValidationResult, WorktreeItem, WorktreeService,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -125,6 +125,15 @@ fn get_repo_status(root_path: String) -> std::result::Result<RepoStatusResult, S
     let files = backend.status().map_err(|e| e.to_string())?;
 
     Ok(RepoStatusResult { head, files })
+}
+
+#[tauri::command]
+fn list_repo_files(root_path: String) -> std::result::Result<Vec<TreeFile>, String> {
+    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+    let p = Path::new(clean_path);
+    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let files = backend.list_repo_files().map_err(|e| e.to_string())?;
+    Ok(files)
 }
 
 #[tauri::command]
@@ -964,6 +973,7 @@ pub fn run() {
             check_git,
             open_repository,
             get_repo_status,
+            list_repo_files,
             get_file_diff,
             stage_files,
             unstage_files,

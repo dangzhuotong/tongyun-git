@@ -50,6 +50,9 @@ import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
 import { InteractiveRebaseModal } from "./features/rebase/InteractiveRebaseModal";
 import { WorktreeModal } from "./features/worktree/WorktreeModal";
 import { StatusBar } from "./features/statusbar/StatusBar";
+import { FileTreePanel } from "./features/tree/FileTreePanel";
+import type { FileTreeNode } from "./features/tree/buildTree";
+import { FileHistoryPanel } from "./features/history/FileHistoryPanel";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
 
@@ -94,6 +97,27 @@ export default function App() {
     return saved ? Math.max(220, Math.min(600, parseInt(saved, 10))) : 320;
   });
   const isResizingRef = useRef(false);
+
+  // Project tree state
+  const [treeWidth, setTreeWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("tongyun_tree_width");
+      return saved ? Math.max(180, Math.min(420, parseInt(saved, 10))) : 240;
+    } catch {
+      return 240;
+    }
+  });
+  const [treeCollapsed, setTreeCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("tongyun_tree_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [treeRefreshKey, setTreeRefreshKey] = useState(0);
+  const [treeSelectedPath, setTreeSelectedPath] = useState<string | null>(null);
+  const [diffTab, setDiffTab] = useState<"changes" | "history">("changes");
+  const isTreeResizingRef = useRef(false);
 
   // Modals
   const [openModalVisible, setOpenModalVisible] = useState(false);
@@ -279,6 +303,7 @@ export default function App() {
         const statusRes = await getRepoStatus(repoRoot);
         setFiles(statusRes.files);
         setCurrentRepo((prev) => (prev ? { ...prev, head: statusRes.head } : null));
+        setTreeRefreshKey((k) => k + 1);
       } catch {
         // Refresh error handled silently or in status
       } finally {
@@ -347,6 +372,7 @@ export default function App() {
         localStorage.setItem("tongyun_last_repo", info.root_path);
         setOpenModalVisible(false);
         setSelectedTarget(null);
+        setTreeSelectedPath(null);
         setDiff(null);
 
         // Fetch initial status
@@ -736,12 +762,35 @@ export default function App() {
   }, [currentRepo, handlePull, handleFetch, refreshStatus, handleOpenConflictModal]);
 
   // Selection handler
-  const handleSelectTarget = (target: SelectedFileTarget) => {
+  const handleSelectTarget = useCallback((target: SelectedFileTarget) => {
     setSelectedTarget(target);
+    setTreeSelectedPath(target.path);
     setDiff(null);
     setDiffLoading(true);
     setDiffError(null);
-  };
+  }, []);
+
+  const handleOpenFileFromTree = useCallback(
+    (node: FileTreeNode) => {
+      setTreeSelectedPath(node.path);
+      if (node.fileStatus) {
+        const staged = Boolean(
+          node.fileStatus.index != null &&
+          node.fileStatus.worktree == null &&
+          node.fileStatus.index !== "Untracked"
+        );
+        handleSelectTarget({
+          path: node.path,
+          staged,
+          status: node.fileStatus,
+        });
+      } else {
+        setSelectedTarget(null);
+        setDiff(null);
+      }
+    },
+    [handleSelectTarget]
+  );
 
   // Load diff when selected target changes
   useEffect(() => {
@@ -774,20 +823,53 @@ export default function App() {
     };
   }, [currentRepo, selectedTarget]);
 
-  // Resizing left sidebar
+  // Resizing project tree column
+  const handleMouseDownTreeResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isTreeResizingRef.current = true;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isTreeResizingRef.current) return;
+      const newWidth = Math.max(180, Math.min(420, moveEvent.clientX));
+      setTreeWidth(newWidth);
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      isTreeResizingRef.current = false;
+      const finalWidth = Math.max(180, Math.min(420, upEvent.clientX));
+      try {
+        localStorage.setItem("tongyun_tree_width", finalWidth.toString());
+      } catch {
+        // Storage failure ignored
+      }
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Resizing left sidebar (changes list & commit area)
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingRef.current = true;
+    const treeOffset = treeCollapsed ? 28 : treeWidth;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isResizingRef.current) return;
-      const newWidth = Math.max(220, Math.min(600, moveEvent.clientX));
+      const newWidth = Math.max(220, Math.min(600, moveEvent.clientX - treeOffset));
       setSidebarWidth(newWidth);
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (upEvent: MouseEvent) => {
       isResizingRef.current = false;
-      localStorage.setItem("tongyun_sidebar_width", sidebarWidth.toString());
+      const finalWidth = Math.max(220, Math.min(600, upEvent.clientX - treeOffset));
+      try {
+        localStorage.setItem("tongyun_sidebar_width", finalWidth.toString());
+      } catch {
+        // Storage failure ignored
+      }
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -1044,7 +1126,76 @@ export default function App() {
         {currentRepo ? (
           activeView === "changes" ? (
             <>
-              {/* Left Column: Changes List & Commit Area */}
+              {/* Leftmost Column: Project File Tree */}
+              {treeCollapsed ? (
+                <div
+                  style={{ width: "28px" }}
+                  className="h-full flex flex-col items-center py-2 bg-[var(--color-surface)] border-r border-[var(--color-border)] shrink-0 select-none"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTreeCollapsed(false);
+                      try {
+                        localStorage.setItem("tongyun_tree_collapsed", "false");
+                      } catch {
+                        // Storage failure ignored
+                      }
+                    }}
+                    aria-label="展开文件树"
+                    title="展开文件树"
+                    className="tree-tool flex items-center justify-center p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-raised)] cursor-pointer"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="4" width="18" height="16" rx="3" />
+                      <path d="M9 4v16" />
+                      <path d="m14 10 2 2-2 2" />
+                    </svg>
+                  </button>
+                  <span className="text-xs font-semibold text-[var(--color-text-muted)] mt-3 [writing-mode:vertical-rl] tracking-widest">
+                    项目
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{ width: `${treeWidth}px` }}
+                    className="h-full flex flex-col shrink-0 border-r border-[var(--color-border)] overflow-hidden"
+                  >
+                    <FileTreePanel
+                      rootPath={currentRepo.root_path}
+                      statusFiles={files}
+                      refreshKey={treeRefreshKey}
+                      selectedPath={treeSelectedPath}
+                      onOpenFile={handleOpenFileFromTree}
+                      onHide={() => {
+                        setTreeCollapsed(true);
+                        try {
+                          localStorage.setItem("tongyun_tree_collapsed", "true");
+                        } catch {
+                          // Storage failure ignored
+                        }
+                      }}
+                    />
+                  </div>
+                  <div
+                    onMouseDown={handleMouseDownTreeResize}
+                    className="w-[4px] -ml-[2px] h-full cursor-col-resize hover:bg-[var(--color-accent)] transition-colors z-20 shrink-0 select-none"
+                  />
+                </>
+              )}
+
+              {/* Middle Column: Changes List & Commit Area */}
               <div
                 style={{ width: `${sidebarWidth}px` }}
                 className="h-full flex flex-col shrink-0 border-r border-[var(--color-border)] overflow-hidden"
@@ -1089,17 +1240,88 @@ export default function App() {
                 className="w-[4px] -ml-[2px] h-full cursor-col-resize hover:bg-[var(--color-accent)] transition-colors z-20 shrink-0 select-none"
               />
 
-              {/* Right Column: Diff View */}
+              {/* Right Column: Diff View or File History */}
               <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
-                <DiffViewer
-                  diff={diff}
-                  loading={diffLoading}
-                  error={diffError}
-                  onStageHunkLines={handleStageHunkLines}
-                  onDiscardHunkLines={(hunkIndex, indices) => {
-                    if (diff) { setLineDiscard({ expected: diff, hunkIndex, indices }); setDiscardCandidates([{ path: diff.path, will_delete: false, unrestorable: false, size: diff.new_size || 0 }]); setDiscardModalVisible(true); }
-                  }}
-                />
+                {/* 34px Tab Bar */}
+                <div className="h-[34px] px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between shrink-0 select-none">
+                  <div className="flex items-center gap-4 h-full" role="tablist" aria-label="文件视图">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={diffTab === "changes"}
+                      onClick={() => setDiffTab("changes")}
+                      className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                        diffTab === "changes"
+                          ? "border-[var(--color-accent)] text-[var(--color-text)]"
+                          : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      }`}
+                    >
+                      改动
+                    </button>
+                    {treeSelectedPath && (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={diffTab === "history"}
+                        onClick={() => setDiffTab("history")}
+                        className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                          diffTab === "history"
+                            ? "border-[var(--color-accent)] text-[var(--color-text)]"
+                            : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                      >
+                        历史
+                      </button>
+                    )}
+                  </div>
+                  {treeSelectedPath && (
+                    <span
+                      className="font-mono text-xs text-[var(--color-text-muted)] truncate max-w-[50%]"
+                      title={treeSelectedPath}
+                    >
+                      {treeSelectedPath}
+                    </span>
+                  )}
+                </div>
+
+                {/* Content Area */}
+                {diffTab === "history" && treeSelectedPath ? (
+                  <FileHistoryPanel
+                    rootPath={currentRepo.root_path}
+                    filePath={treeSelectedPath}
+                    key={treeSelectedPath}
+                  />
+                ) : treeSelectedPath && !selectedTarget ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[var(--color-bg)] select-none">
+                    <div className="space-y-3 max-w-sm">
+                      <p className="font-mono text-xs font-semibold text-[var(--color-text)] truncate" title={treeSelectedPath}>
+                        {treeSelectedPath}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        这个文件没有未提交的改动
+                      </p>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setDiffTab("history")}
+                          className="px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] transition-colors cursor-pointer"
+                        >
+                          查看历史
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <DiffViewer
+                    diff={diff}
+                    loading={diffLoading}
+                    error={diffError}
+                    onStageHunkLines={handleStageHunkLines}
+                    onDiscardHunkLines={(hunkIndex, indices) => {
+                      if (diff) { setLineDiscard({ expected: diff, hunkIndex, indices }); setDiscardCandidates([{ path: diff.path, will_delete: false, unrestorable: false, size: diff.new_size || 0 }]); setDiscardModalVisible(true); }
+                    }}
+                  />
+                )}
               </div>
             </>
           ) : (
@@ -1494,7 +1716,7 @@ export default function App() {
           aria-live="polite"
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-xs animate-in fade-in slide-in-from-bottom-2 ${
             syncToast.isError
-              ? "bg-red-950/90 border-red-800 text-red-200"
+              ? "bg-[var(--ty-peach-tint)] border-[var(--color-danger-border)] text-[var(--ty-peach-text)]"
               : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
           }`}
         >
@@ -1502,7 +1724,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setSyncToast(null)}
-            className="p-1 rounded text-gray-400 hover:text-gray-200 cursor-pointer"
+            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
           >
             ✕
           </button>

@@ -7,6 +7,7 @@ import {
 } from "../../lib/host";
 import { CloseIcon, HistoryIcon, FileIcon } from "../../components/icons";
 import { DiffViewer } from "../changes/DiffViewer";
+import { FileHistoryList } from "./FileHistoryList";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface FileHistoryModalProps {
@@ -149,54 +150,26 @@ function FileHistoryModalContent({
                 暂无历史记录
               </div>
             ) : (
-              <div className="divide-y divide-[var(--color-border)]/50">
-                {history.map((item) => {
-                  const isSelected = item.oid === selectedOid;
-                  const dateStr = new Date(
-                    item.timestamp * 1000
-                  ).toLocaleDateString();
-
-                  return (
-                    <div
-                      key={item.oid}
-                      onClick={() => setSelectedOid(item.oid)}
-                      className={`p-3 cursor-pointer transition-colors text-xs ${
-                        isSelected
-                          ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)] border-l-2 border-[var(--color-accent)]"
-                          : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
-                      }`}
+              <FileHistoryList
+                history={history}
+                selectedOid={selectedOid}
+                onSelect={(oid) => setSelectedOid(oid)}
+                renderAction={(item) =>
+                  onSelectCommit ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectCommit(item.oid);
+                        onClose();
+                      }}
+                      className="text-[10px] text-[var(--color-accent)] hover:underline cursor-pointer"
                     >
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="font-mono text-[11px] font-semibold text-[var(--color-text-muted)]">
-                          {item.short_oid}
-                        </span>
-                        <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {dateStr}
-                        </span>
-                      </div>
-                      <p className="font-medium truncate text-xs mb-1">
-                        {item.summary}
-                      </p>
-                      <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)]">
-                        <span>{item.author_name}</span>
-                        {onSelectCommit && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCommit(item.oid);
-                              onClose();
-                            }}
-                            className="text-[10px] text-[var(--color-accent)] hover:underline cursor-pointer"
-                          >
-                            跳至提交图
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      跳至提交图
+                    </button>
+                  ) : null
+                }
+              />
             )}
           </div>
 

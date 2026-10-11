@@ -243,7 +243,7 @@ export function DiffViewer({
 
       {/* Notice Banners */}
       {diff.is_crlf_change && (
-        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+        <div className="px-4 py-2 bg-[var(--ty-honey-tint)] border-b border-[var(--color-border)] text-xs text-[var(--ty-honey)] flex items-center gap-2">
           <AlertCircleIcon width={14} height={14} className="shrink-0" />
           <span>文件仅换行符（CRLF ↔ LF）发生变化。</span>
         </div>

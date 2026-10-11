@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { RepoInfo } from "../../lib/host";
+import logoUrl from "../../assets/logo.svg";
 import {
   FolderIcon,
   BranchIcon,
@@ -94,6 +95,8 @@ export function Toolbar({
     <header className="h-[40px] px-3 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text)] select-none">
       {/* Left: Repo selector & Branch */}
       <div className="flex items-center gap-2">
+        <img src={logoUrl} alt="橦云 Git" width={20} height={22} className="shrink-0" />
+        <div className="h-3 w-px bg-[var(--color-border)] shrink-0" />
         {/* Repo dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
@@ -219,7 +222,7 @@ export function Toolbar({
             className="flex items-center gap-1 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
             <svg
-              className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-blue-400" : ""}`}
+              className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-[var(--color-accent)]" : ""}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -290,7 +293,7 @@ export function Toolbar({
             onClick={onOpenTagModal}
             className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] transition-colors border border-[var(--color-border)] cursor-pointer"
           >
-            <TagIcon width={13} height={13} className="text-amber-500" />
+            <TagIcon width={13} height={13} className="text-[var(--ty-honey)]" />
             <span className="hidden sm:inline font-medium text-[11px]">标签</span>
           </button>
         )}

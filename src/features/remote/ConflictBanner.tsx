@@ -59,10 +59,10 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({
   };
 
   return (
-    <div className="bg-amber-950/80 border-b border-amber-700/60 px-4 py-2 flex items-center justify-between text-xs text-amber-200">
+    <div className="bg-[var(--color-status-conflict)]/10 border-b border-[var(--color-status-conflict)]/30 px-4 py-2 flex items-center justify-between text-xs text-[var(--color-text)]">
       <div className="flex items-center gap-2">
         <svg
-          className="w-4 h-4 text-amber-400 shrink-0"
+          className="w-4 h-4 text-[var(--color-status-conflict)] shrink-0"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -75,10 +75,10 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({
           />
         </svg>
         <span className="font-semibold">{labelInfo.title}</span>
-        <span className="text-amber-300/80 hidden sm:inline">
+        <span className="text-[var(--color-text-muted)] hidden sm:inline">
           请在左侧文件列表中解决冲突并暂存提交，或点击右侧安全中止。
         </span>
-        {errorMsg && <span className="text-red-400 ml-2 font-medium">({errorMsg})</span>}
+        {errorMsg && <span className="text-[var(--color-danger)] ml-2 font-medium">({errorMsg})</span>}
       </div>
 
       <div className="flex items-center gap-2">
@@ -86,7 +86,7 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({
           <button
             type="button"
             onClick={onOpenResolveConflicts}
-            className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
+            className="px-3 py-1 rounded bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] text-white font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
           >
             <GitMergeIcon width={13} height={13} />
             <span>解决冲突 (三方合并器)</span>
@@ -95,7 +95,7 @@ export const ConflictBanner: React.FC<ConflictBannerProps> = ({
         <button
           onClick={handleAbort}
           disabled={aborting}
-          className="px-3 py-1 rounded bg-amber-800 hover:bg-amber-700 disabled:opacity-50 text-white font-medium cursor-pointer transition-colors shadow-sm"
+          className="px-3 py-1 rounded border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-50 font-medium cursor-pointer transition-colors shadow-sm"
         >
           {aborting ? "正在中止..." : labelInfo.action}
         </button>

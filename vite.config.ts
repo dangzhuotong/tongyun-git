@@ -7,6 +7,10 @@ const host = typeof process !== "undefined" ? process.env?.TAURI_DEV_HOST : unde
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   clearScreen: false,
+  // CSP 只允许 'self'：logo 等资源输出成独立文件，不内联成 data: URI
+  build: {
+    assetsInlineLimit: 0,
+  },
   server: {
     port: 1420,
     strictPort: true,

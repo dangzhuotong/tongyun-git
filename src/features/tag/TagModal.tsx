@@ -236,7 +236,7 @@ function TagModalContent({
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-sm border font-medium ${
                           tag.is_annotated
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                            ? "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border-[var(--ty-honey)]/30"
                             : "bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)]"
                         }`}
                       >

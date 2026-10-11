@@ -81,7 +81,7 @@ export function StatusBar({
             className={`w-1.5 h-1.5 rounded-full ${
               isRefreshing || isPulling
                 ? "bg-[var(--color-accent)] animate-ping"
-                : "bg-emerald-500"
+                : "bg-[var(--color-status-added)]"
             }`}
           />
           <span className="truncate max-w-[200px]">

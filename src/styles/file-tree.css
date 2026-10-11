@@ -1,0 +1,158 @@
+/* src/styles/file-tree.css */
+
+.tree-row {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-left: 4px;
+  margin-right: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.tree-row:hover {
+  background-color: var(--color-surface-raised);
+}
+
+.tree-row.is-selected {
+  background-color: var(--color-selection);
+  font-weight: 500;
+}
+
+.tree-row.is-focused {
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.tree-chevron {
+  width: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.tree-folder-icon {
+  color: var(--ty-honey);
+  flex-shrink: 0;
+}
+
+.tree-file-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.tree-badge {
+  border-radius: 9999px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: bold;
+  padding: 0 5px;
+  line-height: 16px;
+  background-color: color-mix(in srgb, var(--badge-color) 14%, transparent);
+  flex-shrink: 0;
+}
+
+.tree-tool {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.tree-tool:hover {
+  background-color: var(--color-surface-raised);
+}
+
+.tree-tool.is-on {
+  background-color: var(--color-selection);
+  color: var(--color-accent);
+}
+
+.tree-search {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background-color: var(--ty-surface-sunken);
+  border: 1px solid var(--color-border);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tree-search:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: var(--ty-focus-ring);
+}
+
+.tree-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.tree-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.tree-search-clear:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface-raised);
+}
+
+.tree-count {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background-color: var(--color-selection);
+  color: var(--color-accent);
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 6px;
+}
+
+mark.tree-match {
+  background-color: var(--ty-honey-tint);
+  color: inherit;
+  border-radius: 2px;
+  font-weight: bold;
+}
