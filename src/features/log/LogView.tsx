@@ -26,6 +26,7 @@ import {
   BranchIcon,
   SparklesIcon,
 } from "../../components/icons";
+import { FilePathLabel } from "../../components/FilePathLabel";
 
 interface LogViewProps {
   rootPath: string;
@@ -722,10 +723,15 @@ export function LogView({
                     <button
                       type="button"
                       onClick={() => handleSelectFile(file.path)}
-                      className="flex-1 flex items-center gap-1.5 truncate text-left cursor-pointer"
+                      className="flex-1 flex items-center gap-1.5 truncate text-left cursor-pointer min-w-0"
+                      title={file.old_path ? `${file.old_path} → ${file.path}` : file.path}
                     >
                       <FileIcon width={12} height={12} className="shrink-0 text-[var(--color-text-muted)]" />
-                      <span className="truncate">{file.path}</span>
+                      <FilePathLabel
+                        path={file.path}
+                        oldPath={file.old_path}
+                        isDeleted={file.kind === "Deleted"}
+                      />
                     </button>
                     <div className="flex items-center gap-1 shrink-0">
                       {onOpenFileHistory && (

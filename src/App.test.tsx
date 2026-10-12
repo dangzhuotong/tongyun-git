@@ -207,11 +207,11 @@ describe("App workspace and components", () => {
     expect((await screen.findAllByText("main")).length).toBeGreaterThanOrEqual(1);
 
     // Verify files rendered in list
-    expect(await screen.findByText("src/main.rs")).toBeDefined();
+    expect(await screen.findByTitle("src/main.rs")).toBeDefined();
     expect(screen.getAllByText("README.md").length).toBeGreaterThanOrEqual(1);
 
     // Click on src/main.rs to load diff
-    fireEvent.click(screen.getByText("src/main.rs"));
+    fireEvent.click(screen.getByTitle("src/main.rs"));
 
     // Verify diff content
     await waitFor(() => {
@@ -351,7 +351,7 @@ describe("App workspace and components", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开" }));
 
     // Select src/main.rs to open diff
-    const fileItem = await screen.findByText("src/main.rs");
+    const fileItem = await screen.findByTitle("src/main.rs");
     fireEvent.click(fileItem);
 
     // Wait for diff line to render
@@ -430,7 +430,7 @@ describe("App workspace and components", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开" }));
 
     // Wait for file list to render
-    await screen.findByText("src/main.rs");
+    await screen.findByTitle("src/main.rs");
 
     // Click discard button on src/main.rs
     const discardBtn = await screen.findByTitle("丢弃此文件的改动 (Ctrl+Alt+Z)");

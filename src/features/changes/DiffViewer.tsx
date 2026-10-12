@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { FileDiff, DiffHunk, DiffLine } from "../../lib/host";
 import type { DiffLayout } from "./types";
 import {
@@ -250,7 +250,16 @@ export function DiffViewer({
       )}
 
       {/* Main Diff Content Area */}
-      <div className="flex-1 overflow-auto font-mono text-[12px] leading-[20px]">
+      <div
+        className={`flex-1 font-mono text-[12px] leading-[20px] ${
+          layout === "unified" ||
+          diff.is_binary ||
+          (diff.is_large && !forceLoadLarge) ||
+          diff.hunks.length === 0
+            ? "overflow-auto"
+            : "overflow-hidden flex flex-col min-h-0"
+        }`}
+      >
         {diff.is_binary ? (
           <div className="p-8 text-center text-[var(--color-text-muted)] space-y-2">
             <p className="font-semibold text-sm text-[var(--color-text)]">二进制文件</p>
@@ -337,11 +346,11 @@ function UnifiedDiffView({
   staged: boolean;
 }) {
   return (
-    <div className="w-full divide-y divide-[var(--color-border)]/40">
+    <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
       {hunks.map((hunk, hunkIdx) => (
         <div key={hunkIdx} className="w-full">
           {/* Hunk Header with Quick Hunk Stage Button */}
-          <div className="px-3 py-1 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
+          <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
             <span>{hunk.header}</span>
             {onStageHunk && (
               <button
@@ -375,38 +384,42 @@ function UnifiedDiffView({
                       onLineClick(hunkIdx, lineIdx, e);
                     }
                   }}
-                  className={`flex h-[20px] items-center transition-colors cursor-pointer select-none ${
+                  className={`flex h-[20px] items-center transition-colors cursor-pointer select-none w-full ${
                     isSelected
                       ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
                       : isAdd
                       ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
                       : isDel
                       ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
-                      : "text-[var(--color-text)]"
+                      : "bg-[var(--color-bg)] text-[var(--color-text)]"
                   }`}
                 >
-                  {/* Selection Indicator */}
-                  <span
-                    className={`w-3 shrink-0 text-center text-[10px] ${
-                      isSelected ? "text-[var(--color-accent)] font-bold" : "opacity-0"
-                    }`}
-                  >
-                    ●
-                  </span>
-                  {/* Old Line Number */}
-                  <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                    {line.old_lineno ?? ""}
-                  </span>
-                  {/* New Line Number */}
-                  <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                    {line.new_lineno ?? ""}
-                  </span>
-                  {/* Origin */}
-                  <span className="w-4 shrink-0 text-center font-bold select-none text-[var(--color-text-muted)]">
-                    {line.origin}
-                  </span>
+                  {/* Sticky Line Number / Gutter */}
+                  <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
+                    {/* Selection Indicator */}
+                    <span
+                      className={`w-3 shrink-0 text-center text-[10px] ${
+                        isSelected ? "text-[var(--color-accent)] font-bold" : "opacity-0"
+                      }`}
+                    >
+                      ●
+                    </span>
+                    {/* Old Line Number */}
+                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                      {line.old_lineno ?? ""}
+                    </span>
+                    {/* New Line Number */}
+                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                      {line.new_lineno ?? ""}
+                    </span>
+                    {/* Origin */}
+                    <span className="w-4 shrink-0 text-center font-bold select-none text-[var(--color-text-muted)]">
+                      {line.origin}
+                    </span>
+                  </div>
+
                   {/* Line Content */}
-                  <span className="flex-1 whitespace-pre pl-1 pr-4 overflow-x-hidden truncate">
+                  <span className="whitespace-pre pl-1 pr-4">
                     {line.content}
                   </span>
                 </div>
@@ -436,98 +449,207 @@ function SplitDiffView({
   onStageHunk?: (hunkIdx: number) => void;
   staged: boolean;
 }) {
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+
+  const lastLeftSync = useRef<{ top: number; left: number } | null>(null);
+  const lastRightSync = useRef<{ top: number; left: number } | null>(null);
+
+  const handleLeftScroll = () => {
+    const left = leftRef.current;
+    const right = rightRef.current;
+    if (!left || !right) return;
+
+    if (lastRightSync.current) {
+      const { top, left: sLeft } = lastRightSync.current;
+      if (
+        left.scrollTop === top &&
+        (left.scrollLeft === sLeft || left.scrollLeft >= left.scrollWidth - left.clientWidth - 1)
+      ) {
+        lastRightSync.current = null;
+        return;
+      }
+      lastRightSync.current = null;
+    }
+
+    lastLeftSync.current = { top: left.scrollTop, left: left.scrollLeft };
+    right.scrollTop = left.scrollTop;
+    right.scrollLeft = left.scrollLeft;
+  };
+
+  const handleRightScroll = () => {
+    const left = leftRef.current;
+    const right = rightRef.current;
+    if (!left || !right) return;
+
+    if (lastLeftSync.current) {
+      const { top, left: sLeft } = lastLeftSync.current;
+      if (
+        right.scrollTop === top &&
+        (right.scrollLeft === sLeft || right.scrollLeft >= right.scrollWidth - right.clientWidth - 1)
+      ) {
+        lastLeftSync.current = null;
+        return;
+      }
+      lastLeftSync.current = null;
+    }
+
+    lastRightSync.current = { top: right.scrollTop, left: right.scrollLeft };
+    left.scrollTop = right.scrollTop;
+    left.scrollLeft = right.scrollLeft;
+  };
+
+  const hunkRowsList = useMemo(
+    () => hunks.map((h) => alignSplitRows(h.lines, ignoreWhitespace)),
+    [hunks, ignoreWhitespace]
+  );
+
   return (
-    <div className="w-full divide-y divide-[var(--color-border)]/40">
-      {hunks.map((hunk, hunkIdx) => {
-        const rows = alignSplitRows(hunk.lines, ignoreWhitespace);
-
-        return (
-          <div key={hunkIdx} className="w-full">
-            {/* Hunk Header */}
-            <div className="px-3 py-1 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
-              <span>{hunk.header}</span>
-              {onStageHunk && (
-                <button
-                  type="button"
-                  onClick={() => onStageHunk(hunkIdx)}
-                  className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
-                >
-                  {staged ? "取消暂存此块" : "暂存此块 (a)"}
-                </button>
-              )}
-            </div>
-
-            {/* Split Rows */}
-            <div className="w-full">
-              {rows.map((row, rowIdx) => {
-                const isSelected =
-                  activeHunkIndex === hunkIdx &&
-                  ((row.leftIdx != null && selectedLineIndices.has(row.leftIdx)) ||
-                    (row.rightIdx != null && selectedLineIndices.has(row.rightIdx)));
-
-                return (
-                  <div
-                    key={rowIdx}
-                    className={`flex h-[20px] items-center divide-x divide-[var(--color-border)]/40 cursor-pointer ${
-                      isSelected
-                        ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
-                        : ""
-                    }`}
-                  >
-                    {/* Left Column */}
-                    <div
-                      onClick={(e) => {
-                        if (row.leftIdx != null) {
-                          onLineClick(hunkIdx, row.leftIdx, e);
-                        }
-                      }}
-                      className={`flex-1 flex h-full items-center overflow-hidden ${
-                        row.left?.origin === "-"
-                          ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
-                          : ""
-                      }`}
+    <div className="flex-1 min-h-0 h-full flex divide-x divide-[var(--color-border)]/60">
+      {/* Left Column (Old / Base) */}
+      <div
+        ref={leftRef}
+        onScroll={handleLeftScroll}
+        data-testid="diff-split-left"
+        className="flex-1 h-full overflow-auto"
+      >
+        <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
+          {hunks.map((hunk, hunkIdx) => {
+            const rows = hunkRowsList[hunkIdx];
+            return (
+              <div key={hunkIdx} className="w-full">
+                {/* Hunk Header (Left) */}
+                <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
+                  <span>{hunk.header}</span>
+                  {onStageHunk && (
+                    <button
+                      type="button"
+                      onClick={() => onStageHunk(hunkIdx)}
+                      className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
                     >
-                      <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                        {row.left?.old_lineno ?? ""}
-                      </span>
-                      <span className="w-4 shrink-0 text-center text-[var(--color-text-muted)] select-none">
-                        {row.left?.origin ?? ""}
-                      </span>
-                      <span className="flex-1 whitespace-pre pl-1 pr-2 truncate">
-                        {row.left?.content ?? ""}
-                      </span>
-                    </div>
+                      {staged ? "取消暂存此块" : "暂存此块 (a)"}
+                    </button>
+                  )}
+                </div>
 
-                    {/* Right Column */}
-                    <div
-                      onClick={(e) => {
-                        if (row.rightIdx != null) {
-                          onLineClick(hunkIdx, row.rightIdx, e);
-                        }
-                      }}
-                      className={`flex-1 flex h-full items-center overflow-hidden ${
-                        row.right?.origin === "+"
-                          ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
-                          : ""
-                      }`}
-                    >
-                      <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                        {row.right?.new_lineno ?? ""}
-                      </span>
-                      <span className="w-4 shrink-0 text-center text-[var(--color-text-muted)] select-none">
-                        {row.right?.origin ?? ""}
-                      </span>
-                      <span className="flex-1 whitespace-pre pl-1 pr-2 truncate">
-                        {row.right?.content ?? ""}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+                {/* Left Rows */}
+                <div className="w-full">
+                  {rows.map((row, rowIdx) => {
+                    const isDel = row.left?.origin === "-";
+                    const isSelected =
+                      activeHunkIndex === hunkIdx &&
+                      row.leftIdx != null &&
+                      selectedLineIndices.has(row.leftIdx);
+
+                    return (
+                      <div
+                        key={rowIdx}
+                        onClick={(e) => {
+                          if (row.leftIdx != null && isDel) {
+                            onLineClick(hunkIdx, row.leftIdx, e);
+                          }
+                        }}
+                        className={`flex h-[20px] items-center transition-colors select-none w-full ${
+                          isDel ? "cursor-pointer" : ""
+                        } ${
+                          isSelected
+                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                            : isDel
+                            ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
+                            : "bg-[var(--color-bg)] text-[var(--color-text)]"
+                        }`}
+                      >
+                        {/* Gutter (Old lineno + Origin) */}
+                        <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
+                          <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                            {row.left?.old_lineno ?? ""}
+                          </span>
+                          <span className="w-4 shrink-0 text-center font-bold text-[var(--color-text-muted)] select-none">
+                            {row.left?.origin ?? ""}
+                          </span>
+                        </div>
+
+                        {/* Content */}
+                        <span className="whitespace-pre pl-1 pr-4">
+                          {row.left?.content ?? ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right Column (New / Modified) */}
+      <div
+        ref={rightRef}
+        onScroll={handleRightScroll}
+        data-testid="diff-split-right"
+        className="flex-1 h-full overflow-auto"
+      >
+        <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
+          {hunks.map((hunk, hunkIdx) => {
+            const rows = hunkRowsList[hunkIdx];
+            return (
+              <div key={hunkIdx} className="w-full">
+                {/* Hunk Header (Right) */}
+                <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center">
+                  <span>{hunk.header}</span>
+                </div>
+
+                {/* Right Rows */}
+                <div className="w-full">
+                  {rows.map((row, rowIdx) => {
+                    const isAdd = row.right?.origin === "+";
+                    const isSelected =
+                      activeHunkIndex === hunkIdx &&
+                      row.rightIdx != null &&
+                      selectedLineIndices.has(row.rightIdx);
+
+                    return (
+                      <div
+                        key={rowIdx}
+                        onClick={(e) => {
+                          if (row.rightIdx != null && isAdd) {
+                            onLineClick(hunkIdx, row.rightIdx, e);
+                          }
+                        }}
+                        className={`flex h-[20px] items-center transition-colors select-none w-full ${
+                          isAdd ? "cursor-pointer" : ""
+                        } ${
+                          isSelected
+                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                            : isAdd
+                            ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
+                            : "bg-[var(--color-bg)] text-[var(--color-text)]"
+                        }`}
+                      >
+                        {/* Gutter (New lineno + Origin) */}
+                        <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
+                          <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                            {row.right?.new_lineno ?? ""}
+                          </span>
+                          <span className="w-4 shrink-0 text-center font-bold text-[var(--color-text-muted)] select-none">
+                            {row.right?.origin ?? ""}
+                          </span>
+                        </div>
+
+                        {/* Content */}
+                        <span className="whitespace-pre pl-1 pr-4">
+                          {row.right?.content ?? ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

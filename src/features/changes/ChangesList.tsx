@@ -11,6 +11,7 @@ import {
   HistoryIcon,
   GitMergeIcon,
 } from "../../components/icons";
+import { FilePathLabel } from "../../components/FilePathLabel";
 
 interface ChangesListProps {
   files: FileStatus[];
@@ -526,14 +527,17 @@ function FileRowItem({
 
         <FileIcon width={13} height={13} className="shrink-0 text-[var(--color-text-muted)]" />
         <span
-          className={`truncate font-mono ${
-            isDeleted ? "line-through text-[var(--color-status-deleted)] opacity-80" : ""
-          }`}
+          className="truncate font-mono min-w-0 flex items-baseline"
           title={
             file.old_path ? `${file.old_path} → ${file.path}` : file.path
           }
         >
-          {displayName || (file.old_path ? `${file.old_path} → ${file.path}` : file.path)}
+          <FilePathLabel
+            path={file.path}
+            oldPath={file.old_path}
+            displayName={displayName}
+            isDeleted={isDeleted}
+          />
         </span>
       </div>
 
