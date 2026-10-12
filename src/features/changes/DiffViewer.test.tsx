@@ -150,6 +150,44 @@ describe("DiffViewer", () => {
     expect(left.scrollLeft).toBe(210);
   });
 
+  it("prevents rebound by ignoring echo scroll events from non-active side and syncs from active side", () => {
+    localStorage.setItem("tongyun_diff_layout", "split");
+
+    render(
+      <DiffViewer
+        diff={mockDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    const left = screen.getByTestId("diff-split-left");
+    const right = screen.getByTestId("diff-split-right");
+
+    // (a) 在右栏 fireEvent.mouseEnter 后，对左栏派发 scroll 事件（模拟回声）不会改写右栏的值
+    right.scrollTop = 250;
+    right.scrollLeft = 120;
+    fireEvent.mouseEnter(right);
+
+    // 模拟左栏因尺寸不同或夹紧派发不同坐标的回声 scroll 事件
+    left.scrollTop = 180;
+    left.scrollLeft = 80;
+    fireEvent.scroll(left);
+
+    // 右栏值不被左栏回声改写
+    expect(right.scrollTop).toBe(250);
+    expect(right.scrollLeft).toBe(120);
+
+    // (b) 在左栏 mouseEnter 后滚左栏，右栏跟随
+    fireEvent.mouseEnter(left);
+    left.scrollTop = 360;
+    left.scrollLeft = 140;
+    fireEvent.scroll(left);
+
+    expect(right.scrollTop).toBe(360);
+    expect(right.scrollLeft).toBe(140);
+  });
+
   it("aligns rows across multiple hunks in split view", () => {
     localStorage.setItem("tongyun_diff_layout", "split");
 

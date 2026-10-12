@@ -451,30 +451,31 @@ function SplitDiffView({
 }) {
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
+  const activeSide = useRef<"left" | "right" | null>(null);
 
-  const lastLeftSync = useRef<{ top: number; left: number } | null>(null);
-  const lastRightSync = useRef<{ top: number; left: number } | null>(null);
+  const setLeftActive = () => {
+    activeSide.current = "left";
+  };
+
+  const setRightActive = () => {
+    activeSide.current = "right";
+  };
 
   const handleLeftScroll = () => {
     const left = leftRef.current;
     const right = rightRef.current;
     if (!left || !right) return;
 
-    if (lastRightSync.current) {
-      const { top, left: sLeft } = lastRightSync.current;
-      if (
-        left.scrollTop === top &&
-        (left.scrollLeft === sLeft || left.scrollLeft >= left.scrollWidth - left.clientWidth - 1)
-      ) {
-        lastRightSync.current = null;
-        return;
-      }
-      lastRightSync.current = null;
+    if (activeSide.current !== null && activeSide.current !== "left") {
+      return;
     }
 
-    lastLeftSync.current = { top: left.scrollTop, left: left.scrollLeft };
-    right.scrollTop = left.scrollTop;
-    right.scrollLeft = left.scrollLeft;
+    if (right.scrollTop !== left.scrollTop) {
+      right.scrollTop = left.scrollTop;
+    }
+    if (right.scrollLeft !== left.scrollLeft) {
+      right.scrollLeft = left.scrollLeft;
+    }
   };
 
   const handleRightScroll = () => {
@@ -482,21 +483,16 @@ function SplitDiffView({
     const right = rightRef.current;
     if (!left || !right) return;
 
-    if (lastLeftSync.current) {
-      const { top, left: sLeft } = lastLeftSync.current;
-      if (
-        right.scrollTop === top &&
-        (right.scrollLeft === sLeft || right.scrollLeft >= right.scrollWidth - right.clientWidth - 1)
-      ) {
-        lastLeftSync.current = null;
-        return;
-      }
-      lastLeftSync.current = null;
+    if (activeSide.current !== null && activeSide.current !== "right") {
+      return;
     }
 
-    lastRightSync.current = { top: right.scrollTop, left: right.scrollLeft };
-    left.scrollTop = right.scrollTop;
-    left.scrollLeft = right.scrollLeft;
+    if (left.scrollTop !== right.scrollTop) {
+      left.scrollTop = right.scrollTop;
+    }
+    if (left.scrollLeft !== right.scrollLeft) {
+      left.scrollLeft = right.scrollLeft;
+    }
   };
 
   const hunkRowsList = useMemo(
@@ -510,8 +506,13 @@ function SplitDiffView({
       <div
         ref={leftRef}
         onScroll={handleLeftScroll}
+        onWheel={setLeftActive}
+        onPointerDown={setLeftActive}
+        onTouchStart={setLeftActive}
+        onMouseEnter={setLeftActive}
+        onKeyDown={setLeftActive}
         data-testid="diff-split-left"
-        className="flex-1 h-full overflow-auto"
+        className="flex-1 h-full overflow-scroll"
       >
         <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
           {hunks.map((hunk, hunkIdx) => {
@@ -587,8 +588,13 @@ function SplitDiffView({
       <div
         ref={rightRef}
         onScroll={handleRightScroll}
+        onWheel={setRightActive}
+        onPointerDown={setRightActive}
+        onTouchStart={setRightActive}
+        onMouseEnter={setRightActive}
+        onKeyDown={setRightActive}
         data-testid="diff-split-right"
-        className="flex-1 h-full overflow-auto"
+        className="flex-1 h-full overflow-scroll"
       >
         <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
           {hunks.map((hunk, hunkIdx) => {
