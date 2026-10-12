@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { DiscardCandidate } from "../../lib/host";
 import { AlertCircleIcon, CloseIcon } from "../../components/icons";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { FilePathLabel } from "../../components/FilePathLabel";
 
 interface DiscardConfirmModalProps {
   isOpen: boolean;
@@ -83,8 +84,8 @@ export function DiscardConfirmModal({
               </span>
               <div className="max-h-28 overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] space-y-1">
                 {toRestore.map((c) => (
-                  <div key={c.path} className="flex justify-between items-center text-[var(--color-text)]">
-                    <span className="truncate">{c.path}</span>
+                  <div key={c.path} className="flex justify-between items-center text-[var(--color-text)]" title={c.path}>
+                    <FilePathLabel path={c.path} />
                     {c.unrestorable && (
                       <span className="text-[10px] text-[var(--color-danger)] shrink-0 font-sans ml-2">
                         超限无法快照
@@ -104,8 +105,8 @@ export function DiscardConfirmModal({
               </span>
               <div className="max-h-28 overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] space-y-1">
                 {toDelete.map((c) => (
-                  <div key={c.path} className="flex justify-between items-center text-[var(--color-danger)]">
-                    <span className="truncate">{c.path}</span>
+                  <div key={c.path} className="flex justify-between items-center text-[var(--color-danger)]" title={c.path}>
+                    <FilePathLabel path={c.path} isDeleted />
                     {c.unrestorable && (
                       <span className="text-[10px] text-[var(--color-danger)] shrink-0 font-sans ml-2">
                         丢弃后无法恢复

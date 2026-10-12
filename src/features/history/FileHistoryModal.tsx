@@ -9,6 +9,7 @@ import { CloseIcon, HistoryIcon, FileIcon } from "../../components/icons";
 import { DiffViewer } from "../changes/DiffViewer";
 import { FileHistoryList } from "./FileHistoryList";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { FilePathLabel } from "../../components/FilePathLabel";
 
 interface FileHistoryModalProps {
   isOpen: boolean;
@@ -104,8 +105,8 @@ function FileHistoryModalContent({
                 <h2 className="text-sm font-semibold text-[var(--color-text)] shrink-0">
                   文件提交历史 (File History)
                 </h2>
-                <span className="text-xs font-mono text-[var(--color-accent)] truncate">
-                  {filePath}
+                <span className="text-xs font-mono text-[var(--color-accent)] truncate" title={filePath}>
+                  <FilePathLabel path={filePath} />
                 </span>
               </div>
               <span className="text-[11px] text-[var(--color-text-muted)]">

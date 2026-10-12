@@ -50,6 +50,7 @@
 | AT-03b | R-03 | `crlf` 只改换行符的文件 | 选中 | 显示换行符变化提示 | L1+L3 | not_run |
 | AT-03c | R-03 | `binary` 修改 png | 选中 | 显示二进制提示，界面不卡、无乱码 | L3 | not_run |
 | AT-03d | R-03 | `binary` 1.5 MB 文本大改 | 选中 | 先显示摘要和「仍然加载」 | L3 | not_run |
+| AT-03e | R-03 | 包含长行或多块差异的文件 | 统一与分栏对比 | 长行横向滚动不截断、背景铺满；分栏视图两栏垂直与水平同步滚动且行对齐 | L2+L3 | not_run |
 | AT-04a | R-04 | `basic` 两个未暂存文件 | 多选后按空格 | `git diff --cached --name-only` 正好是这两个文件 | L1+L3 | not_run |
 | AT-04b | R-04 | AT-04a 之后 | 取消其中一个 | 命令行核对只剩一个已暂存 | L1+L3 | not_run |
 | AT-05a | R-05 | `hunks` | 只暂存第 2 个 hunk | `git diff --cached` 与预期补丁逐字一致；工作区文件哈希不变 | L1 | not_run |
