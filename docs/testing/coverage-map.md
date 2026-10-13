@@ -11,7 +11,7 @@
 - **未覆盖（标「无」）**：14 条（主要为 L4 人工验收、L3 全局端到端或超限/长路径场景）
 - **自动化测试现状**：
   - **Rust 测试 (L1)**：16 个测试文件，67 个单元与集成测试函数
-  - **Vitest 前端测试 (L2)**：21 个测试文件，89 个测试用例全部通过（原有 82 个 + 本次补齐 7 个）
+  - **Vitest 前端测试 (L2)**：21 个测试文件，98 个测试用例全部通过（原有 89 个 + 本次补齐 9 个）
 
 ---
 
@@ -27,8 +27,8 @@
 | **AT-02c** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_rename_with_content_change_stays_renamed`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename_with_edit_stays_renamed` | L1 | Rust 测试完整覆盖暂存区与工作区中不同编辑状态下的单个重命名识别。前端重命名徽标显示未单测。 |
 | **AT-02d** | R-02 | 无 | 无 | 外部命令行提交后依赖文件监听自动刷新，属 L4 人工验收。 |
 | **AT-03a** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_hunks_and_lines`<br>`src/App.test.tsx::"opens a repository and displays changes list and diff"` | L1 + L2 | Rust 测试覆盖多 hunk 差异解析；前端测试覆盖 diff 视图渲染、行号与增删行展示。缺 L3/L4 真实语法高亮视觉检查。 |
-| **AT-03b** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_crlf_change` | L1 | Rust 测试覆盖 `is_crlf_change` 标识检测。前端换行符变化提示横幅未独立单测，缺 L3。 |
-| **AT-03c** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_binary_file` | L1 | Rust 测试覆盖二进制文件识别与无 hunk 差异输出。前端二进制提示视图未单测，缺 L3。 |
+| **AT-03b** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_crlf_change`<br>`src/features/changes/DiffViewer.test.tsx::"AT-03b: renders CRLF line-ending change notice banner when is_crlf_change is true"`<br>`src/App.test.tsx::"AT-03b: displays CRLF notice in diff view when file has line ending changes"` | L1 + L2 | Rust 覆盖 `is_crlf_change` 检测；前端 vitest 覆盖 DiffViewer 换行符变化提示横幅渲染、无 hunk 状态展示与丢弃行禁用，以及 App 整合流程。缺 L3。 |
+| **AT-03c** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_binary_file`<br>`src/features/changes/DiffViewer.test.tsx::"AT-03c: renders binary file notice with formatted file size change"`<br>`src/App.test.tsx::"AT-03c: displays binary file notice and size change in diff view for binary file"` | L1 + L2 | Rust 覆盖二进制识别与无 hunk 输出；前端 vitest 覆盖 DiffViewer 二进制提示视图、各单位大小变化格式化、禁用暂存与分栏视图，以及 App 整合流程。缺 L3。 |
 | **AT-03d** | R-03 | 无 | 无 | 1.5MB 文本大改摘要提示与「仍然加载」按钮交互未自动化。 |
 | **AT-04a** | R-04 | `crates/tg-core/tests/backend_stage.rs::test_stage_and_unstage_files_at_04`<br>`src/App.test.tsx::"stages and unstages files using action buttons"` | L1 + L2 | Rust 测试覆盖多文件暂存后 `git diff --cached --name-only` 命令行核对；前端覆盖暂存动作调用。缺 L3 多选空格键端到端流程。 |
 | **AT-04b** | R-04 | `crates/tg-core/tests/backend_stage.rs::test_stage_and_unstage_files_at_04`<br>`src/App.test.tsx::"stages and unstages files using action buttons"` | L1 + L2 | Rust 测试覆盖取消暂存后命令行核对；前端覆盖取消暂存按钮交互。缺 L3。 |

@@ -609,5 +609,141 @@ describe("App workspace and components", () => {
       expect(screen.getAllByText("new-repo").length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  it("AT-03b: displays CRLF notice in diff view when file has line ending changes", async () => {
+    vi.mocked(host.getAppInfo).mockResolvedValue({
+      name: "tongyun-git",
+      version: "0.0.0",
+      identifier: "test-id",
+      git_version: "2.47.3",
+      libgit2_version: "1.9.7",
+    });
+    vi.mocked(host.checkGit).mockResolvedValue({
+      available: true,
+      version: "git version 2.47.3",
+      error: null,
+    });
+    vi.mocked(host.openRepository).mockResolvedValue({
+      root_path: "/test/my-repo",
+      name: "my-repo",
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+    });
+    vi.mocked(host.getRepoStatus).mockResolvedValue({
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+      files: [
+        {
+          path: "src/crlf.txt",
+          old_path: null,
+          index: null,
+          worktree: "Modified",
+          conflicted: false,
+        },
+      ],
+    });
+    vi.mocked(host.getFileDiff).mockResolvedValue({
+      path: "src/crlf.txt",
+      old_path: null,
+      staged: false,
+      is_binary: false,
+      old_size: 100,
+      new_size: 120,
+      is_crlf_change: true,
+      is_large: false,
+      hunks: [],
+    });
+
+    render(<App />);
+
+    const openBtn = await screen.findByText("打开本地仓库");
+    fireEvent.click(openBtn);
+
+    const input = screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/);
+    fireEvent.change(input, { target: { value: "/test/my-repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+
+    expect(await screen.findByTitle("src/crlf.txt")).toBeDefined();
+    fireEvent.click(screen.getByTitle("src/crlf.txt"));
+
+    await waitFor(() => {
+      expect(screen.getByText("文件仅换行符（CRLF ↔ LF）发生变化。")).toBeDefined();
+    });
+  });
+
+  it("AT-03c: displays binary file notice and size change in diff view for binary file", async () => {
+    vi.mocked(host.getAppInfo).mockResolvedValue({
+      name: "tongyun-git",
+      version: "0.0.0",
+      identifier: "test-id",
+      git_version: "2.47.3",
+      libgit2_version: "1.9.7",
+    });
+    vi.mocked(host.checkGit).mockResolvedValue({
+      available: true,
+      version: "git version 2.47.3",
+      error: null,
+    });
+    vi.mocked(host.openRepository).mockResolvedValue({
+      root_path: "/test/my-repo",
+      name: "my-repo",
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+    });
+    vi.mocked(host.getRepoStatus).mockResolvedValue({
+      head: {
+        branch: "main",
+        oid: "abc1234",
+        unborn: false,
+      },
+      files: [
+        {
+          path: "assets/image.png",
+          old_path: null,
+          index: null,
+          worktree: "Modified",
+          conflicted: false,
+        },
+      ],
+    });
+    vi.mocked(host.getFileDiff).mockResolvedValue({
+      path: "assets/image.png",
+      old_path: null,
+      staged: false,
+      is_binary: true,
+      old_size: 1024,
+      new_size: 2048,
+      is_crlf_change: false,
+      is_large: false,
+      hunks: [],
+    });
+
+    render(<App />);
+
+    const openBtn = await screen.findByText("打开本地仓库");
+    fireEvent.click(openBtn);
+
+    const input = screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/);
+    fireEvent.change(input, { target: { value: "/test/my-repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+
+    expect(await screen.findByTitle("assets/image.png")).toBeDefined();
+    fireEvent.click(screen.getByTitle("assets/image.png"));
+
+    await waitFor(() => {
+      expect(screen.getByText("二进制文件")).toBeDefined();
+    });
+    expect(screen.getByText("大小变化: 1.0 KB → 2.0 KB")).toBeDefined();
+  });
 });
+
 

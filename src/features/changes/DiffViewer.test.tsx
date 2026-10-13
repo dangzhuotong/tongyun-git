@@ -67,6 +67,50 @@ const mockMultiHunkDiff: FileDiff = {
   ],
 };
 
+const mockCrlfDiff: FileDiff = {
+  path: "docs/crlf.txt",
+  old_path: null,
+  staged: false,
+  is_binary: false,
+  is_crlf_change: true,
+  is_large: false,
+  hunks: [
+    {
+      header: "@@ -1,2 +1,2 @@",
+      old_start: 1,
+      old_lines: 2,
+      new_start: 1,
+      new_lines: 2,
+      lines: [
+        { origin: " ", old_lineno: 1, new_lineno: 1, content: "hello" },
+        { origin: "+", old_lineno: null, new_lineno: 2, content: "world" },
+      ],
+    },
+  ],
+};
+
+const mockCrlfEmptyHunksDiff: FileDiff = {
+  path: "docs/crlf-only.txt",
+  old_path: null,
+  staged: false,
+  is_binary: false,
+  is_crlf_change: true,
+  is_large: false,
+  hunks: [],
+};
+
+const mockBinaryDiff: FileDiff = {
+  path: "assets/logo.png",
+  old_path: null,
+  staged: false,
+  is_binary: true,
+  old_size: 1024,
+  new_size: 2048,
+  is_crlf_change: false,
+  is_large: false,
+  hunks: [],
+};
+
 describe("DiffViewer", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -264,4 +308,173 @@ describe("DiffViewer", () => {
     expect(screen.queryByTestId("diff-split-left")).toBeNull();
     expect(localStorage.getItem("tongyun_diff_layout")).toBe("unified");
   });
+
+  // --- AT-03b: CRLF line-ending change tests ---
+
+  it("AT-03b: renders CRLF line-ending change notice banner when is_crlf_change is true", () => {
+    render(
+      <DiffViewer
+        diff={mockCrlfDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    expect(
+      screen.getByText("文件仅换行符（CRLF ↔ LF）发生变化。")
+    ).toBeDefined();
+    expect(screen.getByText("docs/crlf.txt")).toBeDefined();
+    expect(screen.getByText("未暂存改动 (工作区 对比 Index)")).toBeDefined();
+    expect(screen.getByText("world")).toBeDefined();
+  });
+
+  it("AT-03b: renders CRLF notice banner even when diff has no hunks", () => {
+    render(
+      <DiffViewer
+        diff={mockCrlfEmptyHunksDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    expect(
+      screen.getByText("文件仅换行符（CRLF ↔ LF）发生变化。")
+    ).toBeDefined();
+    expect(screen.getByText("该文件无内容改动或改动已被忽略。")).toBeDefined();
+  });
+
+  it("AT-03b: does not render CRLF notice banner when is_crlf_change is false", () => {
+    render(
+      <DiffViewer
+        diff={mockDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    expect(
+      screen.queryByText("文件仅换行符（CRLF ↔ LF）发生变化。")
+    ).toBeNull();
+  });
+
+  it("AT-03b: suppresses line-level discard action for CRLF change diffs", () => {
+    const onDiscardHunkLines = vi.fn();
+    render(
+      <DiffViewer
+        diff={mockCrlfDiff}
+        loading={false}
+        error={null}
+        onDiscardHunkLines={onDiscardHunkLines}
+      />
+    );
+
+    // Select the changed line
+    const addLine = screen.getByText("world");
+    fireEvent.click(addLine);
+
+    // The discard button should not be displayed
+    expect(screen.queryByText(/丢弃所选行/)).toBeNull();
+
+    // Press 'd' shortcut - should not trigger discard
+    fireEvent.keyDown(window, { key: "d" });
+    expect(onDiscardHunkLines).not.toHaveBeenCalled();
+  });
+
+  // --- AT-03c: Binary file notice tests ---
+
+  it("AT-03c: renders binary file notice with formatted file size change", () => {
+    render(
+      <DiffViewer
+        diff={mockBinaryDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    expect(screen.getByText("二进制文件")).toBeDefined();
+    expect(screen.getByText("大小变化: 1.0 KB → 2.0 KB")).toBeDefined();
+    expect(screen.getByText("assets/logo.png")).toBeDefined();
+    expect(screen.queryByText("该文件无内容改动或改动已被忽略。")).toBeNull();
+  });
+
+  it("AT-03c: formats various file size changes correctly in binary view (bytes, MB, null/unknown)", () => {
+    const { rerender } = render(
+      <DiffViewer
+        diff={{
+          ...mockBinaryDiff,
+          old_size: 512,
+          new_size: 768,
+        }}
+        loading={false}
+        error={null}
+      />
+    );
+    expect(screen.getByText("大小变化: 512 B → 768 B")).toBeDefined();
+
+    rerender(
+      <DiffViewer
+        diff={{
+          ...mockBinaryDiff,
+          old_size: 1048576,
+          new_size: 3145728,
+        }}
+        loading={false}
+        error={null}
+      />
+    );
+    expect(screen.getByText("大小变化: 1.00 MB → 3.00 MB")).toBeDefined();
+
+    rerender(
+      <DiffViewer
+        diff={{
+          ...mockBinaryDiff,
+          old_size: null,
+          new_size: 1024,
+        }}
+        loading={false}
+        error={null}
+      />
+    );
+    expect(screen.getByText("大小变化: 未知 → 1.0 KB")).toBeDefined();
+
+    rerender(
+      <DiffViewer
+        diff={{
+          ...mockBinaryDiff,
+          old_size: null,
+          new_size: null,
+        }}
+        loading={false}
+        error={null}
+      />
+    );
+    expect(screen.getByText("大小变化: 未知 → 未知")).toBeDefined();
+  });
+
+  it("AT-03c: disables line staging shortcuts, buttons, and split layout for binary files", () => {
+    localStorage.setItem("tongyun_diff_layout", "split");
+    const onStageHunkLines = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <DiffViewer
+        diff={mockBinaryDiff}
+        loading={false}
+        error={null}
+        onStageHunkLines={onStageHunkLines}
+      />
+    );
+
+    // Staging button should not be present
+    expect(screen.queryByText(/暂存所选/)).toBeNull();
+
+    // Split containers should not be rendered for binary files
+    expect(screen.queryByTestId("diff-split-left")).toBeNull();
+    expect(screen.queryByTestId("diff-split-right")).toBeNull();
+
+    // Press 'a' key (select all) then ' ' (stage) - should be no-op for binary files
+    fireEvent.keyDown(window, { key: "a" });
+    fireEvent.keyDown(window, { key: " " });
+    expect(onStageHunkLines).not.toHaveBeenCalled();
+  });
 });
+
