@@ -54,7 +54,7 @@ import { FileTreePanel } from "./features/tree/FileTreePanel";
 import type { FileTreeNode } from "./features/tree/buildTree";
 import { FileHistoryPanel } from "./features/history/FileHistoryPanel";
 import type { SelectedFileTarget } from "./features/changes/types";
-import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
+import { AlertCircleIcon, FolderIcon, CloseIcon, SparklesIcon } from "./components/icons";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -1242,18 +1242,18 @@ export default function App() {
 
               {/* Right Column: Diff View or File History */}
               <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
-                {/* 34px Tab Bar */}
-                <div className="h-[34px] px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between shrink-0 select-none">
-                  <div className="flex items-center gap-4 h-full" role="tablist" aria-label="文件视图">
+                {/* 36px Tab Bar */}
+                <div className="h-[36px] px-3.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] ty-panel-header flex items-center justify-between shrink-0 select-none">
+                  <div className="flex items-center gap-1 bg-[var(--ty-surface-sunken)] p-0.5 rounded-lg border border-[var(--color-border)]/70 shadow-2xs" role="tablist" aria-label="文件视图">
                     <button
                       type="button"
                       role="tab"
                       aria-selected={diffTab === "changes"}
                       onClick={() => setDiffTab("changes")}
-                      className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                      className={`flex items-center px-3 py-1 text-xs cursor-pointer rounded-md font-semibold transition-all ${
                         diffTab === "changes"
-                          ? "border-[var(--color-accent)] text-[var(--color-text)]"
-                          : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                          ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs border border-white/60 dark:border-white/5"
+                          : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
                     >
                       改动
@@ -1264,10 +1264,10 @@ export default function App() {
                         role="tab"
                         aria-selected={diffTab === "history"}
                         onClick={() => setDiffTab("history")}
-                        className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                        className={`flex items-center px-3 py-1 text-xs cursor-pointer rounded-md font-semibold transition-all ${
                           diffTab === "history"
-                            ? "border-[var(--color-accent)] text-[var(--color-text)]"
-                            : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                            ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs border border-white/60 dark:border-white/5"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                         }`}
                       >
                         历史
@@ -1276,7 +1276,7 @@ export default function App() {
                   </div>
                   {treeSelectedPath && (
                     <span
-                      className="font-mono text-xs text-[var(--color-text-muted)] truncate max-w-[50%]"
+                      className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--ty-surface-sunken)] text-[var(--color-text-muted)] border border-[var(--color-border)]/70 truncate max-w-[50%]"
                       title={treeSelectedPath}
                     >
                       {treeSelectedPath}
@@ -1352,16 +1352,16 @@ export default function App() {
         ) : (
           /* Empty Workspace State */
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[var(--color-bg)] overflow-y-auto">
-            <div className="max-w-xl w-full p-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-md space-y-6">
+            <div className="max-w-xl w-full p-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ty-card shadow-card-premium space-y-6 relative overflow-hidden">
               <div className="space-y-2">
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20 flex items-center justify-center shadow-xs">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--ty-matcha-tint)] text-[var(--color-accent)] border border-[var(--color-accent)]/20 flex items-center justify-center shadow-2xs">
                   <FolderIcon width={28} height={28} />
                 </div>
                 <h2 className="text-lg font-bold text-[var(--color-text)]">
                   欢迎使用 橦云 Git
                 </h2>
                 <span className="sr-only">没有打开的仓库</span>
-                <p className="text-xs text-[var(--color-text-muted)] max-w-md mx-auto">
+                <p className="text-xs text-[var(--color-text-muted)] max-w-md mx-auto leading-relaxed">
                   对标 IntelliJ IDEA 的独立桌面 Git 客户端 · 深度键盘流与本地 AI 助手
                 </p>
               </div>
@@ -1375,7 +1375,7 @@ export default function App() {
                     setOpenModalTab("open");
                     setOpenModalVisible(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] text-white text-xs font-semibold disabled:opacity-50 transition-all shadow-xs hover:shadow-sm active:scale-[0.98] ty-btn-tactile cursor-pointer flex items-center gap-2"
                 >
                   <FolderIcon width={14} height={14} />
                   <span>打开本地仓库</span>
@@ -1387,9 +1387,9 @@ export default function App() {
                     setOpenModalTab("clone");
                     setOpenModalVisible(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium disabled:opacity-50 transition-all shadow-2xs hover:shadow-xs active:scale-[0.98] ty-btn-tactile cursor-pointer flex items-center gap-2"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-[var(--ty-sky)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   <span>从 Git 克隆仓库</span>
@@ -1403,7 +1403,7 @@ export default function App() {
                       handleOpenRepo(selected);
                     }
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium disabled:opacity-50 transition-all shadow-2xs hover:shadow-xs active:scale-[0.98] ty-btn-tactile cursor-pointer"
                 >
                   浏览文件夹...
                 </button>
@@ -1456,16 +1456,19 @@ export default function App() {
                 </div>
               )}
 
-              {/* Keyboard shortcuts hints footer */}
-              <div className="pt-2 text-[11px] text-[var(--color-text-muted)] flex items-center justify-center gap-3">
-                <span>💡 提示：按 <kbd className="px-1.5 py-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono text-[10px]">Ctrl+Shift+P</kbd> 打开命令面板</span>
+              {/* AI-first friendly guidance footer */}
+              <div className="pt-2 text-[11px] text-[var(--color-text-muted)] flex items-center justify-center gap-2">
+                <span className="flex items-center gap-1.5 text-[var(--color-text-muted)]">
+                  <SparklesIcon width={12} height={12} className="text-[var(--color-accent)]" />
+                  内置本地 AI 提交生成与代码审查 · 开箱即用
+                </span>
                 <span>·</span>
                 <button
                   type="button"
-                  onClick={() => setShortcutsModalOpen(true)}
+                  onClick={() => setSettingsModalVisible(true)}
                   className="text-[var(--color-accent)] hover:underline cursor-pointer"
                 >
-                  按 ? 查看快捷键
+                  配置 AI 模型
                 </button>
               </div>
             </div>

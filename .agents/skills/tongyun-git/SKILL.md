@@ -42,7 +42,7 @@ description: >-
 | 目标 | 现状 | 建议 |
 | --- | --- | --- |
 | 启停本机项目 | 用 **tongyun-dev** CLI/`--json` | 见 tongyun-dev 项目 skill |
-| 在 tongyun-git 里自动写 commit message | **不能**无头操作 GUI AI | 人在 App 点；或另用自己的 LLM + `git commit`（不经本 App） |
+| 在 tongyun-git 里自动同步 commit message | **已支持文件桥接** | 外部 Agent 改完代码后写入 `.git/TONGYUN_COMMIT_MSG`，客户端即时自动拾取预填，提交后自动清空草稿 |
 | 查本仓开发规则 | 读本仓库 AGENTS / docs | 本 skill + AGENTS 表 |
 
 ## 4. 禁区

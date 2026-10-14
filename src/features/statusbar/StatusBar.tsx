@@ -45,7 +45,7 @@ export function StatusBar({
   const currentBranch = activeRepo?.head?.branch || (activeRepo?.head?.oid ? activeRepo.head.oid.slice(0, 7) : null);
 
   return (
-    <footer className="h-6 px-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-between text-[11px] text-[var(--color-text-muted)] select-none shrink-0 z-30">
+    <footer className="h-6 px-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] ty-panel-header flex items-center justify-between text-[11px] text-[var(--color-text-muted)] select-none shrink-0 z-30">
       {/* Left: Repo, Branch & Status */}
       <div className="flex items-center gap-3">
         {activeRepo ? (
@@ -54,11 +54,11 @@ export function StatusBar({
             <button
               type="button"
               onClick={onOpenBranchModal}
-              className="flex items-center gap-1.5 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+              className="flex items-center gap-1.5 hover:text-[var(--color-accent)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
               title="点击切换或新建分支"
             >
-              <BranchIcon width={12} height={12} className="text-[var(--color-accent)]" />
-              <span className="font-medium text-[var(--color-text)]">
+              <BranchIcon width={12} height={12} className="text-[var(--color-accent)] shrink-0" />
+              <span className="font-semibold text-[var(--color-text)]">
                 {currentBranch || "无分支"}
               </span>
             </button>
@@ -97,7 +97,7 @@ export function StatusBar({
           <button
             type="button"
             onClick={onOpenWorktreeModal}
-            className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1.5 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+            className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
             title="管理 Git 工作区 (Git Worktrees)"
           >
             <WorktreeIcon width={12} height={12} />
@@ -110,7 +110,7 @@ export function StatusBar({
           <button
             type="button"
             onClick={onOpenTagModal}
-            className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1.5 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+            className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
             title="管理 Git 标签 (Tags)"
           >
             <TagIcon width={12} height={12} />
@@ -123,7 +123,7 @@ export function StatusBar({
         <button
           type="button"
           onClick={onOpenLogModal}
-          className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1.5 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+          className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
           title="查看 Git 终端操作日志 (R-15)"
         >
           <TerminalIcon width={12} height={12} />
@@ -144,7 +144,7 @@ export function StatusBar({
         <button
           type="button"
           onClick={onOpenShortcuts}
-          className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+          className="flex items-center gap-1 hover:text-[var(--color-accent)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
           title="查看键盘快捷键帮助 (? 或 F1)"
         >
           <KeyboardIcon width={12} height={12} />
@@ -155,7 +155,7 @@ export function StatusBar({
         <button
           type="button"
           onClick={onOpenAbout}
-          className="hover:text-[var(--color-text)] cursor-pointer transition-colors px-1 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+          className="hover:text-[var(--color-text)] cursor-pointer transition-all px-1.5 py-0.5 rounded-md hover:bg-[var(--color-surface-raised)] ty-btn-tactile"
           title="关于 橦云 Git"
         >
           <InfoIcon width={12} height={12} />

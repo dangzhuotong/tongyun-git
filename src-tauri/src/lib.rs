@@ -284,6 +284,18 @@ fn create_commit(
 }
 
 #[tauri::command]
+fn get_external_commit_draft(root_path: String) -> std::result::Result<Option<String>, String> {
+    let p = Path::new(&root_path);
+    CommitService::get_external_draft(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_external_commit_draft(root_path: String) -> std::result::Result<(), String> {
+    let p = Path::new(&root_path);
+    CommitService::clear_external_draft(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
     let keyring = SystemKeyring;
     let available = keyring.is_available();
@@ -986,6 +998,8 @@ pub fn run() {
             get_head_message,
             inspect_amend,
             create_commit,
+            get_external_commit_draft,
+            clear_external_commit_draft,
             get_ai_key_status,
             save_ai_key,
             delete_ai_key,

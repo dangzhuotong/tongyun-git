@@ -7,6 +7,8 @@ vi.mock("../../lib/host", () => ({
   checkCommitIdentity: vi.fn(),
   inspectAmend: vi.fn(),
   createCommit: vi.fn(),
+  getExternalCommitDraft: vi.fn(),
+  clearExternalCommitDraft: vi.fn(),
   getAiKeyStatus: vi.fn(),
   generateAiCommitMessage: vi.fn(),
 }));
@@ -19,6 +21,8 @@ describe("CommitPanel component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(host.getExternalCommitDraft).mockResolvedValue(null);
+    vi.mocked(host.clearExternalCommitDraft).mockResolvedValue(undefined);
   });
 
   it("AT-06a: handles commit with staged files and saves draft until commit succeeds", async () => {
@@ -496,5 +500,50 @@ describe("CommitPanel component", () => {
 
     // Textarea draft remains untouched
     expect(textarea.value).toBe("my previous draft");
+  });
+
+  it("automatically loads external AI commit draft from .git/TONGYUN_COMMIT_MSG and clears it upon commit", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: init",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.checkCommitIdentity).mockResolvedValue({
+      name: "Bob",
+      email: "bob@example.com",
+    });
+    vi.mocked(host.createCommit).mockResolvedValue({
+      oid: "12345678",
+      short_oid: "1234567",
+      summary: "feat: external ai draft",
+    });
+    vi.mocked(host.getExternalCommitDraft).mockResolvedValue("feat: external ai draft");
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    // Textarea should be populated with external AI draft
+    const textarea = await screen.findByDisplayValue("feat: external ai draft");
+    expect(textarea).toBeDefined();
+
+    // Badge showing sync status
+    expect(await screen.findByText(/已同步 AI 预拟信息/)).toBeDefined();
+
+    // Commit should call clearExternalCommitDraft
+    const commitBtn = screen.getByRole("button", { name: "提交 (1)" });
+    fireEvent.click(commitBtn);
+
+    await waitFor(() => {
+      expect(host.createCommit).toHaveBeenCalledWith(rootPath, "feat: external ai draft", false);
+      expect(host.clearExternalCommitDraft).toHaveBeenCalledWith(rootPath);
+    });
   });
 });

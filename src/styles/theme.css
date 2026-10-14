@@ -141,6 +141,76 @@ pre,
   font-family: var(--ty-font-mono);
 }
 
+/* 优雅精致的现代自定义滚动条 (Warm Oatmeal Scrollbar from Tongyun Planner) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(184, 172, 158, 0.38);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(184, 172, 158, 0.65);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb,
+:root.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
+:root.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 暖纸与手账质感微阴影与高光边 (Tongyun Paper & Stationery Rims) */
+.ty-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px rgba(120, 110, 95, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+[data-theme="dark"] .ty-card,
+:root.dark .ty-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.ty-panel-header {
+  box-shadow: inset 0 -1px 0 var(--color-border), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+[data-theme="dark"] .ty-panel-header,
+:root.dark .ty-panel-header {
+  box-shadow: inset 0 -1px 0 var(--color-border), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.ty-pill-container {
+  background: var(--ty-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 2px;
+}
+
+.ty-pill-active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px rgba(120, 110, 95, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+[data-theme="dark"] .ty-pill-active,
+:root.dark .ty-pill-active {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 灵动触感的微交互按钮 */
+.ty-btn-tactile {
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ty-btn-tactile:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 @theme {
   --color-bg: var(--color-bg);
   --color-surface: var(--color-surface);
@@ -179,10 +249,13 @@ pre,
   --radius-xl: 16px;
   --radius-2xl: 20px;
 
+  --shadow-2xs: 0 1px 2px rgba(120, 110, 95, 0.06);
   --shadow-xs: var(--ty-shadow-card);
   --shadow-sm: var(--ty-shadow-card);
+  --shadow-md: 0 4px 12px -2px rgba(120, 110, 95, 0.1), 0 2px 6px -1px rgba(120, 110, 95, 0.06);
   --shadow-lg: var(--ty-shadow-pop);
   --shadow-2xl: var(--ty-shadow-pop);
+  --shadow-card-premium: 0 10px 30px -10px rgba(120, 110, 95, 0.12), 0 1px 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
 
 .workspace-tools { width: min(1080px, 100%); height: min(85vh, 850px); display: flex; flex-direction: column; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); color: var(--color-text); font-size: 12px; box-shadow: 0 20px 70px #0004; overflow: hidden; }

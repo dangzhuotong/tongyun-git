@@ -258,6 +258,14 @@ export async function createCommit(
   });
 }
 
+export async function getExternalCommitDraft(rootPath: string): Promise<string | null> {
+  return await invoke<string | null>("get_external_commit_draft", { rootPath });
+}
+
+export async function clearExternalCommitDraft(rootPath: string): Promise<void> {
+  return await invoke("clear_external_commit_draft", { rootPath });
+}
+
 export async function getAiKeyStatus(): Promise<AiKeyStatus> {
   return await invoke<AiKeyStatus>("get_ai_key_status");
 }

@@ -231,6 +231,8 @@ impl CommitService {
             _ => String::new(),
         };
 
+        let _ = Self::clear_external_draft(repo_root);
+
         Ok(CommitResult {
             oid: oid_str,
             short_oid,
@@ -298,6 +300,64 @@ impl CommitService {
                 exit_code: out.exit_code,
                 stderr: combined_err,
             });
+        }
+        Ok(())
+    }
+
+    /// Read external commit draft (e.g. prepared by external AI agent via .git/TONGYUN_COMMIT_MSG, or .git/MERGE_MSG).
+    pub fn get_external_draft(repo_root: &Path) -> Result<Option<String>> {
+        let dot_git = if let Ok(repo) = git2::Repository::open(repo_root) {
+            repo.path().to_path_buf()
+        } else {
+            repo_root.join(".git")
+        };
+
+        // 1. Check custom AI / Agent draft file (.git/TONGYUN_COMMIT_MSG)
+        let ai_file = dot_git.join("TONGYUN_COMMIT_MSG");
+        if ai_file.exists() {
+            if let Ok(content) = fs::read_to_string(&ai_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        // 2. Check Git standard merge message (.git/MERGE_MSG)
+        let merge_file = dot_git.join("MERGE_MSG");
+        if merge_file.exists() {
+            if let Ok(content) = fs::read_to_string(&merge_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        // 3. Check Git standard squash message (.git/SQUASH_MSG)
+        let squash_file = dot_git.join("SQUASH_MSG");
+        if squash_file.exists() {
+            if let Ok(content) = fs::read_to_string(&squash_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Clear external commit draft file (.git/TONGYUN_COMMIT_MSG) after commit or discard.
+    pub fn clear_external_draft(repo_root: &Path) -> Result<()> {
+        let dot_git = if let Ok(repo) = git2::Repository::open(repo_root) {
+            repo.path().to_path_buf()
+        } else {
+            repo_root.join(".git")
+        };
+        let ai_file = dot_git.join("TONGYUN_COMMIT_MSG");
+        if ai_file.exists() {
+            let _ = fs::remove_file(ai_file);
         }
         Ok(())
     }

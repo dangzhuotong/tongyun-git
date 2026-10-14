@@ -3,6 +3,8 @@ import {
   checkCommitIdentity,
   inspectAmend,
   createCommit,
+  getExternalCommitDraft,
+  clearExternalCommitDraft,
   generateAiCommitMessage,
   reviewStagedDiff,
   getAiKeyStatus,
@@ -106,6 +108,45 @@ export function CommitPanel({
     };
   }, [rootPath, stagedCount]);
 
+  // Check external draft (.git/TONGYUN_COMMIT_MSG or .git/MERGE_MSG)
+  const [hasExternalDraft, setHasExternalDraft] = useState(false);
+  const [externalDraftContent, setExternalDraftContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    let canceled = false;
+    try {
+      const p = getExternalCommitDraft(rootPath);
+      if (p && typeof p.then === "function") {
+        p.then((draft) => {
+          if (canceled) return;
+          if (draft) {
+            setHasExternalDraft(true);
+            setExternalDraftContent(draft);
+            setMessage((prev) => {
+              if (!prev.trim() || prev === draft) {
+                return draft;
+              }
+              return prev;
+            });
+          } else {
+            setHasExternalDraft(false);
+            setExternalDraftContent(null);
+          }
+        }).catch(() => {
+          if (!canceled) {
+            setHasExternalDraft(false);
+            setExternalDraftContent(null);
+          }
+        });
+      }
+    } catch {
+      // ignore
+    }
+    return () => {
+      canceled = true;
+    };
+  }, [rootPath, stagedCount]);
+
   // Toggle Amend checkbox (AT-06f, AT-06k)
   const handleToggleAmend = (checked: boolean) => {
     if (checked) {
@@ -149,6 +190,9 @@ export function CommitPanel({
 
       // 3. Clear draft and reset state
       localStorage.removeItem(draftKey);
+      await clearExternalCommitDraft(rootPath).catch(() => {});
+      setHasExternalDraft(false);
+      setExternalDraftContent(null);
       setMessage("");
       setIsAmend(false);
       checkAmendStatus();
@@ -333,7 +377,7 @@ export function CommitPanel({
   const canAiGenerate = !aiGenerating && !disabled && stagedCount > 0;
 
   return (
-    <div className="flex flex-col border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs select-none">
+    <div className="flex flex-col border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs select-none ty-card">
       {/* Error alert banner */}
       {error && (
         <div className="px-3 py-2 bg-[var(--color-danger)]/15 border-b border-[var(--color-danger)]/30 text-xs text-[var(--color-danger)] flex items-start justify-between gap-2">
@@ -365,28 +409,53 @@ export function CommitPanel({
       )}
 
       {/* Header Controls: Amend Checkbox & AI Generate Button */}
-      <div className="px-3 py-2 flex items-center justify-between gap-2 border-b border-[var(--color-border)]/50 bg-[var(--color-bg)]/30">
-        {/* Amend Checkbox (R-06) */}
-        <label
-          className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] ${
-            !amendStatus?.can_amend ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-          title={amendStatus?.disabled_reason || "修改最近一次提交"}
-        >
-          <input
-            type="checkbox"
-            checked={isAmend}
-            disabled={!amendStatus?.can_amend || disabled || committing}
-            onChange={(e) => handleToggleAmend(e.target.checked)}
-            className="rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)] cursor-pointer"
-          />
-          <span className="text-[var(--color-text)]">修改上一次提交</span>
-          {isAmend && amendStatus?.is_pushed && (
-            <span className="text-[9px] px-1 py-0.2 rounded bg-[var(--color-danger)]/20 text-[var(--color-danger)] font-medium">
-              已推送
+      <div className="px-3 py-2 flex items-center justify-between gap-2 border-b border-[var(--color-border)]/60 bg-[var(--ty-surface-sunken)]/40">
+        {/* Left: Amend Checkbox & External AI Sync badge */}
+        <div className="flex items-center gap-2 overflow-hidden">
+          <label
+            className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] shrink-0 ${
+              !amendStatus?.can_amend ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            title={amendStatus?.disabled_reason || "修改最近一次提交"}
+          >
+            <input
+              type="checkbox"
+              checked={isAmend}
+              disabled={!amendStatus?.can_amend || disabled || committing}
+              onChange={(e) => handleToggleAmend(e.target.checked)}
+              className="rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)] cursor-pointer"
+            />
+            <span className="text-[var(--color-text)] font-medium">修改上一次提交</span>
+            {isAmend && amendStatus?.is_pushed && (
+              <span className="text-[9px] px-1 py-0.2 rounded bg-[var(--color-danger)]/20 text-[var(--color-danger)] font-medium">
+                已推送
+              </span>
+            )}
+          </label>
+
+          {/* External AI Draft Badge */}
+          {hasExternalDraft && externalDraftContent && message === externalDraftContent && (
+            <span
+              className="text-[10px] text-[var(--ty-matcha)] flex items-center gap-1 font-medium bg-[var(--ty-matcha-tint)] px-1.5 py-0.5 rounded-md border border-[var(--color-accent)]/20 shadow-2xs truncate"
+              title="当前提交信息已自动从外部 AI / Agent 预拟草稿同步"
+            >
+              <SparklesIcon width={10} height={10} className="text-[var(--color-accent)] shrink-0" />
+              <span className="truncate">已同步 AI 预拟信息</span>
             </span>
           )}
-        </label>
+
+          {hasExternalDraft && externalDraftContent && message !== externalDraftContent && (
+            <button
+              type="button"
+              onClick={() => setMessage(externalDraftContent)}
+              className="text-[10px] text-[var(--color-accent)] hover:underline flex items-center gap-1 cursor-pointer bg-[var(--ty-matcha-tint)]/60 px-1.5 py-0.5 rounded-md border border-[var(--color-accent)]/30 shrink-0"
+              title="点击恢复外部 AI 预拟提交信息"
+            >
+              <SparklesIcon width={10} height={10} />
+              <span>载入 AI 预拟信息</span>
+            </button>
+          )}
+        </div>
 
         {/* AI Action Buttons */}
         <div className="flex items-center gap-1.5">
@@ -400,14 +469,18 @@ export function CommitPanel({
                 ? "没有暂存的改动，暂无法审查"
                 : "提交前通过 AI 审查暂存区中的潜在 Bug、密钥泄露与代码质量"
             }
-            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[11px] text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs hover:shadow-xs ty-btn-tactile ${
+              stagedCount > 0 && !disabled
+                ? "border-[var(--color-status-added)]/40 bg-[var(--color-surface)] hover:bg-[var(--ty-matcha-tint)]/30 text-[var(--color-text)]"
+                : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+            }`}
           >
             <ShieldCheckIcon
               width={13}
               height={13}
               className={aiReviewing ? "animate-pulse text-[var(--color-status-added)]" : "text-[var(--color-status-added)]"}
             />
-            <span>{aiReviewing ? "审查中..." : "AI 审查"}</span>
+            <span className="font-medium">{aiReviewing ? "审查中..." : "AI 审查"}</span>
           </button>
 
           {/* AI Generate Button (R-07) */}
@@ -418,36 +491,39 @@ export function CommitPanel({
             title={
               stagedCount === 0
                 ? "没有暂存的改动，暂无法生成"
-                : "基于暂存区改动通过 AI 生成提交信息"
+                : "基于暂存区改动通过 AI 自动撰写规范提交信息"
             }
-            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[11px] text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs hover:shadow-xs ty-btn-tactile ${
+              canAiGenerate
+                ? "border-[var(--color-accent)]/50 bg-[var(--ty-matcha-tint)] text-[var(--ty-matcha)] hover:bg-[var(--ty-matcha-tint)]/80 font-semibold ring-1 ring-[var(--color-accent)]/20"
+                : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+            }`}
           >
             <SparklesIcon
               width={13}
               height={13}
               className={aiGenerating ? "animate-spin text-[var(--color-accent)]" : "text-[var(--color-accent)]"}
             />
-            <span>{aiGenerating ? "生成中..." : "AI 生成"}</span>
+            <span className="font-medium">{aiGenerating ? "生成中..." : "AI 生成"}</span>
           </button>
         </div>
       </div>
 
-
       {/* Textarea for Commit Message */}
-      <div className="relative p-2 flex flex-col">
+      <div className="relative p-2.5 flex flex-col bg-[var(--color-surface)]">
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => handleMessageChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="提交信息 (首行标题，空一行输入详细说明，Ctrl+Enter 提交)..."
+          placeholder="提交信息 (首行标题，空一行输入详细说明；或点击上方「AI 生成」)..."
           rows={4}
           disabled={disabled || committing}
-          className="w-full p-2 rounded bg-[var(--color-bg)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] resize-y font-sans leading-relaxed select-text"
+          className="w-full p-2.5 rounded-xl bg-[var(--ty-surface-sunken)]/50 border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-accent)]/20 transition-all resize-y font-sans leading-relaxed select-text shadow-inner-2xs"
         />
 
         {/* Footer info: First line length / limit & Commit button */}
-        <div className="mt-2 flex items-center justify-between text-[11px]">
+        <div className="mt-2.5 flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-2">
             {isTitleOverLimit && (
               <span className="text-[var(--color-danger)] font-medium text-[10px] flex items-center gap-1">
@@ -456,7 +532,7 @@ export function CommitPanel({
               </span>
             )}
             {!isTitleOverLimit && firstLineLength > 0 && (
-              <span className="text-[var(--color-text-muted)] text-[10px]">
+              <span className="text-[var(--color-text-muted)] text-[10px] font-mono">
                 标题 {firstLineLength} 字符
               </span>
             )}
@@ -472,9 +548,9 @@ export function CommitPanel({
                   ? "请输入提交信息"
                   : !isAmend && stagedCount === 0
                   ? "请先暂存文件"
-                  : "Ctrl+Enter 提交"
+                  : "提交当前改动"
               }
-              className={`px-3 py-1.5 rounded font-medium text-xs text-white shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`px-4 py-1.5 rounded-lg font-semibold text-xs text-white shadow-xs hover:shadow-sm active:scale-[0.97] cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ty-btn-tactile ${
                 isAmend
                   ? "bg-[var(--color-status-modified)] hover:opacity-90"
                   : "bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)]"
