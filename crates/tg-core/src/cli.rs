@@ -351,4 +351,45 @@ mod tests {
         );
         assert_eq!(parse_git_version("unknown output"), None);
     }
+
+    #[test]
+    fn test_operation_logs_recording_and_pruning() {
+        clear_operation_logs();
+        assert!(get_operation_logs().is_empty());
+
+        record_operation_log(
+            "git status".to_string(),
+            "/repo".to_string(),
+            12,
+            Some(0),
+            "clean".to_string(),
+            String::new(),
+        );
+
+        let logs = get_operation_logs();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].command_line, "git status");
+        assert_eq!(logs[0].cwd, "/repo");
+        assert_eq!(logs[0].exit_code, Some(0));
+
+        // Test capacity limit: max 200 entries
+        for i in 0..205 {
+            record_operation_log(
+                format!("git op {i}"),
+                "/repo".to_string(),
+                5,
+                Some(0),
+                String::new(),
+                String::new(),
+            );
+        }
+
+        let logs_after = get_operation_logs();
+        assert_eq!(logs_after.len(), 200);
+        // The earliest entries (0..5) should have been pruned
+        assert_eq!(logs_after.last().unwrap().command_line, "git op 204");
+
+        clear_operation_logs();
+        assert!(get_operation_logs().is_empty());
+    }
 }
