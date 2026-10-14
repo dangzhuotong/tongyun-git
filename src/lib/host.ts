@@ -1010,3 +1010,47 @@ export type WorkspaceRequest =
 export async function workspaceTask<T>(rootPath: string, request: WorkspaceRequest): Promise<T> {
   return invoke<T>("workspace_task", { rootPath, request, gitPath: localStorage.getItem("tongyun_git_path") || null });
 }
+
+export interface BridgeStatus {
+  online: boolean;
+  port: number;
+  version: string;
+  active_repo: {
+    root_path: string;
+    name: string;
+    branch?: string | null;
+    head_oid?: string | null;
+    staged_count: number;
+    unstaged_count: number;
+    untracked_count: number;
+    conflicts_count: number;
+  } | null;
+}
+
+export interface AgentReviewNote {
+  file: string;
+  line?: number;
+  level?: string;
+  message: string;
+}
+
+export interface AgentIntent {
+  agent_name?: string;
+  task?: string;
+  commit_message: string;
+  suggested_stage?: string[];
+  review_notes?: AgentReviewNote[];
+  timestamp: number;
+}
+
+export async function getBridgeInfo(): Promise<BridgeStatus> {
+  return invoke<BridgeStatus>("get_bridge_info");
+}
+
+export async function getAgentIntent(): Promise<AgentIntent | null> {
+  return invoke<AgentIntent | null>("get_agent_intent");
+}
+
+export async function clearAgentIntent(): Promise<void> {
+  return invoke<void>("clear_agent_intent");
+}

@@ -1,52 +1,94 @@
 ---
 name: tongyun-git
 description: >-
-  Explain how to use tongyun-git App AI (commit message, pre-commit review,
-  natural-language log query) and what external agents can / cannot drive.
-  Use when configuring AI in the App or assessing agent automation of git UI.
+  Explain how to use tongyun-git App AI and external AI Agent Bridge / MCP protocol.
+  Use when connecting external agents (Claude Code, Cursor, Antigravity) to Tongyun Git or assessing agent automation.
 ---
 
-# tongyun-git · Agent / AI 使用说明（项目级）
+# tongyun-git · Agent / AI 协同与使用说明（项目级）
 
 本 skill **只放在本仓库** `.agents/skills/tongyun-git/`，不要拷进全局 skills。先读 [AGENTS.md](../../../AGENTS.md)、[docs/prd.md](../../../docs/prd.md)、[docs/decisions/0002-ai-providers-and-keys.md](../../../docs/decisions/0002-ai-providers-and-keys.md)。
 
-## 结论先行
+## 核心定位：AI Agent 做大脑与执行者，Tongyun Git 做环境与眼睛
 
-- **已有**：桌面 App 内 AI——生成 Conventional Commit、提交前审 diff、自然语言查 log；Key 只进 OS 钥匙串。
-- **没有**：对外稳定 CLI（如 `tg ai commit --json`）、MCP、给外部 Agent 的 HTTP API。外部 Agent **不能**在无 GUI 的情况下直接调用这些 AI 能力。
-- **本批不做** `tg ai commit --json`（成本高：需独立 CLI 入口、钥匙串、与 Tauri 命令对齐）。若以后要做，应复用 `tg-core` 的 `AiService`，输出 `--json`，且仍禁止读环境变量里的 key。
+本工具本质上是**给 AI 看、给多 Agent 协同服务、给人类终审**的 Git 基础设施：
+- **AI 读**：外部 Agent 通过 Bridge 与 MCP 读取高信息密度 Context Pack、结构化 Diff 与工作区状态；
+- **AI 写**：外部 Agent 将意图（Prompt/任务说明）、推荐的 Conventional Commit 信息与审查便签推送到桌面 UI；
+- **安全网**：外部 Agent 执行前自动打快照（`snapshot`），一旦测试报错或改崩，一键 100% 确定性回滚（`rewind`）；
+- **人终审**：人类在精雕细琢的桌面 UI 上监看动态、一键采纳提交并归档。
 
-## 1. 人在 App 里怎么用
+---
 
-1. **设置 → AI**：选提供方（KIE / OpenAI 兼容 / Ollama），填 base URL（若需要）与模型；保存 key（只进钥匙串，前端拿不到明文）。
+## 1. 外部 Agent 调用方式
+
+### 方式 A：MCP (Model Context Protocol) 标准服务器
+任何支持 MCP 的 Agent（Claude Code, Cursor, Windsurf, Antigravity）直接在配置文件中挂载：
+```json
+{
+  "mcpServers": {
+    "tongyun-git": {
+      "command": "python",
+      "args": ["scripts/tongyun_mcp_server.py"]
+    }
+  }
+}
+```
+**可用 MCP 工具**：
+- `tg_get_repo_status`: 获取当前仓库与分支状态、未提交改动统计；
+- `tg_get_context_pack`: 提取高信息密度、LLM 优化的上下文包（含改动汇总与裁剪 diff）；
+- `tg_get_file_diff`: 获取指定文件结构化差异；
+- `tg_push_agent_intent`: 将修改任务描述与提交信息推送到桌面 UI 供人类审查采纳；
+- `tg_create_safety_snapshot`: 在尝试大改前创建安全快照；
+- `tg_rewind_to_snapshot`: 遇到失败一键全盘秒级安全回滚；
+- `tg_stage_files`: 暂存指定文件。
+
+### 方式 B：Python CLI 脚本 (`scripts/tongyun_git_bridge.py`)
+```bash
+# 1. 检查状态
+python scripts/tongyun_git_bridge.py status
+
+# 2. 导出面向大模型的高密度上下文
+python scripts/tongyun_git_bridge.py context-pack
+
+# 3. 大改前打安全快照
+python scripts/tongyun_git_bridge.py snapshot --label "重构鉴权模块"
+
+# 4. 改崩了？一键全盘回滚
+python scripts/tongyun_git_bridge.py rewind
+
+# 5. 推送完成的提交意图到桌面 UI
+python scripts/tongyun_git_bridge.py push-intent \
+  --agent "Claude Code" \
+  --task "重构鉴权模块并增加白名单" \
+  --msg "feat(auth): 重构鉴权模块并支持白名单校验"
+```
+
+### 方式 C：本地 HTTP REST API（端口 4172）
+```bash
+# 获取 LLM 优化上下文包
+curl http://127.0.0.1:4172/api/context-pack
+
+# 推送 Agent 意图
+curl -X POST http://127.0.0.1:4172/api/push-intent \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "Claude Code", "task": "实现登录拦截器", "commit_message": "feat: login interceptor"}'
+```
+
+---
+
+## 2. 人在 App 里怎么用
+
+1. **设置 → AI**：选提供方（KIE / OpenAI 兼容 / Ollama），填 base URL 与模型；保存 key（只进钥匙串，前端拿不到明文）。
 2. **测连接**：设置页「测试连接」。
-3. **生成提交信息**：暂存改动后，在提交面板点「AI 生成」（或快捷键）。首次会弹授权说明发送范围与目标 URL。
-4. **提交前审查**：提交面板「AI 审查」——查密钥泄露、明显缺陷、调试残留等。
-5. **自然语言历史**：Log 视图输入框（如「上次改支付配置是谁」）→ AI 检索/归纳提交摘要。
+3. **AI Bridge 状态指示**：状态栏右下角显示 `🟢 AI Bridge :4172`，实时监听外部 Agent 联动。
+4. **Agent 意图便签**：当外部 Agent 推送了任务与推荐提交信息，提交区顶部出现淡抹茶色手帐便签，点击「采纳建议提交信息」一键填入。
+5. **提交前审查**：提交面板「AI 审查」——查密钥泄露、明显缺陷、调试残留等。
+6. **自然语言历史**：Log 视图输入框（如「上次改支付配置是谁」）→ AI 检索/归纳提交摘要。
 
-关闭 AI 或未保存 key 时，相关按钮不可用或提示去设置。
+---
 
-## 2. 实现入口（给改代码的 Agent）
-
-| 能力 | 核心 | UI / IPC |
-| --- | --- | --- |
-| 生成提交 | `AiService::generate_commit_message`（`crates/tg-core/src/ai/provider.rs`） | `CommitPanel`、Tauri `generate_commit_message` |
-| 审 diff | `AiService::review_diff` | `AiReviewModal`、`review_diff` |
-| 自然语言 log | `AiService::query_log` | `LogView`、`query_log` |
-| Key | `keyring_store.rs`；账户名 `ai-key:<kie\|openai\|ollama>` | 设置页只暴露 `has_key` |
-
-规则：不读任何环境变量中的 key；测试用内存钥匙串替身；不把 key 写入日志/设置文件/仓库。
-
-## 3. 外部 Agent 能做什么
-
-| 目标 | 现状 | 建议 |
-| --- | --- | --- |
-| 启停本机项目 | 用 **tongyun-dev** CLI/`--json` | 见 tongyun-dev 项目 skill |
-| 在 tongyun-git 里自动同步 commit message | **已支持文件桥接** | 外部 Agent 改完代码后写入 `.git/TONGYUN_COMMIT_MSG`，客户端即时自动拾取预填，提交后自动清空草稿 |
-| 查本仓开发规则 | 读本仓库 AGENTS / docs | 本 skill + AGENTS 表 |
-
-## 4. 禁区
+## 3. 禁区
 
 - 不把 AI key、token 写进仓、CI 明文、skill 正文。
-- 不把「登记的开发用 tong-*-pro」当成已安装的本产品 skill。
-- 不假装存在 `tg ai …` CLI，直到真正实现并写进 README。
+- 不读取任何环境变量里的 key（必须在设置中由用户保存到系统钥匙串）。
+- 外部 Agent 操作前建议先触发 `snapshot` 建立安全备份点。

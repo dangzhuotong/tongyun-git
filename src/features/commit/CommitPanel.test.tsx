@@ -9,6 +9,8 @@ vi.mock("../../lib/host", () => ({
   createCommit: vi.fn(),
   getExternalCommitDraft: vi.fn(),
   clearExternalCommitDraft: vi.fn(),
+  getAgentIntent: vi.fn(),
+  clearAgentIntent: vi.fn(),
   getAiKeyStatus: vi.fn(),
   generateAiCommitMessage: vi.fn(),
 }));
@@ -23,6 +25,8 @@ describe("CommitPanel component", () => {
     localStorage.clear();
     vi.mocked(host.getExternalCommitDraft).mockResolvedValue(null);
     vi.mocked(host.clearExternalCommitDraft).mockResolvedValue(undefined);
+    vi.mocked(host.getAgentIntent).mockResolvedValue(null);
+    vi.mocked(host.clearAgentIntent).mockResolvedValue(undefined);
   });
 
   it("AT-06a: handles commit with staged files and saves draft until commit succeeds", async () => {
@@ -545,5 +549,40 @@ describe("CommitPanel component", () => {
       expect(host.createCommit).toHaveBeenCalledWith(rootPath, "feat: external ai draft", false);
       expect(host.clearExternalCommitDraft).toHaveBeenCalledWith(rootPath);
     });
+  });
+
+  it("renders AI Bridge intent card and accepts suggested commit message", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: init",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.getAgentIntent).mockResolvedValue({
+      agent_name: "Claude Code",
+      task: "实现鉴权与拦截器",
+      commit_message: "feat(auth): 实现 JWT 鉴权中间件",
+      suggested_stage: ["src/auth.rs"],
+      review_notes: [],
+      timestamp: 12345678,
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    expect(await screen.findByText(/AI Agent 协同注入: Claude Code/)).toBeDefined();
+    expect(screen.getByText(/任务: 实现鉴权与拦截器/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "采纳建议提交信息" })).toBeDefined();
+
+    const closeBtn = screen.getByTitle("关闭便签");
+    fireEvent.click(closeBtn);
+    expect(host.clearAgentIntent).toHaveBeenCalled();
   });
 });

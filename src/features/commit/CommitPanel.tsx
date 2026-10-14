@@ -5,12 +5,15 @@ import {
   createCommit,
   getExternalCommitDraft,
   clearExternalCommitDraft,
+  getAgentIntent,
+  clearAgentIntent,
   generateAiCommitMessage,
   reviewStagedDiff,
   getAiKeyStatus,
   type AmendStatus,
   type AiSettings,
   type DiffReviewResult,
+  type AgentIntent,
 } from "../../lib/host";
 import {
   SparklesIcon,
@@ -112,6 +115,9 @@ export function CommitPanel({
   const [hasExternalDraft, setHasExternalDraft] = useState(false);
   const [externalDraftContent, setExternalDraftContent] = useState<string | null>(null);
 
+  // Check Agent Intent from AI Bridge
+  const [agentIntent, setAgentIntent] = useState<AgentIntent | null>(null);
+
   useEffect(() => {
     let canceled = false;
     try {
@@ -138,6 +144,24 @@ export function CommitPanel({
             setExternalDraftContent(null);
           }
         });
+      }
+
+      const pIntent = getAgentIntent();
+      if (pIntent && typeof pIntent.then === "function") {
+        pIntent.then((intent) => {
+          if (canceled) return;
+          if (intent) {
+            setAgentIntent(intent);
+            if (intent.commit_message) {
+              setMessage((prev) => {
+                if (!prev.trim() || prev === intent.commit_message) {
+                  return intent.commit_message;
+                }
+                return prev;
+              });
+            }
+          }
+        }).catch(() => {});
       }
     } catch {
       // ignore
@@ -191,6 +215,8 @@ export function CommitPanel({
       // 3. Clear draft and reset state
       localStorage.removeItem(draftKey);
       await clearExternalCommitDraft(rootPath).catch(() => {});
+      await clearAgentIntent().catch(() => {});
+      setAgentIntent(null);
       setHasExternalDraft(false);
       setExternalDraftContent(null);
       setMessage("");
@@ -511,6 +537,46 @@ export function CommitPanel({
 
       {/* Textarea for Commit Message */}
       <div className="relative p-2.5 flex flex-col bg-[var(--color-surface)]">
+        {agentIntent && (
+          <div className="mb-2 p-2 rounded-lg border border-[var(--ty-matcha)]/40 bg-[var(--ty-matcha-tint)] text-xs space-y-1.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-semibold text-[var(--ty-matcha)]">
+                <SparklesIcon width={13} height={13} />
+                <span>AI Agent 协同注入: {agentIntent.agent_name || "外部 Agent"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentIntent(null);
+                  clearAgentIntent().catch(() => {});
+                }}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-0.5 rounded"
+                title="关闭便签"
+              >
+                <CloseIcon width={12} height={12} />
+              </button>
+            </div>
+            {agentIntent.task && (
+              <div className="text-[var(--color-text)] text-[11px] font-medium">
+                任务: {agentIntent.task}
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => setMessage(agentIntent.commit_message)}
+                className="px-2 py-0.5 rounded bg-[var(--ty-matcha)] text-white text-[10px] font-semibold hover:opacity-90 cursor-pointer shadow-2xs"
+              >
+                采纳建议提交信息
+              </button>
+              {agentIntent.suggested_stage && agentIntent.suggested_stage.length > 0 && (
+                <span className="text-[10px] text-[var(--color-text-muted)]">
+                  建议暂存 {agentIntent.suggested_stage.length} 个文件
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={message}

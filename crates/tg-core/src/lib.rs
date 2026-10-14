@@ -4,6 +4,7 @@ pub mod branch;
 pub mod cli;
 pub mod commit;
 pub mod conflict;
+pub mod context_pack;
 pub mod discard;
 pub mod error;
 pub mod log;
@@ -36,6 +37,7 @@ pub use cli::{
 };
 pub use commit::{AmendStatus, CommitResult, CommitService, GitIdentity};
 pub use conflict::{ConflictFileDetails, ConflictFileSummary, ConflictHunk, ConflictService};
+pub use context_pack::{ContextFileSummary, ContextPack, ContextPackGenerator, ContextPackSummary};
 pub use discard::{
     DiscardCandidate, DiscardResult, DiscardService, UndoDiscardResult, MAX_SINGLE_FILE_SNAPSHOT,
     MAX_SNAPSHOT_COUNT, MAX_TOTAL_SNAPSHOT,

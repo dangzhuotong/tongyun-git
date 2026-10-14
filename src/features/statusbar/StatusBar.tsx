@@ -137,6 +137,15 @@ export function StatusBar({
           </span>
         )}
 
+        {/* AI Bridge Capsule */}
+        <span
+          className="flex items-center gap-1 font-mono text-[10px] text-[var(--ty-matcha)] bg-[var(--ty-matcha-tint)] px-1.5 py-0.5 rounded border border-[var(--ty-matcha)]/30 cursor-help"
+          title="AI Bridge 外部协同网关已就绪 (端口 4172)，支持 Claude Code / Cursor / MCP 联动"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--ty-matcha)] animate-pulse" />
+          <span>AI Bridge :4172</span>
+        </span>
+
         {/* Encoding / Line Endings */}
         <span className="text-[10px] hidden md:inline font-mono">UTF-8</span>
 

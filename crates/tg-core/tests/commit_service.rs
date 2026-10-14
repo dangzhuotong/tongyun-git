@@ -134,12 +134,17 @@ fn test_external_commit_draft_lifecycle() {
     // get_external_draft should read it
     let draft = CommitService::get_external_draft(&fixture.path)
         .expect("get_external_draft should succeed");
-    assert_eq!(draft, Some("feat(ui): 外部 AI 预拟提交信息\n\n详细说明".to_string()));
+    assert_eq!(
+        draft,
+        Some("feat(ui): 外部 AI 预拟提交信息\n\n详细说明".to_string())
+    );
 
     // When commit succeeds, .git/TONGYUN_COMMIT_MSG is automatically cleared
     let test_file = fixture.path.join("file1.txt");
     std::fs::write(&test_file, "updated content").expect("modify file");
-    runner.run(&fixture.path, &["add", "file1.txt"], RunOptions::default()).expect("git add");
+    runner
+        .run(&fixture.path, &["add", "file1.txt"], RunOptions::default())
+        .expect("git add");
 
     let res = CommitService::commit(&runner, &fixture.path, &draft.unwrap(), false)
         .expect("commit should succeed");
