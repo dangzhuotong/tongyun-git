@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   getAppInfo,
@@ -22,9 +22,8 @@ import {
   type RepoInfo,
   type FileStatus,
   type FileDiff,
-  type DiscardCandidate,
 } from "./lib/host";
-import { WorkspaceTools, type WorkspaceTab } from "./features/workspace/WorkspaceTools";
+import { WorkspaceTools } from "./features/workspace/WorkspaceTools";
 import { Toolbar } from "./features/toolbar/Toolbar";
 import { ChangesList } from "./features/changes/ChangesList";
 import { DiffViewer } from "./features/changes/DiffViewer";
@@ -55,6 +54,8 @@ import type { FileTreeNode } from "./features/tree/buildTree";
 import { FileHistoryPanel } from "./features/history/FileHistoryPanel";
 import type { SelectedFileTarget } from "./features/changes/types";
 import { AlertCircleIcon, FolderIcon, CloseIcon, SparklesIcon } from "./components/icons";
+import { useLayoutSplit } from "./hooks/useLayoutSplit";
+import { useAppModals } from "./hooks/useAppModals";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -74,7 +75,6 @@ export default function App() {
     }
   });
 
-  const [workspaceTools, setWorkspaceTools] = useState<{ tab: WorkspaceTab; target?: string } | null>(null);
   const [logSelectedOid, setLogSelectedOid] = useState<string | null>(null);
   const [favoriteRepos, setFavoriteRepos] = useState<string[]>(() => {
     try { const value: unknown = JSON.parse(localStorage.getItem("tongyun_favorite_repos") || "[]"); return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []; } catch { return []; }
@@ -91,110 +91,106 @@ export default function App() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
-  // Panel sizing
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const saved = localStorage.getItem("tongyun_sidebar_width");
-    return saved ? Math.max(220, Math.min(600, parseInt(saved, 10))) : 320;
-  });
-  const isResizingRef = useRef(false);
+  // Panel layout and split resizing
+  const {
+    sidebarWidth,
+    treeWidth,
+    treeCollapsed,
+    setTreeCollapsed,
+    handleMouseDownTreeResize,
+    handleMouseDownResize,
+  } = useLayoutSplit();
 
-  // Project tree state
-  const [treeWidth, setTreeWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("tongyun_tree_width");
-      return saved ? Math.max(180, Math.min(420, parseInt(saved, 10))) : 240;
-    } catch {
-      return 240;
-    }
-  });
-  const [treeCollapsed, setTreeCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("tongyun_tree_collapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
+  // Project tree selection & diff view tab
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [treeSelectedPath, setTreeSelectedPath] = useState<string | null>(null);
   const [diffTab, setDiffTab] = useState<"changes" | "history">("changes");
-  const isTreeResizingRef = useRef(false);
 
-  // Modals
-  const [openModalVisible, setOpenModalVisible] = useState(false);
-  const [openModalTab, setOpenModalTab] = useState<"open" | "clone">("open");
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [openLoading, setOpenLoading] = useState(false);
-  const [openAttemptPath, setOpenAttemptPath] = useState("");
+  // Modals management
+  const {
+    openModalVisible,
+    setOpenModalVisible,
+    openModalTab,
+    setOpenModalTab,
+    openError,
+    setOpenError,
+    openLoading,
+    setOpenLoading,
+    openAttemptPath,
+    setOpenAttemptPath,
+    settingsModalVisible,
+    setSettingsModalVisible,
+    settingsTab,
+    setSettingsTab,
+    branchModalOpen,
+    setBranchModalOpen,
+    createBranchModalOpen,
+    setCreateBranchModalOpen,
+    createBranchStartPoint,
+    setCreateBranchStartPoint,
+    pushModalOpen,
+    setPushModalOpen,
+    logModalOpen,
+    setLogModalOpen,
+    stashModalOpen,
+    setStashModalOpen,
+    createStashModalOpen,
+    setCreateStashModalOpen,
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    tagModalOpen,
+    setTagModalOpen,
+    createTagModalOpen,
+    setCreateTagModalOpen,
+    createTagTargetOid,
+    setCreateTagTargetOid,
+    fileHistoryModalOpen,
+    setFileHistoryModalOpen,
+    historyFilePath,
+    setHistoryFilePath,
+    shortcutsModalOpen,
+    setShortcutsModalOpen,
+    aboutModalOpen,
+    setAboutModalOpen,
+    discardModalVisible,
+    setDiscardModalVisible,
+    discardCandidates,
+    setDiscardCandidates,
+    discardLoading,
+    setDiscardLoading,
+    conflictModalOpen,
+    setConflictModalOpen,
+    conflictModalTargetFile,
+    setConflictModalTargetFile,
+    handleOpenConflictModal,
+    rebaseModalOpen,
+    setRebaseModalOpen,
+    rebaseBaseOid,
+    setRebaseBaseOid,
+    rebaseBaseSummary,
+    setRebaseBaseSummary,
+    handleOpenInteractiveRebase,
+    worktreeModalOpen,
+    setWorktreeModalOpen,
+    workspaceTools,
+    setWorkspaceTools,
+  } = useAppModals();
 
   // Active view: changes vs commit log (M4)
   const [activeView, setActiveView] = useState<"changes" | "log">("changes");
 
-  // Branch management modals (R-08, R-09)
-  const [branchModalOpen, setBranchModalOpen] = useState(false);
-  const [createBranchModalOpen, setCreateBranchModalOpen] = useState(false);
-  const [createBranchStartPoint, setCreateBranchStartPoint] = useState<string | null>(null);
-
-  // Remote & Sync state (R-11, R-12, R-15, R-16)
-  const [pushModalOpen, setPushModalOpen] = useState(false);
-  const [logModalOpen, setLogModalOpen] = useState(false);
-  const [stashModalOpen, setStashModalOpen] = useState(false);
-  const [createStashModalOpen, setCreateStashModalOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Remote sync feedback
   const [isPulling, setIsPulling] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
 
-  // Tag Management
-  const [tagModalOpen, setTagModalOpen] = useState(false);
-  const [createTagModalOpen, setCreateTagModalOpen] = useState(false);
-  const [createTagTargetOid, setCreateTagTargetOid] = useState<string | null>(null);
-
-  // File History
-  const [fileHistoryModalOpen, setFileHistoryModalOpen] = useState(false);
-  const [historyFilePath, setHistoryFilePath] = useState("");
-
-  // Shortcuts & About
-  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
-  const [aboutModalOpen, setAboutModalOpen] = useState(false);
-
   // Discard & Undo state (R-17)
   const [lineDiscard, setLineDiscard] = useState<{ expected: FileDiff; hunkIndex: number; indices: number[] } | null>(null);
-  const [discardModalVisible, setDiscardModalVisible] = useState(false);
-  const [discardCandidates, setDiscardCandidates] = useState<DiscardCandidate[]>([]);
-  const [discardLoading, setDiscardLoading] = useState(false);
   const [undoToast, setUndoToast] = useState<{
     count: number;
     secondsLeft: number;
     snapshotRef: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // 3-Way Conflict Resolver (v2 Phase 1)
-  const [conflictModalOpen, setConflictModalOpen] = useState(false);
-  const [conflictModalTargetFile, setConflictModalTargetFile] = useState<string | null>(null);
-
-  const handleOpenConflictModal = useCallback((filePath?: string) => {
-    setConflictModalTargetFile(filePath || null);
-    setConflictModalOpen(true);
-  }, []);
-
-  // Interactive Rebase (v2 Phase 2)
-  const [rebaseModalOpen, setRebaseModalOpen] = useState(false);
-  const [rebaseBaseOid, setRebaseBaseOid] = useState<string>("");
-  const [rebaseBaseSummary, setRebaseBaseSummary] = useState<string | undefined>(undefined);
-
-  const handleOpenInteractiveRebase = useCallback(
-    (baseOid: string, baseSummary?: string) => {
-      setRebaseBaseOid(baseOid);
-      setRebaseBaseSummary(baseSummary);
-      setRebaseModalOpen(true);
-    },
-    []
-  );
-
-  // Git Worktree Management (v2 Phase 3)
-  const [worktreeModalOpen, setWorktreeModalOpen] = useState(false);
 
 
   // 10-second undo countdown timer (R-17)
@@ -823,60 +819,7 @@ export default function App() {
     };
   }, [currentRepo, selectedTarget]);
 
-  // Resizing project tree column
-  const handleMouseDownTreeResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isTreeResizingRef.current = true;
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!isTreeResizingRef.current) return;
-      const newWidth = Math.max(180, Math.min(420, moveEvent.clientX));
-      setTreeWidth(newWidth);
-    };
-
-    const handleMouseUp = (upEvent: MouseEvent) => {
-      isTreeResizingRef.current = false;
-      const finalWidth = Math.max(180, Math.min(420, upEvent.clientX));
-      try {
-        localStorage.setItem("tongyun_tree_width", finalWidth.toString());
-      } catch {
-        // Storage failure ignored
-      }
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
-
-  // Resizing left sidebar (changes list & commit area)
-  const handleMouseDownResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    const treeOffset = treeCollapsed ? 28 : treeWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const newWidth = Math.max(220, Math.min(600, moveEvent.clientX - treeOffset));
-      setSidebarWidth(newWidth);
-    };
-
-    const handleMouseUp = (upEvent: MouseEvent) => {
-      isResizingRef.current = false;
-      const finalWidth = Math.max(220, Math.min(600, upEvent.clientX - treeOffset));
-      try {
-        localStorage.setItem("tongyun_sidebar_width", finalWidth.toString());
-      } catch {
-        // Storage failure ignored
-      }
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
 
   // Stage & Unstage handlers (R-04)
   const handleStageFiles = useCallback(
