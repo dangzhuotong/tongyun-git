@@ -386,4 +386,110 @@ diff --git a/f.txt b/f.txt
 ";
         validate_index_patch(patch).unwrap();
     }
+
+    #[test]
+    fn test_build_selected_patch_staging_partial_lines() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 3,
+            new_start: 1,
+            new_lines: 3,
+            header: "@@ -1,3 +1,3 @@".to_string(),
+            lines: vec![
+                crate::backend::DiffLine {
+                    origin: ' ',
+                    old_lineno: Some(1),
+                    new_lineno: Some(1),
+                    content: "context 1\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '-',
+                    old_lineno: Some(2),
+                    new_lineno: None,
+                    content: "removed line\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(2),
+                    content: "added line\n".to_string(),
+                },
+            ],
+        };
+
+        // Only select the added line (index 2); the deleted line (index 1) should become a context line
+        let patch = build_selected_patch("src/file.txt", &hunk, &[2], false, false).unwrap();
+        assert!(patch.contains("--- a/src/file.txt\n+++ b/src/file.txt\n"));
+        assert!(patch.contains("@@ -1,2 +1,3 @@\n"));
+        assert!(patch.contains(" context 1\n removed line\n+added line\n"));
+    }
+
+    #[test]
+    fn test_build_selected_patch_unstaging_reverse() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 2,
+            new_start: 1,
+            new_lines: 3,
+            header: "@@ -1,2 +1,3 @@".to_string(),
+            lines: vec![
+                crate::backend::DiffLine {
+                    origin: ' ',
+                    old_lineno: Some(1),
+                    new_lineno: Some(1),
+                    content: "context\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(2),
+                    content: "staged line\n".to_string(),
+                },
+            ],
+        };
+
+        // Unstage line index 1 (reverse = true) -> '+' becomes '-'
+        let patch = build_selected_patch("src/staged.txt", &hunk, &[1], true, false).unwrap();
+        assert!(patch.contains("--- a/src/staged.txt\n+++ b/src/staged.txt\n"));
+        assert!(patch.contains("@@ -1,2 +1,1 @@\n"));
+        assert!(patch.contains(" context\n-staged line\n"));
+    }
+
+    #[test]
+    fn test_build_selected_patch_new_untracked_file() {
+        let hunk = DiffHunk {
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 3,
+            header: "@@ -0,0 +1,3 @@".to_string(),
+            lines: vec![
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(1),
+                    content: "first line\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(2),
+                    content: "second line\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(3),
+                    content: "third line\n".to_string(),
+                },
+            ],
+        };
+
+        // Only stage the first 2 lines (indices 0 and 1)
+        let patch = build_selected_patch("new_file.txt", &hunk, &[0, 1], false, true).unwrap();
+        assert!(patch.contains("new file mode 100644\n--- /dev/null\n+++ b/new_file.txt\n"));
+        assert!(patch.contains("@@ -0,0 +1,2 @@\n"));
+        assert!(patch.contains("+first line\n+second line\n"));
+        assert!(!patch.contains("third line"));
+    }
 }

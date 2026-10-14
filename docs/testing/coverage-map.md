@@ -1,17 +1,17 @@
 # tongyun-git 验收清单对账表（Coverage Matrix）
 
-> 2026-10-10 生成，基于 main@b4c894c。用例结果仍以 acceptance-tests.md 为准；本表只说明「哪条测试覆盖哪条 AT」。
+> 2026-10-14 更新，基于 main@b4c894c + 本地测试与纯逻辑单测补齐。用例结果仍以 acceptance-tests.md 为准；本表只说明「哪条测试覆盖哪条 AT」。
 
-本表将 `docs/testing/acceptance-tests.md` 中全部 53 条验收测试用例（AT-01a 至 AT-N4b）与仓库内现有的 Rust 自动化测试（`crates/tg-core/tests/*.rs`）及前端 Vitest 自动化测试（`src/**/*.test.tsx`, `*.test.ts`）进行逐一对账。
+本表将 `docs/testing/acceptance-tests.md` 中全部 53 条验收测试用例（AT-01a 至 AT-N4b）与仓库内现有的 Rust 自动化测试（`crates/tg-core/tests/*.rs` 及 `src/*.rs` 的 `#[cfg(test)]` 单元测试）及前端 Vitest 自动化测试（`src/**/*.test.tsx`, `*.test.ts`）进行逐一对账。
 
 ## 对账总览
 
 - **验收用例总数**：53 条
-- **已覆盖 / 部分覆盖**：39 条
-- **未覆盖（标「无」）**：14 条（主要为 L4 人工验收、L3 全局端到端或超限/长路径场景）
+- **已覆盖 / 部分覆盖**：42 条
+- **未覆盖（标「无」）**：11 条（主要为 L4 人工验收、L3 全局端到端或需外部进程/网络并发模拟场景）
 - **自动化测试现状**：
-  - **Rust 测试 (L1)**：16 个测试文件，67 个单元与集成测试函数
-  - **Vitest 前端测试 (L2)**：27 个测试文件，140 个测试用例全部通过
+  - **Rust 测试 (L1)**：16 个集成测试文件与多模块内部单元测试（含 `patch.rs`、`cli.rs`、`redact.rs` 纯逻辑测试），超 75 个测试函数
+  - **Vitest 前端测试 (L2)**：31 个测试文件（包含 `useEscapeKey.test.ts`、`splitPath.test.ts` 等纯逻辑单测与全部核心面板组件测试）全部通过
 
 ---
 
@@ -22,19 +22,19 @@
 | **AT-01a** | R-01 | `crates/tg-core/tests/backend_status.rs::test_repo_open_and_roots`<br>`src/App.test.tsx::"opens a repository and displays changes list and diff"`<br>`src/features/statusbar/StatusBar.test.tsx::"renders repo name, current branch and git version"` | L1 + L2 | Rust 覆盖子目录向上查找根目录；前端 vitest 覆盖打开仓库后标题栏和状态栏显示仓库名与分支名。尚未在打包产物上验证启动（缺 L3）。 |
 | **AT-01b** | R-01 | `crates/tg-core/tests/backend_status.rs::test_repo_open_and_roots`<br>`src/App.test.tsx::"handles opening a non-git directory and allows initializing it with git init"` | L1 + L2 | Rust 覆盖普通目录返回 `NotARepository` 错误；前端 vitest 覆盖「这个文件夹不是 Git 仓库」错误提示及初始化引导。缺 L3。 |
 | **AT-01c** | R-01 | `src/App.test.tsx::"shows git missing warning banner when git is unavailable"` | L2 | 前端 vitest 覆盖 git 不可用时展示警告横幅与设置按钮。缺 L3 真实非存在路径启动测试。 |
-| **AT-02a** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_worktree_and_staged`<br>`src/App.test.tsx::"opens a repository and displays changes list and diff"` | L1 + L2 | Rust 测试覆盖新建/修改/删除文件的工作区状态；前端测试覆盖改动列表渲染。缺 L3 外部命令行改动后刷新流程。 |
-| **AT-02b** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_worktree_and_staged`<br>`src/App.test.tsx::"stages and unstages files using action buttons"` | L1 + L2 | Rust 测试覆盖 `git add` 后移至暂存区（index: Added/Modified）；前端测试覆盖暂存交互与改动列表状态更新。缺 L3 真实外部命令行触发后 UI 响应。 |
-| **AT-02c** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_rename_with_content_change_stays_renamed`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename_with_edit_stays_renamed` | L1 | Rust 测试完整覆盖暂存区与工作区中不同编辑状态下的单个重命名识别。前端重命名徽标显示未单测。 |
+| **AT-02a** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_worktree_and_staged`<br>`src/App.test.tsx::"opens a repository and displays changes list and diff"`<br>`src/features/changes/ChangesList.test.tsx::"AT-02a & AT-02b: categorizes files into Conflicted, Staged, Unstaged, and Untracked groups"` | L1 + L2 | Rust 测试覆盖新建/修改/删除文件的工作区状态；前端测试覆盖改动列表分组与增删改未跟踪徽标渲染。缺 L3 外部命令行改动后刷新流程。 |
+| **AT-02b** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_worktree_and_staged`<br>`src/App.test.tsx::"stages and unstages files using action buttons"`<br>`src/features/changes/ChangesList.test.tsx::"handles space keyboard shortcut to stage or unstage currently selected file"` | L1 + L2 | Rust 测试覆盖 `git add` 后移至暂存区（index: Added/Modified）；前端测试覆盖暂存交互、空格快捷键与改动列表状态更新。缺 L3 真实外部命令行触发后 UI 响应。 |
+| **AT-02c** | R-02 | `crates/tg-core/tests/backend_status.rs::test_status_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_rename_with_content_change_stays_renamed`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename`<br>`crates/tg-core/tests/backend_status.rs::test_status_unstaged_rename_with_edit_stays_renamed`<br>`src/features/changes/ChangesList.test.tsx::"AT-02c: displays renamed file with 'R' badge and 'new ← old' label"`<br>`src/components/FilePathLabel.test.tsx::"displays renamed files as 'newFileName ← oldFileName'"` | L1 + L2 | Rust 测试完整覆盖暂存区与工作区中不同编辑状态下的单个重命名识别；前端测试覆盖重命名 "R" 状态徽标与 "新文件名 ← 旧文件名" 路径格式展示。 |
 | **AT-02d** | R-02 | 无 | 无 | 外部命令行提交后依赖文件监听自动刷新，属 L4 人工验收。 |
 | **AT-03a** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_hunks_and_lines`<br>`src/App.test.tsx::"opens a repository and displays changes list and diff"` | L1 + L2 | Rust 测试覆盖多 hunk 差异解析；前端测试覆盖 diff 视图渲染、行号与增删行展示。缺 L3/L4 真实语法高亮视觉检查。 |
 | **AT-03b** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_crlf_change`<br>`src/features/changes/DiffViewer.test.tsx::"AT-03b: renders CRLF line-ending change notice banner when is_crlf_change is true"`<br>`src/App.test.tsx::"AT-03b: displays CRLF notice in diff view when file has line ending changes"` | L1 + L2 | Rust 覆盖 `is_crlf_change` 检测；前端 vitest 覆盖 DiffViewer 换行符变化提示横幅渲染、无 hunk 状态展示与丢弃行禁用，以及 App 整合流程。缺 L3。 |
 | **AT-03c** | R-03 | `crates/tg-core/tests/backend_diff.rs::test_diff_binary_file`<br>`src/features/changes/DiffViewer.test.tsx::"AT-03c: renders binary file notice with formatted file size change"`<br>`src/App.test.tsx::"AT-03c: displays binary file notice and size change in diff view for binary file"` | L1 + L2 | Rust 覆盖二进制识别与无 hunk 输出；前端 vitest 覆盖 DiffViewer 二进制提示视图、各单位大小变化格式化、禁用暂存与分栏视图，以及 App 整合流程。缺 L3。 |
-| **AT-03d** | R-03 | 无 | 无 | 1.5MB 文本大改摘要提示与「仍然加载」按钮交互未自动化。 |
+| **AT-03d** | R-03 | `src/features/changes/DiffViewer.test.tsx::"AT-03d: displays large diff summary notice and loads diff upon clicking '仍然加载'"` | L2 | 前端 vitest 覆盖超大改动（>1MB 或 >5000行）占位提示与点击「仍然加载」后渲染 diff 内容流程。缺 L3。 |
 | **AT-04a** | R-04 | `crates/tg-core/tests/backend_stage.rs::test_stage_and_unstage_files_at_04`<br>`src/App.test.tsx::"stages and unstages files using action buttons"` | L1 + L2 | Rust 测试覆盖多文件暂存后 `git diff --cached --name-only` 命令行核对；前端覆盖暂存动作调用。缺 L3 多选空格键端到端流程。 |
 | **AT-04b** | R-04 | `crates/tg-core/tests/backend_stage.rs::test_stage_and_unstage_files_at_04`<br>`src/App.test.tsx::"stages and unstages files using action buttons"` | L1 + L2 | Rust 测试覆盖取消暂存后命令行核对；前端覆盖取消暂存按钮交互。缺 L3。 |
 | **AT-05a** | R-05 | `crates/tg-core/tests/patch_index.rs::test_stage_second_hunk_of_three`<br>`crates/tg-core/tests/discard_and_patch.rs::test_build_and_apply_selected_patch_at_05` | L1 | Rust 测试分别用手写补丁和 `build_selected_patch` 验证仅暂存第 2 个 hunk，断言工作区哈希不变且 `diff --cached` 逐字匹配。 |
 | **AT-05b** | R-05 | `crates/tg-core/tests/patch_index.rs::test_stage_mixed_hunk_partial_lines`<br>`src/App.test.tsx::"stages selected diff lines when space is pressed in diff view"` | L1 + L2 | Rust 测试覆盖混合 hunk 部分行手写补丁应用与 `diff --cached` 逐字核对；前端覆盖 diff 行选中按空格分发 `stageLines`。 |
-| **AT-05c** | R-05 | `crates/tg-core/tests/patch_index.rs::test_unstage_reverse_single_line` | L1 | Rust 测试覆盖暂存区反向单行补丁应用，验证被取消行回到未暂存且工作区内容不变。前端暂存 diff 反向操作未单测。 |
+| **AT-05c** | R-05 | `crates/tg-core/tests/patch_index.rs::test_unstage_reverse_single_line`<br>`crates/tg-core/src/patch.rs::tests::test_build_selected_patch_unstaging_reverse`<br>`src/features/changes/DiffViewer.test.tsx::"AT-05c: triggers reverse staging (unstage) when space is pressed on staged diff line"` | L1 + L2 | Rust 测试覆盖暂存区反向单行补丁应用与 patch 生成；前端 vitest 覆盖已暂存 diff 视图行选择与反向取消暂存交互。 |
 | **AT-05d** | R-05 | `crates/tg-core/tests/patch_index.rs::test_stage_crlf_partial_lines` | L1 | Rust 测试覆盖 CRLF 文件混合行暂存，断言 index 内严格保留 CRLF 字节且 `diff --cached` 逐字一致。 |
 | **AT-05e** | R-05 | `crates/tg-core/tests/patch_index.rs::test_stage_new_untracked_file_partial`<br>`crates/tg-core/tests/discard_and_patch.rs::test_build_and_apply_untracked_file_partial_lines_at_05e` | L1 | Rust 测试覆盖新未跟踪文件前 3 行生成补丁并应用至 index，`git cat-file -p` 验证 index 只有 3 行。 |
 | **AT-05f** | R-05 | 无 | 无 | 外部并发修改导致行补丁失效时提示「文件已变化，请重新选择」未自动化。 |
@@ -59,7 +59,7 @@
 | **AT-07g** | R-07、N-02 | `crates/tg-core/tests/cli_runner.rs::test_ai_key_env_is_not_passed_to_git` | L1（部分） | Rust 测试覆盖了子进程环境变量隔离；应用配置与日志明文搜索需 L4 人工核验。 |
 | **AT-07h** | R-07、D1 | `crates/tg-core/tests/ai_service.rs::test_keyring_and_env_isolation_at_07c_07h_13f_13g`<br>`crates/tg-core/tests/cli_runner.rs::test_ai_key_env_is_not_passed_to_git` | L1 | Rust 测试显式设置 `KIE_API_KEY` 环境变量，断言 MemoryKeyring 与子进程环境均不读取环境变量。 |
 | **AT-08a** | R-08 | `crates/tg-core/tests/branch_service.rs::test_branch_list_create_and_switch_at_08_09`<br>`src/features/branch/BranchModal.test.tsx::"switches to a local branch on click"` | L1 + L2 | Rust 测试覆盖切换分支并从命令行核对 `git branch --show-current`；前端测试覆盖分支列表点击切换。缺 L3。 |
-| **AT-08b** | R-08 | `crates/tg-core/tests/branch_service.rs::test_switch_remote_tracking_branch_at_08b` | L1 | Rust 测试完整覆盖远程跟踪分支不存在本地对应分支时自动新建本地跟踪分支并检出。前端检出交互未单测。 |
+| **AT-08b** | R-08 | `crates/tg-core/tests/branch_service.rs::test_switch_remote_tracking_branch_at_08b`<br>`src/features/branch/BranchModal.test.tsx::"AT-08b: switches to a remote tracking branch with isRemote=true"` | L1 + L2 | Rust 测试完整覆盖远程跟踪分支不存在本地对应分支时自动新建本地跟踪分支并检出；前端 vitest 覆盖分支管理弹窗点击远程分支带 `isRemote=true` 触发切换检出。 |
 | **AT-08c** | R-08 | `crates/tg-core/tests/branch_service.rs::test_switch_conflict_prevented_at_08c`<br>`src/features/branch/BranchModal.test.tsx::"handles checkout conflicts blocking switch (AT-08c)"` | L1 + L2 | Rust 测试覆盖冲突被阻止且文件内容完好；前端组件测试覆盖弹窗展示冲突文件列表阻止切换。缺 L3。 |
 | **AT-09a** | R-09 | `crates/tg-core/tests/branch_service.rs::test_branch_list_create_and_switch_at_08_09`<br>`src/features/branch/CreateBranchModal.test.tsx::"creates branch successfully with checkout option (AT-09a, AT-09c)"` | L1 + L2 | Rust 测试覆盖新建并检出；前端覆盖表单输入与调用创建。 |
 | **AT-09b** | R-09 | `crates/tg-core/tests/branch_service.rs::test_branch_list_create_and_switch_at_08_09`<br>`src/features/branch/CreateBranchModal.test.tsx::"validates branch name in real time (AT-09b)"` | L1 + L2 | Rust 测试覆盖校验非法分支名；前端组件测试覆盖实时校验禁用创建按钮并展示具体原因。 |
@@ -82,7 +82,7 @@
 | **AT-13c** | R-13、R-07 | `crates/tg-core/tests/ai_service.rs::test_provider_url_computation_at_13c_13d_13e`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13c & AT-13d & AT-13e: computes endpoint URLs correctly for KIE, OpenAI, and Ollama"` | L1 + L2 | Rust 覆盖计算 KIE 请求路径包含模型名；前端覆盖设置面板实时显示完整 URL。 |
 | **AT-13d** | R-13、R-07 | `crates/tg-core/tests/ai_service.rs::test_provider_url_computation_at_13c_13d_13e`<br>`crates/tg-core/tests/ai_service.rs::test_ai_connection_and_generation_mock_server`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13c & AT-13d & AT-13e: computes endpoint URLs correctly for KIE, OpenAI, and Ollama"` | L1 + L2 | Rust 测试覆盖计算 OpenAI URL 及 mock server 发送 Bearer 头；前端测试覆盖设置页显示对应 URL。 |
 | **AT-13e** | R-13、R-07 | `crates/tg-core/tests/ai_service.rs::test_provider_url_computation_at_13c_13d_13e`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13e: fetches Ollama models and renders dropdown"`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13c & AT-13d & AT-13e: computes endpoint URLs correctly for KIE, OpenAI, and Ollama"` | L1 + L2 | Rust 测试覆盖 Ollama URL 计算；前端测试覆盖获取本地模型列表、下拉渲染及 URL 展示。 |
-| **AT-13f** | R-13 | `crates/tg-core/tests/ai_service.rs::test_keyring_and_env_isolation_at_07c_07h_13f_13g` | L1 | Rust 测试覆盖 KIE 与 OpenAI 钥匙串条目隔离共存及清除 key 仅删当前条目。前端切提供方未独立单测。 |
+| **AT-13f** | R-13 | `crates/tg-core/tests/ai_service.rs::test_keyring_and_env_isolation_at_07c_07h_13f_13g`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13f: switches between providers showing independent key status and allows deleting provider key"` | L1 + L2 | Rust 测试覆盖 KIE 与 OpenAI 钥匙串条目隔离共存及清除 key 仅删当前条目；前端组件测试覆盖在 KIE 与 OpenAI 兼容提供方之间切换时分别展示各自的 key 状态，且删除 key 调用对应 provider。 |
 | **AT-13g** | R-13、N-02 | `crates/tg-core/tests/ai_service.rs::test_keyring_and_env_isolation_at_07c_07h_13f_13g`<br>`src/features/settings/SettingsModal.test.tsx::"AT-13g: warns and disables key input when system keyring is unavailable"` | L1 + L2 | Rust 测试覆盖钥匙串不可用时 fail-closed；前端测试覆盖提示系统钥匙串不可用并隐藏 key 输入框。 |
 | **AT-13h** | R-13、N-02 | `src/features/settings/SettingsModal.test.tsx::"AT-13a & AT-13h: saves and deletes key without showing plaintext key"` | L2 | 前端测试覆盖读取 key 状态仅返回已保存状态，界面与 DOM 中绝无 key 明文字符串。 |
 | **AT-13i** | R-13 | `src/features/settings/SettingsModal.test.tsx::"AT-13i: shows warning for plaintext HTTP with non-local IP/domain and hides when localhost"` | L2 | 前端组件测试完全覆盖非本地 HTTP 地址安全警告展示及改回 localhost 后警告消失。 |
@@ -90,15 +90,15 @@
 | **AT-14a** | R-14 | 无 | 无 | 侧边栏宽度拖动调整与重启记忆未自动化。 |
 | **AT-15a** | R-15 | `crates/tg-core/tests/remote_service.rs::test_operation_logs_recorded`<br>`src/features/log/OperationLogModal.test.tsx::"renders log entries and handles clear"` | L1 + L2 | Rust 测试覆盖底层 git 操作写入日志及退出码；前端测试覆盖操作日志窗口展示与清空。缺 L3。 |
 | **AT-15b** | R-15 | `crates/tg-core/tests/cli_runner.rs::test_auth_failure_no_hang_and_redaction` | L1 | Rust 测试严格验证 URL 中的 token 凭据在命令行记录和错误输出中均被替换脱敏为 `***`。 |
-| **AT-15c** | R-15 | 无 | 无 | 推送过程中禁用提交按钮并在完成后恢复未自动化。 |
+| **AT-15c** | R-15 | `src/features/commit/CommitPanel.test.tsx::"AT-15c: disables commit button and textarea when disabled prop is true (e.g., during push)"` | L2 | 前端组件测试覆盖 disabled 属性为 true 时（如推送进行中或刷新状态）禁用提交按钮、输入框及 AI 生成按钮。缺 L3。 |
 | **AT-16a** | R-16 | 无 | 无 | 全键盘快捷键完整流程验收属 L3/L4，未自动化。 |
 | **AT-17a** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_discard_and_undo_modified_files_at_17a_17d`<br>`src/App.test.tsx::"discards changes with confirmation modal and enables 10s undo toast"` | L1 + L2 | Rust 测试覆盖部分暂存文件与修改文件丢弃至 HEAD 并在命令行验证状态变干净；前端测试覆盖确认弹窗与触发丢弃。缺 L3。 |
-| **AT-17b** | R-17 | `src/App.test.tsx::"discards changes with confirmation modal and enables 10s undo toast"` | L2（部分） | 前端测试覆盖了打开确认弹窗交互；Esc 与默认焦点置于取消按钮在 DiscardConfirmModal 代码中已实现但未独立单测。 |
-| **AT-17c** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_discard_untracked_and_new_staged_at_17c` | L1 | Rust 测试覆盖未跟踪文件与暂存新文件被彻底从磁盘与 index 删除。前端弹窗中的「将直接删除」分组未单测。 |
+| **AT-17b** | R-17 | `src/App.test.tsx::"discards changes with confirmation modal and enables 10s undo toast"`<br>`src/features/changes/DiscardConfirmModal.test.tsx::"AT-17b: sets default focus on cancel button and handles cancel and confirm"`<br>`src/features/changes/DiscardConfirmModal.test.tsx::"AT-17b: closes modal when Escape key is pressed"`<br>`src/hooks/useEscapeKey.test.ts` | L2 | 前端测试完整覆盖 DiscardConfirmModal 打开后默认焦点置于取消按钮、按 Esc 关闭弹窗、取消与确认丢弃逻辑。 |
+| **AT-17c** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_discard_untracked_and_new_staged_at_17c`<br>`src/features/changes/DiscardConfirmModal.test.tsx::"AT-17c: groups candidates into '将恢复至 HEAD' and '将直接删除'"` | L1 + L2 | Rust 测试覆盖未跟踪文件与暂存新文件被彻底从磁盘与 index 删除；前端测试覆盖弹窗中候选文件分组展示。 |
 | **AT-17d** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_discard_and_undo_modified_files_at_17a_17d`<br>`src/App.test.tsx::"discards changes with confirmation modal and enables 10s undo toast"` | L1 + L2 | Rust 测试覆盖快照恢复至丢弃前工作区与暂存区；前端测试覆盖 10 秒撤销 toast 与触发撤销调用。缺 L3。 |
 | **AT-17e** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_undo_discard_skip_modified_at_17e` | L1 | Rust 测试覆盖撤销时检测外部改动冲突并跳过该冲突文件。前端选择跳过/覆盖弹窗未单测。 |
 | **AT-17f** | R-17 | 无 | 无 | 冲突文件禁用丢弃改动入口未自动化。 |
-| **AT-17g** | R-17 | 无 | 无 | 60MB 大文件丢弃时标记「丢弃后无法恢复」且排除进快照未自动化。 |
+| **AT-17g** | R-17 | `src/features/changes/DiscardConfirmModal.test.tsx::"AT-17g: displays warning badge and banner for unrestorable large files (>=50MB)"` | L2（部分） | 前端测试覆盖大文件丢弃时标出「超限无法快照」与提示无法从快照恢复。Rust 侧快照大小过滤受 50MB 阈值保护。 |
 | **AT-17h** | R-17、N-03 | 无 | 无 | 丢弃后 HEAD、分支、stash、全局配置不变且记录日志引用的不变量专项测试未独立建用例。 |
 | **AT-17i** | R-17 | `crates/tg-core/tests/discard_and_patch.rs::test_discard_prune_snapshots_limit_20_at_17i` | L1 | Rust 测试覆盖连续丢弃 21 次后自动清理旧快照、仅保留最多 20 个快照引用。 |
 | **AT-N3** | N-03 | 无 | 无 | 全界面危险操作（reset --hard/clean/强制推送）不存在审查，属 L4 人工验收。 |

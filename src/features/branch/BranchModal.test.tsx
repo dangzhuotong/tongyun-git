@@ -149,4 +149,37 @@ describe("BranchModal", () => {
       expect(screen.queryByText("无法切换分支")).toBeNull();
     });
   });
+
+  it("AT-08b: switches to a remote tracking branch with isRemote=true", async () => {
+    const onSwitched = vi.fn();
+    const onClose = vi.fn();
+    vi.mocked(host.switchBranch).mockResolvedValue({
+      success: true,
+      current_branch: "feat-remote",
+      conflicting_files: [],
+      error_message: null,
+    });
+
+    render(
+      <BranchModal
+        isOpen={true}
+        onClose={onClose}
+        rootPath={rootPath}
+        onBranchSwitched={onSwitched}
+      />
+    );
+
+    const remoteBtn = await screen.findByText("origin/feat-remote");
+    fireEvent.click(remoteBtn.closest("button")!);
+
+    await waitFor(() => {
+      expect(host.switchBranch).toHaveBeenCalledWith(
+        rootPath,
+        "origin/feat-remote",
+        true
+      );
+      expect(onSwitched).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
 });

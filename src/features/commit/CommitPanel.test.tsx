@@ -48,6 +48,10 @@ describe("CommitPanel component", () => {
       />
     );
 
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
+
     const textarea = screen.getByPlaceholderText(
       /提交信息 \(首行标题/
     ) as HTMLTextAreaElement;
@@ -101,6 +105,10 @@ describe("CommitPanel component", () => {
       />
     );
 
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
+
     const textarea = screen.getByPlaceholderText(
       /提交信息 \(首行标题/
     ) as HTMLTextAreaElement;
@@ -136,6 +144,10 @@ describe("CommitPanel component", () => {
         onOpenSettings={defaultOnOpenSettings}
       />
     );
+
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
 
     const textarea = screen.getByPlaceholderText(/提交信息 \(首行标题/);
     fireEvent.change(textarea, { target: { value: "feat: initial" } });
@@ -387,6 +399,10 @@ describe("CommitPanel component", () => {
       />
     );
 
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
+
     const aiBtn = screen.getByRole("button", { name: "AI 生成" });
     fireEvent.click(aiBtn);
 
@@ -426,6 +442,10 @@ describe("CommitPanel component", () => {
         onOpenSettings={defaultOnOpenSettings}
       />
     );
+
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
 
     const aiBtn = screen.getByRole("button", { name: "AI 生成" });
     fireEvent.click(aiBtn);
@@ -471,6 +491,10 @@ describe("CommitPanel component", () => {
       />
     );
 
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
+
     const textarea = screen.getByPlaceholderText(
       /提交信息 \(首行标题/
     ) as HTMLTextAreaElement;
@@ -496,5 +520,41 @@ describe("CommitPanel component", () => {
 
     // Textarea draft remains untouched
     expect(textarea.value).toBe("my previous draft");
+  });
+
+  it("AT-15c: disables commit button and textarea when disabled prop is true (e.g., during push)", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: false,
+      disabled_reason: null,
+      head_message: null,
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={2}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+        disabled={true}
+      />
+    );
+
+    await waitFor(() => {
+      expect(host.inspectAmend).toHaveBeenCalledWith(rootPath);
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      /提交信息 \(首行标题/
+    ) as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(true);
+
+    const commitBtn = screen.getByRole("button", { name: "提交 (2)" }) as HTMLButtonElement;
+    expect(commitBtn.disabled).toBe(true);
+
+    // AI button should also be disabled
+    const aiBtn = screen.getByRole("button", { name: "AI 生成" }) as HTMLButtonElement;
+    expect(aiBtn.disabled).toBe(true);
   });
 });
