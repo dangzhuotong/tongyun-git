@@ -590,3 +590,104 @@ impl LogService {
         Ok(items)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_query_default() {
+        let query = LogQuery::default();
+        assert!(query.all_branches);
+        assert_eq!(query.filter_author, None);
+        assert_eq!(query.filter_query, None);
+        assert_eq!(query.skip, 0);
+        assert_eq!(query.limit, 100);
+    }
+
+    #[test]
+    fn test_get_file_history_empty_path_validation() {
+        let runner = CliRunner::new("git");
+        let res_empty = LogService::get_file_history(&runner, Path::new("."), "", 10);
+        match res_empty {
+            Err(CoreError::LogError(msg)) => assert_eq!(msg, "文件路径不能为空"),
+            _ => panic!("expected LogError for empty path"),
+        }
+
+        let res_ws = LogService::get_file_history(&runner, Path::new("."), "   ", 10);
+        match res_ws {
+            Err(CoreError::LogError(msg)) => assert_eq!(msg, "文件路径不能为空"),
+            _ => panic!("expected LogError for whitespace path"),
+        }
+    }
+
+    #[test]
+    fn test_ref_badge_roundtrip() {
+        let badges = vec![
+            RefBadge {
+                name: "HEAD".to_string(),
+                kind: RefKind::Head,
+            },
+            RefBadge {
+                name: "main".to_string(),
+                kind: RefKind::LocalBranch,
+            },
+            RefBadge {
+                name: "origin/main".to_string(),
+                kind: RefKind::RemoteBranch,
+            },
+            RefBadge {
+                name: "v1.0".to_string(),
+                kind: RefKind::Tag,
+            },
+        ];
+
+        for badge in badges {
+            let serialized = serde_json::to_string(&badge).expect("serialize RefBadge");
+            let deserialized: RefBadge =
+                serde_json::from_str(&serialized).expect("deserialize RefBadge");
+            assert_eq!(badge, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_graph_edge_roundtrip() {
+        let edge = GraphEdge {
+            from_col: 1,
+            to_col: 3,
+        };
+        let serialized = serde_json::to_string(&edge).expect("serialize GraphEdge");
+        let deserialized: GraphEdge =
+            serde_json::from_str(&serialized).expect("deserialize GraphEdge");
+        assert_eq!(edge, deserialized);
+    }
+
+    #[test]
+    fn test_commit_file_change_roundtrip() {
+        let change = CommitFileChange {
+            path: "new_file.txt".to_string(),
+            old_path: Some("old_file.txt".to_string()),
+            kind: ChangeKind::Renamed,
+        };
+        let serialized = serde_json::to_string(&change).expect("serialize CommitFileChange");
+        let deserialized: CommitFileChange =
+            serde_json::from_str(&serialized).expect("deserialize CommitFileChange");
+        assert_eq!(change, deserialized);
+    }
+
+    #[test]
+    fn test_file_history_item_roundtrip() {
+        let item = FileHistoryItem {
+            oid: "abc1234567890def".to_string(),
+            short_oid: "abc1234".to_string(),
+            author_name: "Developer".to_string(),
+            author_email: "dev@example.com".to_string(),
+            timestamp: 1699999999,
+            summary: "feat: add logging tests".to_string(),
+        };
+        let serialized = serde_json::to_string(&item).expect("serialize FileHistoryItem");
+        let deserialized: FileHistoryItem =
+            serde_json::from_str(&serialized).expect("deserialize FileHistoryItem");
+        assert_eq!(item, deserialized);
+    }
+}

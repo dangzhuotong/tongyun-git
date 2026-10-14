@@ -279,3 +279,98 @@ impl ConflictService {
         runner.run(repo_path, cmd_args, RunOptions::default())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_conflict_hunks_empty_and_no_conflict() {
+        let hunks = ConflictService::parse_conflict_hunks("");
+        assert!(hunks.is_empty());
+
+        let normal = "line 1\nline 2\nline 3\n";
+        let hunks2 = ConflictService::parse_conflict_hunks(normal);
+        assert!(hunks2.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_two_way() {
+        let content = "\
+line 1
+line 2
+<<<<<<< HEAD
+our change 1
+our change 2
+=======
+their change 1
+>>>>>>> feature
+line 3";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+
+        let hunk = &hunks[0];
+        assert_eq!(hunk.hunk_index, 0);
+        assert_eq!(hunk.our_start_line, 3);
+        assert_eq!(hunk.our_lines, vec!["our change 1", "our change 2"]);
+        assert_eq!(hunk.their_start_line, 3);
+        assert_eq!(hunk.their_lines, vec!["their change 1"]);
+        assert!(hunk.base_lines.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_three_way() {
+        let content = "\
+<<<<<<< HEAD
+local version
+||||||| base
+common ancestor version
+=======
+remote version
+>>>>>>> incoming
+";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+
+        let hunk = &hunks[0];
+        assert_eq!(hunk.hunk_index, 0);
+        assert_eq!(hunk.our_start_line, 1);
+        assert_eq!(hunk.our_lines, vec!["local version"]);
+        assert_eq!(hunk.base_lines, vec!["common ancestor version"]);
+        assert_eq!(hunk.their_start_line, 1);
+        assert_eq!(hunk.their_lines, vec!["remote version"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_multiple() {
+        let content = "\
+header
+<<<<<<< HEAD
+first our
+=======
+first their
+>>>>>>> branch1
+middle line
+<<<<<<< HEAD
+second our
+=======
+second their
+>>>>>>> branch2
+footer";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 2);
+
+        assert_eq!(hunks[0].hunk_index, 0);
+        assert_eq!(hunks[0].our_start_line, 2);
+        assert_eq!(hunks[0].our_lines, vec!["first our"]);
+        assert_eq!(hunks[0].their_lines, vec!["first their"]);
+
+        assert_eq!(hunks[1].hunk_index, 1);
+        assert_eq!(hunks[1].our_start_line, 4);
+        assert_eq!(hunks[1].our_lines, vec!["second our"]);
+        assert_eq!(hunks[1].their_lines, vec!["second their"]);
+    }
+}

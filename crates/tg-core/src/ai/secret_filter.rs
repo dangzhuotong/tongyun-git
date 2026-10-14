@@ -91,3 +91,141 @@ impl SecretFilter {
         total
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{DiffHunk, DiffLine};
+
+    fn make_diff(path: &str, is_binary: bool, hunks: Vec<DiffHunk>) -> FileDiff {
+        FileDiff {
+            path: path.to_string(),
+            old_path: None,
+            staged: true,
+            is_binary,
+            old_size: None,
+            new_size: None,
+            is_crlf_change: false,
+            is_large: false,
+            hunks,
+        }
+    }
+
+    #[test]
+    fn test_is_secret_default_patterns() {
+        assert!(SecretFilter::is_secret(".env", &[]));
+        assert!(SecretFilter::is_secret(".env.local", &[]));
+        assert!(SecretFilter::is_secret("config/.env.prod", &[]));
+        assert!(SecretFilter::is_secret("server.key", &[]));
+        assert!(SecretFilter::is_secret("cert.pem", &[]));
+        assert!(SecretFilter::is_secret("id_rsa", &[]));
+        assert!(SecretFilter::is_secret("id_rsa.pub", &[]));
+        assert!(SecretFilter::is_secret("backup.p12", &[]));
+        assert!(SecretFilter::is_secret("app_secret_keys.txt", &[]));
+        assert!(SecretFilter::is_secret("foo\\bar\\.env", &[]));
+        assert!(SecretFilter::is_secret("CERT.PEM", &[]));
+        assert!(SecretFilter::is_secret("ID_RSA", &[]));
+
+        assert!(!SecretFilter::is_secret("src/main.rs", &[]));
+        assert!(!SecretFilter::is_secret("Cargo.toml", &[]));
+        assert!(!SecretFilter::is_secret("README.md", &[]));
+    }
+
+    #[test]
+    fn test_is_secret_custom_patterns() {
+        let custom = vec!["*.secret-ext".to_string(), "my_creds.json".to_string()];
+        assert!(SecretFilter::is_secret("test.secret-ext", &custom));
+        assert!(SecretFilter::is_secret("dir/my_creds.json", &custom));
+        assert!(!SecretFilter::is_secret("test.txt", &custom));
+    }
+
+    #[test]
+    fn test_filter_diff_secret_file() {
+        let diff = make_diff(".env", false, vec![]);
+        let (content, is_secret) = SecretFilter::filter_diff(&diff, &[]);
+        assert!(is_secret);
+        assert_eq!(content, "文件: .env [敏感文件：内容已排除]\n");
+    }
+
+    #[test]
+    fn test_filter_diff_binary_file() {
+        let diff = make_diff("image.png", true, vec![]);
+        let (content, is_secret) = SecretFilter::filter_diff(&diff, &[]);
+        assert!(!is_secret);
+        assert_eq!(content, "文件: image.png [二进制文件改动]\n");
+    }
+
+    #[test]
+    fn test_filter_diff_normal_file() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 1,
+            new_start: 1,
+            new_lines: 2,
+            header: "@@ -1,1 +1,2 @@".to_string(),
+            lines: vec![
+                DiffLine {
+                    origin: ' ',
+                    old_lineno: Some(1),
+                    new_lineno: Some(1),
+                    content: "hello world\n".to_string(),
+                },
+                DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(2),
+                    content: "added line".to_string(),
+                },
+            ],
+        };
+        let diff = make_diff("src/lib.rs", false, vec![hunk]);
+        let (content, is_secret) = SecretFilter::filter_diff(&diff, &[]);
+        assert!(!is_secret);
+        assert_eq!(
+            content,
+            "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,2 @@\n hello world\n+added line\n"
+        );
+    }
+
+    #[test]
+    fn test_build_sanitized_diff() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 1,
+            new_start: 1,
+            new_lines: 1,
+            header: "@@ -1,1 +1,1 @@".to_string(),
+            lines: vec![DiffLine {
+                origin: '+',
+                old_lineno: None,
+                new_lineno: Some(1),
+                content: "new code\n".to_string(),
+            }],
+        };
+        let diff1 = make_diff(".env", false, vec![]);
+        let diff2 = make_diff("src/lib.rs", false, vec![hunk]);
+
+        let result = SecretFilter::build_sanitized_diff(&[diff1, diff2], &[], 1000);
+        assert!(result.contains("文件: .env [敏感文件：内容已排除]\n"));
+        assert!(result.contains("--- a/src/lib.rs\n+++ b/src/lib.rs\n"));
+    }
+
+    #[test]
+    fn test_build_sanitized_diff_truncation() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 1,
+            new_start: 1,
+            new_lines: 1,
+            header: "@@ -1,1 +1,1 @@".to_string(),
+            lines: vec![DiffLine {
+                origin: '+',
+                old_lineno: None,
+                new_lineno: Some(1),
+                content: "a very long line of code that will exceed character limit\n".to_string(),
+            }],
+        };
+        let diff = make_diff("src/lib.rs", false, vec![hunk]);
+        let result = SecretFilter::build_sanitized_diff(&[diff], &[], 20);
+        assert!(result.ends_with("\n\n[...剩余改动已截断]"));
+    }
+}
