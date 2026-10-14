@@ -313,4 +313,44 @@ describe("SettingsModal component", () => {
       expect(screen.getByText("连接成功，API 响应正常")).toBeDefined();
     });
   });
+
+  it("AT-13f: switches between providers showing independent key status and allows deleting provider key", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: true,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+    vi.mocked(host.deleteAiKey).mockResolvedValue();
+
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        appInfo={defaultAppInfo}
+        theme="system"
+        onThemeChange={vi.fn()}
+        gitPath=""
+        onGitPathChange={vi.fn()}
+        initialTab="ai"
+      />
+    );
+
+    // KIE initially shows saved status
+    expect(await screen.findByText(/已配置 Key/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "清除 Key" })).toBeDefined();
+
+    // Click "清除 Key" on KIE
+    const clearKieBtn = screen.getByRole("button", { name: "清除 Key" });
+    fireEvent.click(clearKieBtn);
+    await waitFor(() => {
+      expect(host.deleteAiKey).toHaveBeenCalledWith("kie");
+    });
+
+    // Switch to OpenAI: currently not configured
+    const openaiBtn = screen.getByRole("button", { name: "OpenAI 兼容" });
+    fireEvent.click(openaiBtn);
+    expect(screen.getByPlaceholderText(/输入 API Key/)).toBeDefined();
+    expect(screen.getByText(/未配置 Key/)).toBeDefined();
+  });
 });

@@ -476,5 +476,102 @@ describe("DiffViewer", () => {
     fireEvent.keyDown(window, { key: " " });
     expect(onStageHunkLines).not.toHaveBeenCalled();
   });
+
+  // --- AT-03d: Large file diff notice and force load ---
+  it("AT-03d: displays large diff summary notice and loads diff upon clicking '仍然加载'", () => {
+    const mockLargeDiff: FileDiff = {
+      path: "data/large.txt",
+      old_path: null,
+      staged: false,
+      is_binary: false,
+      is_crlf_change: false,
+      is_large: true,
+      hunks: [
+        {
+          header: "@@ -1,1 +1,2 @@",
+          old_start: 1,
+          old_lines: 1,
+          new_start: 1,
+          new_lines: 2,
+          lines: [
+            { origin: " ", old_lineno: 1, new_lineno: 1, content: "context" },
+            { origin: "+", old_lineno: null, new_lineno: 2, content: "added line" },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <DiffViewer
+        diff={mockLargeDiff}
+        loading={false}
+        error={null}
+      />
+    );
+
+    // Initial state: notice banner is displayed, hunk content is hidden
+    expect(screen.getByText("超大 Diff 变化")).toBeDefined();
+    expect(screen.getByText(/该文件改动超过阈值/)).toBeDefined();
+    expect(screen.queryByText("added line")).toBeNull();
+
+    // Click "仍然加载" button
+    const loadBtn = screen.getByRole("button", { name: "仍然加载" });
+    fireEvent.click(loadBtn);
+
+    // After clicking, hunk content should be loaded and notice should disappear
+    expect(screen.queryByText("超大 Diff 变化")).toBeNull();
+    expect(screen.getByText("added line")).toBeDefined();
+  });
+
+  // --- AT-05c: Reverse staging (unstaging) in diff view ---
+  it("AT-05c: triggers reverse staging (unstage) when space is pressed on staged diff line", () => {
+    const mockStagedDiff: FileDiff = {
+      path: "src/staged.ts",
+      old_path: null,
+      staged: true,
+      is_binary: false,
+      is_crlf_change: false,
+      is_large: false,
+      hunks: [
+        {
+          header: "@@ -1,2 +1,3 @@",
+          old_start: 1,
+          old_lines: 2,
+          new_start: 1,
+          new_lines: 3,
+          lines: [
+            { origin: " ", old_lineno: 1, new_lineno: 1, content: "line 1" },
+            { origin: "+", old_lineno: null, new_lineno: 2, content: "staged line" },
+            { origin: " ", old_lineno: 2, new_lineno: 3, content: "line 2" },
+          ],
+        },
+      ],
+    };
+
+    const onStageHunkLines = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <DiffViewer
+        diff={mockStagedDiff}
+        loading={false}
+        error={null}
+        onStageHunkLines={onStageHunkLines}
+      />
+    );
+
+    expect(screen.getByText("已暂存改动 (Index 对比 HEAD)")).toBeDefined();
+
+    // Click the added line (index 1)
+    const targetLine = screen.getByText("staged line");
+    fireEvent.click(targetLine);
+
+    // Staging button text should be "取消暂存所选"
+    expect(screen.getByText("取消暂存所选")).toBeDefined();
+
+    // Press Space key to dispatch reverse staging
+    fireEvent.keyDown(window, { key: " " });
+
+    expect(onStageHunkLines).toHaveBeenCalledWith(0, [1], true);
+  });
 });
 
