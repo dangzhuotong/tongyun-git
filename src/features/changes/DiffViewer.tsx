@@ -129,7 +129,9 @@ export function DiffViewer({
     );
   }
 
-  const scopeLabel = diff.staged
+  const scopeLabel = readOnly
+    ? null
+    : diff.staged
     ? "已暂存改动 (Index 对比 HEAD)"
     : "未暂存改动 (工作区 对比 Index)";
 
@@ -183,9 +185,11 @@ export function DiffViewer({
           <span className="font-mono font-medium text-[var(--color-text)] truncate">
             {diff.old_path ? `${diff.old_path} → ${diff.path}` : diff.path}
           </span>
-          <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[var(--ty-surface-sunken)] border border-[var(--color-border)]/70 text-[var(--color-text-muted)] shrink-0 shadow-2xs">
-            {scopeLabel}
-          </span>
+          {scopeLabel && (
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[var(--ty-surface-sunken)] border border-[var(--color-border)]/70 text-[var(--color-text-muted)] shrink-0 shadow-2xs">
+              {scopeLabel}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">

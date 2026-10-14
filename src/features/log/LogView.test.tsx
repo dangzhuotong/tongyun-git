@@ -222,4 +222,55 @@ describe("LogView", () => {
     expect(screen.getByText("登录功能是由 Alice 在 commit com111 中实现的")).toBeDefined();
     expect(screen.getByText("✨ AI匹配")).toBeDefined();
   });
+
+  it("allows resizing details panel with splitter and toggling wide-screen mode", async () => {
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    await screen.findByText("feat: add user login");
+
+    const splitter = screen.getByTitle(/拖动调整日志列表与代码详情宽度/i);
+    expect(splitter).toBeDefined();
+
+    // Trigger splitter drag
+    fireEvent.mouseDown(splitter, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 300 });
+    fireEvent.mouseUp(window, { clientX: 300 });
+
+    // Wide screen toggle button
+    const wideScreenBtn = await screen.findByRole("button", { name: /宽屏看代码|标准宽度/i });
+    expect(wideScreenBtn).toBeDefined();
+    fireEvent.click(wideScreenBtn);
+  });
+
+  it("supports dragging column resize handles on table header and resetting width on double click", async () => {
+    render(
+      <LogView
+        rootPath={rootPath}
+        onOpenCreateBranch={vi.fn()}
+      />
+    );
+
+    await screen.findByText("feat: add user login");
+
+    const authorResizeHandle = screen.getByTitle(/按住拖拽调整作者列宽/i);
+    const dateResizeHandle = screen.getByTitle(/按住拖拽调整日期列宽/i);
+    const shaResizeHandle = screen.getByTitle(/按住拖拽调整 SHA 列宽/i);
+
+    expect(authorResizeHandle).toBeDefined();
+    expect(dateResizeHandle).toBeDefined();
+    expect(shaResizeHandle).toBeDefined();
+
+    // Drag author column handle
+    fireEvent.mouseDown(authorResizeHandle, { clientX: 200 });
+    fireEvent.mouseMove(window, { clientX: 250 });
+    fireEvent.mouseUp(window, { clientX: 250 });
+
+    // Double click to reset
+    fireEvent.doubleClick(authorResizeHandle);
+  });
 });
