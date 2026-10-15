@@ -76,4 +76,31 @@ describe("CommandPalette", () => {
     expect(mockCommands[0].action).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("navigates with ArrowDown and ArrowUp and filters by shortcut", () => {
+    const onClose = vi.fn();
+    render(
+      <CommandPalette
+        isOpen={true}
+        onClose={onClose}
+        commands={mockCommands}
+      />
+    );
+
+    const input = screen.getByPlaceholderText("搜索命令或操作...");
+
+    // Test shortcut filtering
+    fireEvent.change(input, { target: { value: "Ctrl+T" } });
+    expect(screen.getByText("拉取远程分支 (Git Pull)")).toBeDefined();
+    expect(screen.queryByText("推送提交到远程 (Git Push)")).toBeNull();
+
+    // Clear search and test arrow navigation
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Second item (Push) selected and executed
+    expect(mockCommands[1].action).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
 });

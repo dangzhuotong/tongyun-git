@@ -13,6 +13,8 @@ import {
   discardFiles,
   undoDiscard,
   pullRemote,
+  createCommit,
+  listBranches,
   fetchRemote,
   selectFolder,
   initRepository,
@@ -295,15 +297,36 @@ export default function App() {
     });
   }, []);
 
+  // Tracking branch info (ahead / behind / upstream)
+  const [currentBranchInfo, setCurrentBranchInfo] = useState<{
+    ahead: number;
+    behind: number;
+    upstream: string | null;
+  } | null>(null);
+
   // Fetch repository status
   const refreshStatus = useCallback(
     async (repoRoot: string) => {
       setIsRefreshing(true);
       try {
-        const statusRes = await getRepoStatus(repoRoot);
+        const [statusRes, branches] = await Promise.all([
+          getRepoStatus(repoRoot),
+          listBranches(repoRoot).catch(() => []),
+        ]);
         setFiles(statusRes.files);
         setCurrentRepo((prev) => (prev ? { ...prev, head: statusRes.head } : null));
         setTreeRefreshKey((k) => k + 1);
+
+        const headBranch = branches.find((b) => b.is_head);
+        if (headBranch) {
+          setCurrentBranchInfo({
+            ahead: headBranch.ahead,
+            behind: headBranch.behind,
+            upstream: headBranch.upstream ?? null,
+          });
+        } else {
+          setCurrentBranchInfo(null);
+        }
       } catch {
         // Refresh error handled silently or in status
       } finally {
@@ -311,6 +334,17 @@ export default function App() {
       }
     },
     []
+  );
+
+  // Commit and Push action (IntelliJ IDEA workflow: create commit, then pop Push dialog to review and confirm)
+  const handleCommitAndPush = useCallback(
+    async (commitMsg: string, isAmend: boolean) => {
+      if (!currentRepo) return;
+      await createCommit(currentRepo.root_path, commitMsg, isAmend);
+      await refreshStatus(currentRepo.root_path);
+      setPushModalOpen(true);
+    },
+    [currentRepo, refreshStatus]
   );
 
   // Pull remote action (R-11)
@@ -556,6 +590,22 @@ export default function App() {
         return;
       }
 
+      // Focus commit / open changes view: Ctrl/Cmd + K (R-16)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "K" || e.key === "k")) {
+        e.preventDefault();
+        setActiveView("changes");
+        return;
+      }
+
+      // Refresh: F5
+      if (e.key === "F5") {
+        e.preventDefault();
+        if (currentRepo) {
+          refreshStatus(currentRepo.root_path);
+        }
+        return;
+      }
+
       // View Switch: Alt + 0 -> changes, Alt + 9 -> log
       if (e.altKey && (e.key === "0" || e.code === "Digit0")) {
         e.preventDefault();
@@ -580,7 +630,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentRepo, handlePull]);
+  }, [currentRepo, handlePull, refreshStatus]);
 
   // Global Drag & Drop folder support (Windows / Desktop)
   useEffect(() => {
@@ -608,158 +658,7 @@ export default function App() {
     };
   }, [handleOpenRepo]);
 
-  // Command list for CommandPalette (R-16)
-  const commandList: CommandItem[] = useMemo(() => {
-    const list: CommandItem[] = [
-      {
-        id: "cmd-palette",
-        title: "命令面板 (Command Palette)",
-        shortcut: "Ctrl+Shift+P",
-        action: () => setCommandPaletteOpen(true),
-      },
-      {
-        id: "view-changes",
-        title: "切换到改动视图 (View Changes)",
-        shortcut: "Alt+0",
-        action: () => setActiveView("changes"),
-      },
-      {
-        id: "view-log",
-        title: "切换到提交历史 (View Git Log)",
-        shortcut: "Alt+9",
-        action: () => setActiveView("log"),
-      },
-      {
-        id: "open-repo",
-        title: "打开本地仓库 (Open Repository)",
-        action: () => setOpenModalVisible(true),
-      },
-      {
-        id: "open-settings",
-        title: "打开应用设置 (Settings)",
-        action: () => {
-          setSettingsTab("general");
-          setSettingsModalVisible(true);
-        },
-      },
-      {
-        id: "open-ai-settings",
-        title: "配置 AI 提供方与密钥 (AI Settings)",
-        action: () => {
-          setSettingsTab("ai");
-          setSettingsModalVisible(true);
-        },
-      },
-      {
-        id: "keyboard-shortcuts",
-        title: "查看键盘快捷键帮助 (Shortcuts Help)",
-        shortcut: "? / F1",
-        action: () => setShortcutsModalOpen(true),
-      },
-      {
-        id: "about-app",
-        title: "关于 橦云 Git (About)",
-        action: () => setAboutModalOpen(true),
-      },
-    ];
 
-    if (currentRepo) {
-      list.unshift(
-        {
-          id: "git-pull",
-          title: "拉取远程分支 (Git Pull)",
-          description: "从远程拉取并合并当前分支的最新提交",
-          shortcut: "Ctrl+T",
-          action: () => handlePull(),
-        },
-        {
-          id: "git-push",
-          title: "推送提交到远程 (Git Push)",
-          description: "检查领先提交并推送至对应远程分支",
-          shortcut: "Ctrl+Shift+K",
-          action: () => setPushModalOpen(true),
-        },
-        {
-          id: "git-fetch",
-          title: "获取远程更新 (Git Fetch)",
-          description: "下载远程分支与标签引用，不自动合并",
-          action: () => handleFetch(),
-        },
-        {
-          id: "switch-branch",
-          title: "切换与管理分支 (Switch Branch)",
-          shortcut: "Ctrl+Shift+`",
-          action: () => setBranchModalOpen(true),
-        },
-        {
-          id: "create-branch",
-          title: "从 HEAD 新建分支 (Create Branch)",
-          action: () => {
-            setCreateBranchStartPoint(null);
-            setCreateBranchModalOpen(true);
-          },
-        },
-        {
-          id: "git-tags",
-          title: "管理 Git 标签 (Manage Tags)",
-          description: "查看标签列表、推送标签至远程或删除标签",
-          action: () => setTagModalOpen(true),
-        },
-        {
-          id: "git-create-tag",
-          title: "新建 Git 标签 (Create Tag)",
-          description: "在当前 HEAD 创建轻量或附注标签",
-          action: () => {
-            setCreateTagTargetOid(null);
-            setCreateTagModalOpen(true);
-          },
-        },
-        {
-          id: "git-logs",
-          title: "查看 Git 操作日志 (Operation Log)",
-          description: "查看所有调用的系统 Git 命令行记录与耗时",
-          action: () => setLogModalOpen(true),
-        },
-        {
-          id: "git-stash",
-          title: "贮藏当前工作区改动 (Stash Changes)",
-          description: "临时保存未提交改动并还原工作区至干净状态",
-          action: () => setCreateStashModalOpen(true),
-        },
-        {
-          id: "git-stashes",
-          title: "管理贮藏记录 (Manage Stashes)",
-          description: "查看历史贮藏、恢复弹出 (Pop/Apply) 或删除",
-          action: () => setStashModalOpen(true),
-        },
-        {
-          id: "workspace-tools",
-          title: "仓库工具：会话快照、搁置、分支比较和 blame",
-          action: () => setWorkspaceTools({ tab: "overview" }),
-        },
-        {
-          id: "git-worktrees",
-          title: "管理 Git 工作区 (Git Worktrees)",
-          description: "查看与管理多工作树、切换工作区或新建 Worktree",
-          action: () => setWorktreeModalOpen(true),
-        },
-        {
-          id: "resolve-conflicts",
-          title: "三方合并冲突解决器 (Resolve Conflicts)",
-          description: "使用三栏视图解决合并与变基文件冲突",
-          action: () => handleOpenConflictModal(),
-        },
-        {
-          id: "refresh-status",
-          title: "刷新仓库状态 (Refresh Status)",
-          shortcut: "F5",
-          action: () => refreshStatus(currentRepo.root_path),
-        }
-      );
-    }
-
-    return list;
-  }, [currentRepo, handlePull, handleFetch, refreshStatus, handleOpenConflictModal]);
 
   // Selection handler
   const handleSelectTarget = useCallback((target: SelectedFileTarget) => {
@@ -1035,6 +934,187 @@ export default function App() {
     }
   }, [currentRepo, refreshStatus, selectedTarget]);
 
+  // Command list for CommandPalette (R-16 / R-17)
+  const commandList: CommandItem[] = useMemo(() => {
+    const list: CommandItem[] = [
+      {
+        id: "cmd-palette",
+        title: "命令面板 (Command Palette)",
+        shortcut: "Ctrl+Shift+P",
+        action: () => setCommandPaletteOpen(true),
+      },
+      {
+        id: "view-changes",
+        title: "切换到改动视图 (View Changes)",
+        shortcut: "Alt+0",
+        action: () => setActiveView("changes"),
+      },
+      {
+        id: "view-log",
+        title: "切换到提交历史 (View Git Log)",
+        shortcut: "Alt+9",
+        action: () => setActiveView("log"),
+      },
+      {
+        id: "open-repo",
+        title: "打开本地仓库 (Open Repository)",
+        action: () => setOpenModalVisible(true),
+      },
+      {
+        id: "open-settings",
+        title: "打开应用设置 (Settings)",
+        action: () => {
+          setSettingsTab("general");
+          setSettingsModalVisible(true);
+        },
+      },
+      {
+        id: "open-ai-settings",
+        title: "配置 AI 提供方与密钥 (AI Settings)",
+        action: () => {
+          setSettingsTab("ai");
+          setSettingsModalVisible(true);
+        },
+      },
+      {
+        id: "keyboard-shortcuts",
+        title: "查看键盘快捷键帮助 (Shortcuts Help)",
+        shortcut: "? / F1",
+        action: () => setShortcutsModalOpen(true),
+      },
+      {
+        id: "about-app",
+        title: "关于 橦云 Git (About)",
+        action: () => setAboutModalOpen(true),
+      },
+    ];
+
+    if (currentRepo) {
+      list.unshift(
+        {
+          id: "git-pull",
+          title: "拉取远程分支 (Git Pull)",
+          description: "从远程拉取并合并当前分支的最新提交",
+          shortcut: "Ctrl+T",
+          action: () => handlePull(),
+        },
+        {
+          id: "git-push",
+          title: "推送提交到远程 (Git Push)",
+          description: "检查领先提交并推送至对应远程分支",
+          shortcut: "Ctrl+Shift+K",
+          action: () => setPushModalOpen(true),
+        },
+        {
+          id: "git-fetch",
+          title: "获取远程更新 (Git Fetch)",
+          description: "下载远程分支与标签引用，不自动合并",
+          action: () => handleFetch(),
+        },
+        {
+          id: "focus-commit",
+          title: "聚焦提交输入框 (Focus Commit Input)",
+          description: "快速切换至改动面板并聚焦提交信息框",
+          shortcut: "Ctrl+K",
+          action: () => {
+            setActiveView("changes");
+            setTimeout(() => {
+              const el = document.querySelector<HTMLTextAreaElement>("textarea[placeholder*='提交信息']");
+              el?.focus();
+            }, 50);
+          },
+        },
+        {
+          id: "commit-and-push",
+          title: "提交并推送 (Commit and Push)",
+          description: "提交已暂存改动并推送至上游分支",
+          shortcut: "Ctrl+Shift+Enter",
+          action: () => {
+            setActiveView("changes");
+          },
+        },
+        {
+          id: "undo-last-discard",
+          title: "撤销上一次丢弃改动 (Undo Discard)",
+          description: "从本地 discard 安全快照中恢复上一次被丢弃的文件改动",
+          action: () => handleUndoDiscard(),
+        },
+        {
+          id: "switch-branch",
+          title: "切换与管理分支 (Switch Branch)",
+          shortcut: "Ctrl+Shift+`",
+          action: () => setBranchModalOpen(true),
+        },
+        {
+          id: "create-branch",
+          title: "从 HEAD 新建分支 (Create Branch)",
+          action: () => {
+            setCreateBranchStartPoint(null);
+            setCreateBranchModalOpen(true);
+          },
+        },
+        {
+          id: "git-tags",
+          title: "管理 Git 标签 (Manage Tags)",
+          description: "查看标签列表、推送标签至远程或删除标签",
+          action: () => setTagModalOpen(true),
+        },
+        {
+          id: "git-create-tag",
+          title: "新建 Git 标签 (Create Tag)",
+          description: "在当前 HEAD 创建轻量或附注标签",
+          action: () => {
+            setCreateTagTargetOid(null);
+            setCreateTagModalOpen(true);
+          },
+        },
+        {
+          id: "git-logs",
+          title: "查看 Git 操作日志 (Operation Log)",
+          description: "查看所有调用的系统 Git 命令行记录与耗时",
+          action: () => setLogModalOpen(true),
+        },
+        {
+          id: "git-stash",
+          title: "贮藏当前工作区改动 (Stash Changes)",
+          description: "临时保存未提交改动并还原工作区至干净状态",
+          action: () => setCreateStashModalOpen(true),
+        },
+        {
+          id: "git-stashes",
+          title: "管理贮藏记录 (Manage Stashes)",
+          description: "查看历史贮藏、恢复弹出 (Pop/Apply) 或删除",
+          action: () => setStashModalOpen(true),
+        },
+        {
+          id: "workspace-tools",
+          title: "仓库工具：会话快照、搁置、分支比较和 blame",
+          action: () => setWorkspaceTools({ tab: "overview" }),
+        },
+        {
+          id: "git-worktrees",
+          title: "管理 Git 工作区 (Git Worktrees)",
+          description: "查看与管理多工作树、切换工作区或新建 Worktree",
+          action: () => setWorktreeModalOpen(true),
+        },
+        {
+          id: "resolve-conflicts",
+          title: "三方合并冲突解决器 (Resolve Conflicts)",
+          description: "使用三栏视图解决合并与变基文件冲突",
+          action: () => handleOpenConflictModal(),
+        },
+        {
+          id: "refresh-status",
+          title: "刷新仓库状态 (Refresh Status)",
+          shortcut: "F5",
+          action: () => refreshStatus(currentRepo.root_path),
+        }
+      );
+    }
+
+    return list;
+  }, [currentRepo, handlePull, handleFetch, refreshStatus, handleOpenConflictModal, handleUndoDiscard]);
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[var(--color-bg)] text-[var(--color-text)] overflow-hidden font-sans">
       {/* Top Toolbar */}
@@ -1072,6 +1152,8 @@ export default function App() {
         onOpenWorkspaceTools={() => setWorkspaceTools({ tab: "overview" })}
         favorite={!!currentRepo && favoriteRepos.includes(currentRepo.root_path)}
         onToggleFavorite={toggleFavorite}
+        ahead={currentBranchInfo?.ahead ?? 0}
+        behind={currentBranchInfo?.behind ?? 0}
       />
 
 
@@ -1231,6 +1313,8 @@ export default function App() {
                     setSettingsModalVisible(true);
                   }}
                   disabled={!gitAvailable || isRefreshing}
+                  aheadCount={currentBranchInfo?.ahead ?? 0}
+                  onCommitAndPush={handleCommitAndPush}
                 />
               </div>
 
@@ -1485,6 +1569,7 @@ export default function App() {
         onOpenLogModal={() => setLogModalOpen(true)}
         onOpenShortcuts={() => setShortcutsModalOpen(true)}
         onOpenAbout={() => setAboutModalOpen(true)}
+        tracking={currentBranchInfo}
       />
 
       {/* Discard Confirmation Modal (R-17) */}

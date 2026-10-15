@@ -28,6 +28,8 @@ interface CommitPanelProps {
   onCommitSuccess: () => void;
   onOpenSettings: () => void;
   disabled?: boolean;
+  aheadCount?: number;
+  onCommitAndPush?: (message: string, isAmend: boolean) => Promise<void>;
 }
 
 export function CommitPanel({
@@ -36,15 +38,19 @@ export function CommitPanel({
   onCommitSuccess,
   onOpenSettings,
   disabled = false,
+  aheadCount = 0,
+  onCommitAndPush,
 }: CommitPanelProps) {
   // Commit message & draft persistence (R-06 / AT-06d)
   const draftKey = `tongyun_commit_draft_${rootPath}`;
   const [message, setMessage] = useState<string>(() => {
     return localStorage.getItem(draftKey) || "";
   });
+  const [previousDraft, setPreviousDraft] = useState<string | null>(null);
   const [isAmend, setIsAmend] = useState(false);
   const [amendStatus, setAmendStatus] = useState<AmendStatus | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [committingAction, setCommittingAction] = useState<"commit" | "push" | null>(null);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiReviewing, setAiReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<DiffReviewResult | null>(null);
@@ -56,6 +62,7 @@ export function CommitPanel({
   const [showConsentModal, setShowConsentModal] = useState(false);
 
   const pendingAiActionRef = useRef<"generate" | "review">("generate");
+  const pendingCommitActionRef = useRef<"commit" | "push">("commit");
   const preAmendDraftRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -133,6 +140,7 @@ export function CommitPanel({
     if (!isAmend && stagedCount === 0) return;
 
     setCommitting(true);
+    setCommittingAction("commit");
     setError(null);
 
     try {
@@ -141,6 +149,7 @@ export function CommitPanel({
       if (!identity || !identity.name.trim() || !identity.email.trim()) {
         setShowIdentityModal(true);
         setCommitting(false);
+        setCommittingAction(null);
         return;
       }
 
@@ -150,6 +159,7 @@ export function CommitPanel({
       // 3. Clear draft and reset state
       localStorage.removeItem(draftKey);
       setMessage("");
+      setPreviousDraft(null);
       setIsAmend(false);
       checkAmendStatus();
       onCommitSuccess();
@@ -159,11 +169,55 @@ export function CommitPanel({
       setError(msg);
     } finally {
       setCommitting(false);
+      setCommittingAction(null);
+    }
+  };
+
+  // Commit and Push implementation
+  const executeCommitAndPush = async () => {
+    if (!message.trim() || committing || disabled) return;
+    if (!isAmend && stagedCount === 0) return;
+
+    setCommitting(true);
+    setCommittingAction("push");
+    setError(null);
+
+    try {
+      // 1. Identity Check
+      const identity = await checkCommitIdentity(rootPath);
+      if (!identity || !identity.name.trim() || !identity.email.trim()) {
+        setShowIdentityModal(true);
+        setCommitting(false);
+        setCommittingAction(null);
+        return;
+      }
+
+      // 2. Execute commit and push
+      if (onCommitAndPush) {
+        await onCommitAndPush(message, isAmend);
+      } else {
+        await createCommit(rootPath, message, isAmend);
+      }
+
+      // 3. Clear draft and reset state
+      localStorage.removeItem(draftKey);
+      setMessage("");
+      setPreviousDraft(null);
+      setIsAmend(false);
+      checkAmendStatus();
+      onCommitSuccess();
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      setError(msg);
+    } finally {
+      setCommitting(false);
+      setCommittingAction(null);
     }
   };
 
   // Commit button handler (with pushed amend check)
   const handleCommitClick = async () => {
+    pendingCommitActionRef.current = "commit";
     if (isAmend && amendStatus?.is_pushed) {
       // PRD R-06: HEAD 包含在远程跟踪分支时，弹确认框
       setShowPushedWarning(true);
@@ -172,11 +226,24 @@ export function CommitPanel({
     await executeCommit();
   };
 
-  // Shortcut listener (Ctrl+Enter / Cmd+Enter inside textarea) (R-16)
+  const handleCommitAndPushClick = async () => {
+    pendingCommitActionRef.current = "push";
+    if (isAmend && amendStatus?.is_pushed) {
+      setShowPushedWarning(true);
+      return;
+    }
+    await executeCommitAndPush();
+  };
+
+  // Shortcut listener (Ctrl+Enter: commit, Ctrl+Shift+Enter or Ctrl+Alt+Enter: commit and push) (R-16)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
-      handleCommitClick();
+      if ((e.shiftKey || e.altKey) && onCommitAndPush) {
+        handleCommitAndPushClick();
+      } else {
+        handleCommitClick();
+      }
     }
   };
 
@@ -253,6 +320,9 @@ export function CommitPanel({
 
     try {
       const generated = await generateAiCommitMessage(rootPath, settings);
+      if (message.trim() && message.trim() !== generated.trim()) {
+        setPreviousDraft(message);
+      }
       setMessage(generated);
       if (!isAmend) {
         localStorage.setItem(draftKey, generated);
@@ -435,12 +505,29 @@ export function CommitPanel({
 
       {/* Textarea for Commit Message */}
       <div className="relative p-2 flex flex-col">
+        {/* Revert AI Draft banner if available */}
+        {previousDraft && (
+          <div className="mb-1.5 px-2 py-1 rounded bg-[var(--ty-sky-tint)]/40 border border-[var(--ty-sky)]/30 flex items-center justify-between text-[11px] text-[var(--ty-sky)]">
+            <span className="flex items-center gap-1">✨ 已应用 AI 生成说明</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMessage(previousDraft);
+                setPreviousDraft(null);
+              }}
+              className="underline hover:opacity-80 cursor-pointer font-medium"
+            >
+              撤销还原原草稿
+            </button>
+          </div>
+        )}
+
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => handleMessageChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="提交信息 (首行标题，空一行输入详细说明，Ctrl+Enter 提交)..."
+          placeholder="提交信息 (首行标题，空一行输入详细说明，Ctrl+Enter 提交，Ctrl+Shift+Enter 提交并推送)..."
           rows={4}
           disabled={disabled || committing}
           className="w-full p-2 rounded bg-[var(--color-bg)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] resize-y font-sans leading-relaxed select-text"
@@ -460,9 +547,18 @@ export function CommitPanel({
                 标题 {firstLineLength} 字符
               </span>
             )}
+            {aheadCount > 0 && (
+              <span
+                className="text-[var(--color-accent)] font-medium text-[10px] flex items-center gap-0.5 bg-[var(--color-accent)]/10 px-1.5 py-0.5 rounded border border-[var(--color-accent)]/20"
+                title={`${aheadCount} 个本地提交尚未推送到远程`}
+              >
+                ↑{aheadCount} 待推送
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Commit only button */}
             <button
               type="button"
               onClick={handleCommitClick}
@@ -472,20 +568,55 @@ export function CommitPanel({
                   ? "请输入提交信息"
                   : !isAmend && stagedCount === 0
                   ? "请先暂存文件"
-                  : "Ctrl+Enter 提交"
+                  : "Ctrl+Enter 仅提交"
               }
-              className={`px-3 py-1.5 rounded font-medium text-xs text-white shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                isAmend
-                  ? "bg-[var(--color-status-modified)] hover:opacity-90"
-                  : "bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)]"
+              className={`px-3 py-1.5 rounded font-medium text-xs shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                onCommitAndPush
+                  ? "border border-[var(--color-border)] bg-[var(--color-surface-raised)] hover:bg-[var(--color-bg)] text-[var(--color-text)]"
+                  : isAmend
+                  ? "bg-[var(--color-status-modified)] hover:opacity-90 text-white"
+                  : "bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] text-white"
               }`}
             >
-              {committing
+              {committing && committingAction === "commit"
                 ? "提交中..."
                 : isAmend
                 ? "修改提交"
                 : `提交 (${stagedCount})`}
             </button>
+
+            {/* Commit and Push button */}
+            {onCommitAndPush && (
+              <button
+                type="button"
+                onClick={handleCommitAndPushClick}
+                disabled={!canCommit}
+                title={
+                  !message.trim()
+                    ? "请输入提交信息"
+                    : !isAmend && stagedCount === 0
+                    ? "请先暂存文件"
+                    : "提交并推送到远程 (Ctrl+Shift+Enter / Ctrl+Alt+Enter)"
+                }
+                className="flex items-center gap-1 px-3 py-1.5 rounded font-medium text-xs text-white bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] shadow-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 10l7-7m0 0l7 7m-7-7v18"
+                  />
+                </svg>
+                <span>
+                  {committing && committingAction === "push"
+                    ? "提交推送中..."
+                    : isAmend
+                    ? "修改并推送"
+                    : "提交并推送"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -497,7 +628,11 @@ export function CommitPanel({
         onClose={() => setShowIdentityModal(false)}
         onConfigured={async () => {
           setShowIdentityModal(false);
-          await executeCommit();
+          if (pendingCommitActionRef.current === "push") {
+            await executeCommitAndPush();
+          } else {
+            await executeCommit();
+          }
         }}
       />
 
@@ -506,7 +641,11 @@ export function CommitPanel({
         onClose={() => setShowPushedWarning(false)}
         onConfirm={async () => {
           setShowPushedWarning(false);
-          await executeCommit();
+          if (pendingCommitActionRef.current === "push") {
+            await executeCommitAndPush();
+          } else {
+            await executeCommit();
+          }
         }}
         remoteBranches={amendStatus?.pushed_remote_branches || []}
       />
@@ -525,6 +664,16 @@ export function CommitPanel({
         loading={aiReviewing}
         error={reviewError}
         onProceedCommit={handleCommitClick}
+        onProceedCommitAndPush={onCommitAndPush ? handleCommitAndPushClick : undefined}
+        onApplySummaryAsMessage={(summary) => {
+          if (message.trim()) {
+            setPreviousDraft(message);
+          }
+          setMessage(summary);
+          if (!isAmend) {
+            localStorage.setItem(draftKey, summary);
+          }
+        }}
       />
     </div>
   );

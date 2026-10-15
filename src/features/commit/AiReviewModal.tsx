@@ -15,6 +15,8 @@ interface AiReviewModalProps {
   loading: boolean;
   error: string | null;
   onProceedCommit: () => void;
+  onProceedCommitAndPush?: () => void;
+  onApplySummaryAsMessage?: (summary: string) => void;
 }
 
 export function AiReviewModal(props: AiReviewModalProps) {
@@ -29,6 +31,8 @@ function AiReviewModalContent({
   loading,
   error,
   onProceedCommit,
+  onProceedCommitAndPush,
+  onApplySummaryAsMessage,
 }: AiReviewModalProps) {
   const [selectedFilter, setSelectedFilter] = useState<"all" | "danger" | "warning" | "info">("all");
 
@@ -148,8 +152,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("danger")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "danger"
-                          ? "bg-[var(--color-danger)]/20 text-[var(--color-danger)] shadow-xs"
-                          : "text-[var(--color-danger)]/70 hover:text-[var(--color-danger)]"
+                          ? "bg-[var(--color-danger)]/20 text-[var(--color-danger)] border border-[var(--color-danger)]/30"
+                          : "text-[var(--color-danger)] hover:underline"
                       }`}
                     >
                       高危 ({dangerCount})
@@ -161,8 +165,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("warning")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "warning"
-                          ? "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] shadow-xs"
-                          : "text-[var(--ty-honey)]/70 hover:text-[var(--ty-honey)]"
+                          ? "bg-[var(--ty-honey-tint)] text-[var(--ty-honey)] border border-[var(--ty-honey)]/30"
+                          : "text-[var(--ty-honey)] hover:underline"
                       }`}
                     >
                       警告 ({warningCount})
@@ -174,8 +178,8 @@ function AiReviewModalContent({
                       onClick={() => setSelectedFilter("info")}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                         selectedFilter === "info"
-                          ? "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] shadow-xs"
-                          : "text-[var(--ty-sky)]/70 hover:text-[var(--ty-sky)]"
+                          ? "bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] border border-[var(--ty-sky)]/30"
+                          : "text-[var(--ty-sky)] hover:underline"
                       }`}
                     >
                       建议 ({infoCount})
@@ -196,7 +200,7 @@ function AiReviewModalContent({
                   该筛选条件下无问题
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
                   {filteredIssues.map((issue, idx) => {
                     const isDanger = issue.level === "danger";
                     const isWarning = issue.level === "warning";
@@ -254,11 +258,11 @@ function AiReviewModalContent({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)] flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-[var(--color-text-muted)]">
+        <div className="px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg)] flex items-center justify-between gap-2 shrink-0">
+          <div className="text-[11px] text-[var(--color-text-muted)] truncate">
             审查由本地配置的 AI 模型生成，仅作为提交参考
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
@@ -266,16 +270,48 @@ function AiReviewModalContent({
             >
               关闭修改
             </button>
+
+            {/* Apply AI summary as commit message */}
+            {result?.summary && onApplySummaryAsMessage && (
+              <button
+                type="button"
+                onClick={() => {
+                  onApplySummaryAsMessage(result.summary);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-lg border border-[var(--ty-sky)]/50 bg-[var(--ty-sky-tint)] text-[var(--ty-sky)] text-xs font-medium hover:bg-[var(--ty-sky-tint)]/80 transition-colors cursor-pointer"
+                title="将审查的总体结论填入下方的提交信息输入框"
+              >
+                采纳为提交说明
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
                 onProceedCommit();
                 onClose();
               }}
-              className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-surface-raised)] text-xs font-medium transition-colors cursor-pointer"
             >
               知晓并继续提交
             </button>
+
+            {onProceedCommitAndPush && (
+              <button
+                type="button"
+                onClick={() => {
+                  onProceedCommitAndPush();
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer shadow-xs flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+                <span>提交并推送</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

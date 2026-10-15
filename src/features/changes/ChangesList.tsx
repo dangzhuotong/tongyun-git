@@ -372,7 +372,7 @@ function GroupSection({
               e.stopPropagation();
               onAction();
             }}
-            className="text-[10px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 hover:underline px-1 py-0.5 font-medium transition-opacity"
+            className="text-[10px] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/15 px-1.5 py-0.5 rounded font-medium transition-colors cursor-pointer"
           >
             {actionLabel}
           </button>

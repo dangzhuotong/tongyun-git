@@ -44,6 +44,8 @@ interface ToolbarProps {
   onOpenWorkspaceTools?: () => void;
   favorite?: boolean;
   onToggleFavorite?: () => void;
+  ahead?: number;
+  behind?: number;
 }
 
 
@@ -73,6 +75,8 @@ export function Toolbar({
   onOpenShortcuts,
   onOpenAbout,
   onOpenWorkspaceTools, favorite, onToggleFavorite,
+  ahead = 0,
+  behind = 0,
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -216,10 +220,14 @@ export function Toolbar({
         {currentRepo && onPullClick && (
           <button
             type="button"
-            title="拉取远程更新 (Ctrl+T)"
+            title={`拉取远程更新 (Ctrl+T)${behind > 0 ? ` · ${behind} 个远程提交待拉取` : ""}`}
             onClick={onPullClick}
             disabled={isPulling}
-            className="flex items-center gap-1 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors disabled:opacity-50 cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-medium text-xs transition-colors disabled:opacity-50 cursor-pointer ${
+              behind > 0
+                ? "border-[var(--ty-honey)]/60 bg-[var(--ty-honey-tint)]/40 text-[var(--ty-honey)] hover:bg-[var(--ty-honey-tint)]/60 font-semibold"
+                : "border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
+            }`}
           >
             <svg
               className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-[var(--color-accent)]" : ""}`}
@@ -235,6 +243,11 @@ export function Toolbar({
               />
             </svg>
             <span>{isPulling ? "正在拉取" : "拉取"}</span>
+            {behind > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[var(--ty-honey)] text-white">
+                ↓{behind}
+              </span>
+            )}
           </button>
         )}
 
@@ -242,9 +255,13 @@ export function Toolbar({
         {currentRepo && onPushClick && (
           <button
             type="button"
-            title="推送提交到远程 (Ctrl+Shift+K)"
+            title={`推送提交到远程 (Ctrl+Shift+K)${ahead > 0 ? ` · ${ahead} 个本地提交未推送` : ""}`}
             onClick={onPushClick}
-            className="flex items-center gap-1 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-medium text-xs transition-colors cursor-pointer ${
+              ahead > 0
+                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/25 font-semibold"
+                : "border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
+            }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -255,6 +272,11 @@ export function Toolbar({
               />
             </svg>
             <span>推送</span>
+            {ahead > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[var(--color-accent)] text-white">
+                ↑{ahead}
+              </span>
+            )}
           </button>
         )}
 

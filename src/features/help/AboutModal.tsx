@@ -29,6 +29,8 @@ export function AboutModal({ isOpen, onClose, appInfo }: AboutModalProps) {
           <button
             type="button"
             onClick={onClose}
+            title="关闭 (Esc)"
+            aria-label="关闭"
             className="p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-colors cursor-pointer"
           >
             <CloseIcon width={16} height={16} />

@@ -314,6 +314,78 @@ export function LogView({
   // Calculate max lane column for SVG sizing
   const maxCol = displayCommits.reduce((max, c) => Math.max(max, c.col), 0);
 
+  // Calculate connected graph lane topology (in-edges, out-edges, pass-through lanes, outgoing status)
+  const graphRows = useMemo(() => {
+    let seenRemoteBranch = false;
+    const outgoingSet = new Set<string>();
+    for (const c of displayCommits) {
+      const hasRemoteRef = c.refs.some(
+        (r) => r.kind === "RemoteBranch" || r.name.includes("origin/")
+      );
+      if (hasRemoteRef) {
+        seenRemoteBranch = true;
+      }
+      if (!seenRemoteBranch && !allBranches) {
+        outgoingSet.add(c.oid);
+      }
+    }
+
+    const activeColumns = new Map<string, number>();
+    const rows = new Map<
+      string,
+      {
+        inCols: number[];
+        outCols: number[];
+        passThroughCols: number[];
+        isOutgoing: boolean;
+      }
+    >();
+
+    for (let i = 0; i < displayCommits.length; i++) {
+      const c = displayCommits[i];
+      const col = c.col;
+
+      const inCols: number[] = [];
+      if (activeColumns.has(c.oid)) {
+        inCols.push(activeColumns.get(c.oid)!);
+        activeColumns.delete(c.oid);
+      }
+      if (inCols.length === 0 && i > 0) {
+        inCols.push(col);
+      }
+
+      const passThroughCols = Array.from(new Set(activeColumns.values())).filter(
+        (pc) => pc !== col
+      );
+
+      const outCols: number[] = [];
+      if (c.edges && c.edges.length > 0) {
+        for (const e of c.edges) {
+          outCols.push(e.to_col);
+        }
+      } else if (c.parents && c.parents.length > 0) {
+        outCols.push(col);
+      }
+
+      for (let pIdx = 0; pIdx < c.parents.length; pIdx++) {
+        const pOid = c.parents[pIdx];
+        const targetCol = outCols[pIdx] ?? col;
+        if (!activeColumns.has(pOid)) {
+          activeColumns.set(pOid, targetCol);
+        }
+      }
+
+      rows.set(c.oid, {
+        inCols: inCols.length > 0 ? inCols : [col],
+        outCols: outCols.length > 0 ? outCols : [col],
+        passThroughCols,
+        isOutgoing: outgoingSet.has(c.oid),
+      });
+    }
+
+    return rows;
+  }, [displayCommits, allBranches]);
+
   // Close context menu on outside click
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -561,6 +633,8 @@ export function LogView({
                 const isSelected = commit.oid === selectedOid;
                 const formattedDate = formatDate(commit.timestamp);
                 const matchInfo = matchedCommitMap.get(commit.oid);
+                const rowMeta = graphRows.get(commit.oid);
+                const isOutgoing = rowMeta?.isOutgoing ?? false;
 
                 return (
                   <div
@@ -588,11 +662,26 @@ export function LogView({
                         col={commit.col}
                         edges={commit.edges}
                         maxCol={maxCol}
+                        inCols={rowMeta?.inCols}
+                        outCols={rowMeta?.outCols}
+                        passThroughCols={rowMeta?.passThroughCols}
+                        isOutgoing={isOutgoing}
+                        isSelected={isSelected}
                       />
                     </div>
 
                     {/* Commit summary & Ref Badges */}
                     <div className="flex-1 flex items-center gap-1.5 overflow-hidden pr-2">
+                      {/* Outgoing (Unpushed) Badge */}
+                      {isOutgoing && (
+                        <span
+                          className="px-1.5 py-0.2 rounded text-[10px] font-sans font-semibold shrink-0 bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30 flex items-center gap-0.5"
+                          title="此提交仅存在于本地，尚未推送到远程仓库"
+                        >
+                          ↑ 待推送
+                        </span>
+                      )}
+
                       {/* Ref Badges (HEAD, Branches, Tags) */}
                       {commit.refs.map((r, i) => (
                         <span

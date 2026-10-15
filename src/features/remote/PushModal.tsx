@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   inspectPush,
   pushRemote,
@@ -89,8 +89,8 @@ const PushModalContent: React.FC<PushModalContentProps> = ({
     };
   }, [rootPath]);
 
-  const handlePush = async () => {
-    if (!targetBranch) return;
+  const handlePush = useCallback(async () => {
+    if (!targetBranch || pushing || loading) return;
     setPushing(true);
     setErrorMessage(null);
     setIsRejected(false);
@@ -122,7 +122,10 @@ const PushModalContent: React.FC<PushModalContentProps> = ({
           setErrorMessage("部分远程仓库推送未成功，请查看下方明细");
         }
       } else {
-        if (!remoteName) return;
+        if (!remoteName) {
+          setPushing(false);
+          return;
+        }
         const res = await pushRemote(rootPath, remoteName, targetBranch, setUpstream);
         if (res.success) {
           onSuccess();
@@ -141,7 +144,31 @@ const PushModalContent: React.FC<PushModalContentProps> = ({
     } finally {
       setPushing(false);
     }
-  };
+  }, [
+    rootPath,
+    targetBranch,
+    pushing,
+    loading,
+    syncAllRemotes,
+    inspection,
+    selectedRemotes,
+    setUpstream,
+    remoteName,
+    onSuccess,
+    onClose,
+  ]);
+
+  // Press Enter to confirm push (align with IntelliJ IDEA keyboard flow)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !pushing && !loading && targetBranch) {
+        e.preventDefault();
+        handlePush();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePush, pushing, loading, targetBranch]);
 
   const handlePullFirst = async () => {
     setPulling(true);

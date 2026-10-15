@@ -497,4 +497,49 @@ describe("CommitPanel component", () => {
     // Textarea draft remains untouched
     expect(textarea.value).toBe("my previous draft");
   });
+
+  it("handles commit and push when onCommitAndPush prop is provided", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: init",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.checkCommitIdentity).mockResolvedValue({
+      name: "Bob",
+      email: "bob@example.com",
+    });
+    const mockCommitAndPush = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={2}
+        aheadCount={3}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+        onCommitAndPush={mockCommitAndPush}
+      />
+    );
+
+    // Ahead indicator should be visible
+    expect(screen.getByText("↑3 待推送")).toBeDefined();
+
+    const textarea = screen.getByPlaceholderText(
+      /提交信息 \(首行标题/
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "feat: commit and push test" } });
+
+    // Commit and Push button
+    const commitAndPushBtn = screen.getByRole("button", { name: "提交并推送" });
+    expect(commitAndPushBtn).toBeDefined();
+
+    fireEvent.click(commitAndPushBtn);
+
+    await waitFor(() => {
+      expect(mockCommitAndPush).toHaveBeenCalledWith("feat: commit and push test", false);
+      expect(defaultOnCommitSuccess).toHaveBeenCalled();
+    });
+  });
 });

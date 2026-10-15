@@ -22,6 +22,7 @@ interface StatusBarProps {
   onOpenLogModal: () => void;
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
+  tracking?: { ahead: number; behind: number; upstream: string | null } | null;
 }
 
 
@@ -39,6 +40,7 @@ export function StatusBar({
   onOpenLogModal,
   onOpenShortcuts,
   onOpenAbout,
+  tracking,
 }: StatusBarProps) {
   const activeRepo = repo ?? currentRepo ?? null;
   const activeGitVersion = gitVersion ?? appInfo?.git_version ?? null;
@@ -51,17 +53,38 @@ export function StatusBar({
         {activeRepo ? (
           <>
             {/* Branch button */}
-            <button
-              type="button"
-              onClick={onOpenBranchModal}
-              className="flex items-center gap-1.5 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
-              title="点击切换或新建分支"
-            >
-              <BranchIcon width={12} height={12} className="text-[var(--color-accent)]" />
-              <span className="font-medium text-[var(--color-text)]">
-                {currentBranch || "无分支"}
-              </span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenBranchModal}
+                className="flex items-center gap-1.5 hover:text-[var(--color-accent)] cursor-pointer transition-colors px-1 py-0.5 rounded-sm hover:bg-[var(--color-surface-raised)]"
+                title="点击切换或新建分支"
+              >
+                <BranchIcon width={12} height={12} className="text-[var(--color-accent)]" />
+                <span className="font-medium text-[var(--color-text)]">
+                  {currentBranch || "无分支"}
+                </span>
+              </button>
+
+              {/* Upstream ahead/behind tracking badge */}
+              {tracking?.upstream && (tracking.ahead > 0 || tracking.behind > 0) && (
+                <span
+                  className="px-1.5 py-0.2 rounded font-mono text-[10px] bg-[var(--color-surface-raised)] border border-[var(--color-border)] text-[var(--color-text)] flex items-center gap-1 select-none"
+                  title={`跟踪上游: ${tracking.upstream} · 本地领先待推送: ${tracking.ahead} · 远程领先待拉取: ${tracking.behind}`}
+                >
+                  {tracking.ahead > 0 && (
+                    <span className="text-[var(--color-accent)] font-semibold flex items-center">
+                      ↑{tracking.ahead}
+                    </span>
+                  )}
+                  {tracking.behind > 0 && (
+                    <span className="text-[var(--ty-honey)] font-semibold flex items-center">
+                      ↓{tracking.behind}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
 
             {/* Repo Name */}
             <span

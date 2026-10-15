@@ -31,6 +31,11 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
       category: "暂存与提交",
     },
     {
+      key: isMac ? "Cmd+Shift+Enter" : "Ctrl+Shift+Enter",
+      desc: "在提交信息框内执行提交并推送",
+      category: "暂存与提交",
+    },
+    {
       key: isMac ? "Ctrl+Option+M" : "Alt+M",
       desc: "勾选 / 取消「修改上一次提交 (Amend)」",
       category: "暂存与提交",
@@ -63,6 +68,11 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
     {
       key: isMac ? "Cmd+T" : "Ctrl+T",
       desc: "拉取远程分支 (Pull)",
+      category: "日常操作",
+    },
+    {
+      key: "F5",
+      desc: "刷新工作区与仓库改动状态",
       category: "日常操作",
     },
     {
@@ -120,6 +130,8 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
           <button
             type="button"
             onClick={onClose}
+            title="关闭快捷键说明 (Esc)"
+            aria-label="关闭"
             className="p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-colors cursor-pointer"
           >
             <CloseIcon width={16} height={16} />

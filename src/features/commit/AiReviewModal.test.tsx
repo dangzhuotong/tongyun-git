@@ -90,4 +90,41 @@ describe("AiReviewModal", () => {
     expect(screen.getByText(/审查通过/i)).toBeDefined();
     expect(screen.getByText("代码规范整洁")).toBeDefined();
   });
+
+  it("handles applying AI summary and commit-and-push", () => {
+    const handleApplySummary = vi.fn();
+    const handleProceedCommitAndPush = vi.fn();
+    const handleClose = vi.fn();
+
+    const passedResult: DiffReviewResult = {
+      summary: "feat: update responsive layout",
+      passed: true,
+      issues: [],
+    };
+
+    render(
+      <AiReviewModal
+        isOpen={true}
+        result={passedResult}
+        loading={false}
+        error={null}
+        onClose={handleClose}
+        onProceedCommit={vi.fn()}
+        onProceedCommitAndPush={handleProceedCommitAndPush}
+        onApplySummaryAsMessage={handleApplySummary}
+      />
+    );
+
+    // Apply summary button
+    const applyBtn = screen.getByRole("button", { name: "采纳为提交说明" });
+    fireEvent.click(applyBtn);
+    expect(handleApplySummary).toHaveBeenCalledWith("feat: update responsive layout");
+    expect(handleClose).toHaveBeenCalledTimes(1);
+
+    // Commit and push button
+    const pushBtn = screen.getByRole("button", { name: "提交并推送" });
+    fireEvent.click(pushBtn);
+    expect(handleProceedCommitAndPush).toHaveBeenCalledTimes(1);
+    expect(handleClose).toHaveBeenCalledTimes(2);
+  });
 });
