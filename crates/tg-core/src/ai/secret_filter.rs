@@ -228,4 +228,22 @@ mod tests {
         let result = SecretFilter::build_sanitized_diff(&[diff], &[], 20);
         assert!(result.ends_with("\n\n[...剩余改动已截断]"));
     }
+
+    #[test]
+    fn test_is_secret_windows_backslash_and_extensions() {
+        assert!(SecretFilter::is_secret("sub\\dir\\cert.PEM", &[]));
+        assert!(SecretFilter::is_secret("sub\\dir\\.env.staging", &[]));
+        assert!(SecretFilter::is_secret("keys\\client.KEY", &[]));
+        assert!(SecretFilter::is_secret("keys\\backup.P12", &[]));
+        assert!(SecretFilter::is_secret("secrets.json", &[]));
+        assert!(!SecretFilter::is_secret("sub\\dir\\normal.rs", &[]));
+    }
+
+    #[test]
+    fn test_is_secret_custom_glob_patterns() {
+        let custom = vec!["*.token".to_string(), "secrets/**".to_string()];
+        assert!(SecretFilter::is_secret("auth.token", &custom));
+        assert!(SecretFilter::is_secret("secrets/api_config.json", &custom));
+        assert!(!SecretFilter::is_secret("other/api_config.json", &custom));
+    }
 }

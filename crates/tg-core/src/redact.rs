@@ -154,4 +154,98 @@ mod tests {
             "https://user:***@[::1]:8080/repo.git"
         );
     }
+
+    #[test]
+    fn test_redact_with_port() {
+        let input = "https://user:password@gitlab.example.com:8443/repo.git";
+        let expected = "https://user:***@gitlab.example.com:8443/repo.git";
+        assert_eq!(redact_url_credentials(input), expected);
+    }
+
+    #[test]
+    fn test_redact_token_with_port() {
+        let input = "https://glpat-token123@gitlab.internal:8080/repo.git";
+        let expected = "https://***@gitlab.internal:8080/repo.git";
+        assert_eq!(redact_url_credentials(input), expected);
+    }
+
+    #[test]
+    fn test_redact_url_with_query_and_fragment() {
+        let input = "checkout https://alice:secret@example.com/repo.git?ref=main#readme now";
+        let expected = "checkout https://alice:***@example.com/repo.git?ref=main#readme now";
+        assert_eq!(redact_url_credentials(input), expected);
+    }
+
+    #[test]
+    fn test_redact_empty_user_or_password() {
+        let input_empty_user = "https://:secret@example.com/repo.git";
+        let expected_empty_user = "https://:***@example.com/repo.git";
+        assert_eq!(
+            redact_url_credentials(input_empty_user),
+            expected_empty_user
+        );
+
+        let input_empty_pass = "https://alice:@example.com/repo.git";
+        let expected_empty_pass = "https://alice:***@example.com/repo.git";
+        assert_eq!(
+            redact_url_credentials(input_empty_pass),
+            expected_empty_pass
+        );
+    }
+
+    #[test]
+    fn test_redact_whitespace_terminators() {
+        let input_newline = "fetch https://user:pass@host.org\nnext line";
+        let expected_newline = "fetch https://user:***@host.org\nnext line";
+        assert_eq!(redact_url_credentials(input_newline), expected_newline);
+
+        let input_tab = "push https://user:pass@host.org\tsuffix";
+        let expected_tab = "push https://user:***@host.org\tsuffix";
+        assert_eq!(redact_url_credentials(input_tab), expected_tab);
+
+        let input_end = "url=https://user:pass@host.org";
+        let expected_end = "url=https://user:***@host.org";
+        assert_eq!(redact_url_credentials(input_end), expected_end);
+    }
+
+    #[test]
+    fn test_redact_custom_git_schemes() {
+        let input = "git+https://bot:secret@github.com/org/repo.git";
+        let expected = "git+https://bot:***@github.com/org/repo.git";
+        assert_eq!(redact_url_credentials(input), expected);
+    }
+
+    #[test]
+    fn test_redact_non_http_schemes() {
+        let input_user_only = "ftp://anonymous@ftp.example.org/dir";
+        assert_eq!(redact_url_credentials(input_user_only), input_user_only);
+
+        let input_with_pass = "ftp://user:pass@ftp.example.org/dir";
+        let expected_with_pass = "ftp://user:***@ftp.example.org/dir";
+        assert_eq!(redact_url_credentials(input_with_pass), expected_with_pass);
+    }
+
+    #[test]
+    fn test_redact_invalid_scheme_starting_with_digit() {
+        let input = "123://user:pass@example.com/repo";
+        assert_eq!(redact_url_credentials(input), input);
+    }
+
+    #[test]
+    fn test_redact_special_chars_in_username_or_token() {
+        let input = "https://user.name-1:token_secret-2@example.com/repo.git";
+        let expected = "https://user.name-1:***@example.com/repo.git";
+        assert_eq!(redact_url_credentials(input), expected);
+    }
+
+    #[test]
+    fn test_redact_empty_and_partial_urls() {
+        assert_eq!(redact_url_credentials(""), "");
+        assert_eq!(redact_url_credentials("https://"), "https://");
+        assert_eq!(redact_url_credentials("https:///"), "https:///");
+        assert_eq!(
+            redact_url_credentials("://user:pass@host"),
+            "://user:pass@host"
+        );
+    }
 }
