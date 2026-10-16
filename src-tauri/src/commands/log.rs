@@ -45,10 +45,12 @@ pub fn get_file_history(
 
 #[tauri::command]
 pub fn checkout_commit(root_path: String, oid: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::checkout_commit(&runner, p, &oid).map_err(|e| e.to_string())
+    crate::journal_cmd::run("checkout_commit", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        CommitService::checkout_commit(&runner, p, &oid).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -57,8 +59,10 @@ pub fn reset_to_commit(
     oid: String,
     mode: String,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
+    crate::journal_cmd::run("reset_to_commit", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
+    })
 }

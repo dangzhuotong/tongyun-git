@@ -6,7 +6,7 @@
 
 - 用途：独立的桌面 Git 图形客户端，对标 IntelliJ IDEA 的 Git 面板，自带 AI。产品范围以 [docs/prd.md](docs/prd.md) 为准。
 - 技术栈（已定）：Tauri 2 + Rust；Git 底层 `git2` + 系统 git 命令行（[决策 0001](docs/decisions/0001-git-backend.md)）；前端 React + TypeScript + Vite + Tailwind CSS 4。
-- **当前状态：M0 已建立工程脚手架、tg-core 骨架、L1 测试和 CI；实际目录见 docs/architecture.md。**
+- **当前状态：已有 MVP 与部分 v2 实现；外部 Agent JSON 入口和持久化审计见 docs/agent-safety.md。跨平台完整 GUI 验收尚未完成。**
 
 | 要改什么 | 先读 |
 | --- | --- |

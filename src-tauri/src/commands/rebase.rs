@@ -16,8 +16,10 @@ pub fn execute_interactive_rebase(
     root_path: String,
     plan: RebasePlan,
 ) -> std::result::Result<RebaseResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    RebaseService::execute_interactive_rebase(&runner, p, &plan).map_err(|e| e.to_string())
+    crate::journal_cmd::run("execute_interactive_rebase", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        RebaseService::execute_interactive_rebase(&runner, p, &plan).map_err(|e| e.to_string())
+    })
 }

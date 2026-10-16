@@ -18,10 +18,12 @@ pub fn set_commit_identity(
     email: String,
     global: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::set_identity(&runner, p, &name, &email, global).map_err(|e| e.to_string())
+    crate::journal_cmd::run("set_commit_identity", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        CommitService::set_identity(&runner, p, &name, &email, global).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -43,9 +45,11 @@ pub fn create_commit(
     message: String,
     amend: bool,
 ) -> std::result::Result<tg_core::CommitResult, String> {
-    let p = Path::new(&root_path);
-    let runner = CliRunner::new("git");
-    CommitService::commit(&runner, p, &message, amend).map_err(|e| e.to_string())
+    crate::journal_cmd::run("create_commit", &root_path, || {
+        let p = Path::new(&root_path);
+        let runner = CliRunner::new("git");
+        CommitService::commit(&runner, p, &message, amend).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]

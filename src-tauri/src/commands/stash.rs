@@ -15,11 +15,13 @@ pub fn create_stash(
     message: Option<String>,
     include_untracked: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::create_stash(&runner, p, message.as_deref(), include_untracked)
-        .map_err(|e| e.to_string())
+    crate::journal_cmd::run("create_stash", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        StashService::create_stash(&runner, p, message.as_deref(), include_untracked)
+            .map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -28,26 +30,32 @@ pub fn apply_stash(
     index: usize,
     pop: bool,
 ) -> std::result::Result<StashApplyResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::apply_stash(&runner, p, index, pop).map_err(|e| e.to_string())
+    crate::journal_cmd::run("apply_stash", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        StashService::apply_stash(&runner, p, index, pop).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
 pub fn drop_stash(root_path: String, index: usize) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::drop_stash(&runner, p, index).map_err(|e| e.to_string())
+    crate::journal_cmd::run("drop_stash", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        StashService::drop_stash(&runner, p, index).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
 pub fn clear_stashes(root_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::clear_stashes(&runner, p).map_err(|e| e.to_string())
+    crate::journal_cmd::run("clear_stashes", &root_path, || {
+        let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+        let p = Path::new(clean_path);
+        let runner = CliRunner::new("git");
+        StashService::clear_stashes(&runner, p).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]

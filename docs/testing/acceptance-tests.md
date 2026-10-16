@@ -161,3 +161,15 @@
 | AT-V209a | V2-09 | 按行丢弃保留 CRLF/末尾无换行和 index；过期 diff 拒绝；默认取消；备份可恢复 | L1+L2+L3 |
 | AT-17j | R-17 | nested/a 与 nested__a 不碰撞；准确还原部分暂存区和丢弃前不存在的文件 | L1 |
 | AT-01d | R-01 | 收藏重启仍在、优先切换；外部应用成功打开或明确报错 | L2+L4 |
+
+## Agent 入口补充验收
+
+| 用例 | 观察点 | 结果 |
+| --- | --- | --- |
+| AT-19a | CLI 状态/diff/能力输出与持久化操作关联 | passed（CLI 集成） |
+| AT-19b | 缺写授权、过期 index/HEAD 指纹拒绝；正确指纹真实提交；旧指纹再次调用拒绝 | passed（隔离真实 Git） |
+| AT-19c | hook 拒绝时 HEAD 不变；审计不可用时禁止提交 | passed（隔离真实 Git） |
+| AT-15d | started/finished 跨进程读取、不包含提交信息正文 | passed（CLI 集成） |
+| AT-19d | CLI 与桌面成功 outcome 都是 `succeeded`；界面同时认历史 `completed`；单条坏审计 JSON 不拖垮其余记录 | 自动化（agent_cli、audit::read、OperationLogModal） |
+
+证据见 [2026-10-16](runs/2026-10-16-agent-safety.md)。
