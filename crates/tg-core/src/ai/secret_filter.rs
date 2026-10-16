@@ -75,8 +75,12 @@ impl SecretFilter {
 
         for diff in diffs {
             let (filtered, _) = Self::filter_diff(diff, custom_patterns);
-            if total.len() + filtered.len() > max_chars {
-                let remaining = max_chars.saturating_sub(total.len());
+            // PRD R-07 counts characters (Unicode scalars), not UTF-8 bytes.
+            // The joining newline is part of the budget; the truncation notice is appended after it.
+            let used = char_len(&total);
+            let next = used.saturating_add(char_len(&filtered)).saturating_add(1);
+            if next > max_chars {
+                let remaining = max_chars.saturating_sub(used);
                 if remaining > 0 {
                     let take_chars: String = filtered.chars().take(remaining).collect();
                     total.push_str(&take_chars);
@@ -90,6 +94,10 @@ impl SecretFilter {
 
         total
     }
+}
+
+fn char_len(s: &str) -> usize {
+    s.chars().count()
 }
 #[cfg(test)]
 mod tests {
@@ -227,6 +235,46 @@ mod tests {
         let diff = make_diff("src/lib.rs", false, vec![hunk]);
         let result = SecretFilter::build_sanitized_diff(&[diff], &[], 20);
         assert!(result.ends_with("\n\n[...剩余改动已截断]"));
+        let body = result.trim_end_matches("\n\n[...剩余改动已截断]");
+        assert!(body.chars().count() <= 20, "{body}");
+    }
+
+    #[test]
+    fn test_build_sanitized_diff_counts_unicode_scalars() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 1,
+            header: "@@ -0,0 +1,1 @@".to_string(),
+            lines: vec![DiffLine {
+                origin: '+',
+                old_lineno: None,
+                new_lineno: Some(1),
+                content: "中文改动行\n".to_string(),
+            }],
+        };
+        let diff = make_diff("notes.txt", false, vec![hunk]);
+        let full = SecretFilter::build_sanitized_diff(std::slice::from_ref(&diff), &[], usize::MAX);
+        let chars = full.chars().count();
+        assert!(
+            full.len() > chars,
+            "fixture must be wider in bytes than in characters"
+        );
+        assert!(full.contains("中文改动行"));
+
+        let kept = SecretFilter::build_sanitized_diff(std::slice::from_ref(&diff), &[], chars);
+        assert_eq!(kept, full);
+        assert!(!kept.contains("截断"));
+
+        let truncated = SecretFilter::build_sanitized_diff(
+            std::slice::from_ref(&diff),
+            &[],
+            chars.saturating_sub(1),
+        );
+        assert!(truncated.contains("截断"));
+        let body = truncated.trim_end_matches("\n\n[...剩余改动已截断]");
+        assert_eq!(body.chars().count(), chars.saturating_sub(1));
     }
 
     #[test]
