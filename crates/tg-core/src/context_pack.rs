@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::ai::SecretFilter;
 use crate::backend::{ChangeKind, Git2Backend, GitBackend};
 use crate::error::Result;
 
@@ -200,18 +201,19 @@ impl ContextPackGenerator {
         }
 
         md.push_str("## Code Changes Digest\n\n");
-        let mut current_len = md.len();
+        let mut current_len = md.chars().count();
         let mut truncated = false;
 
         for section in diff_sections {
-            if current_len + section.len() > max_len {
+            let section_len = section.chars().count();
+            if current_len + section_len > max_len {
                 md.push_str("*(Diff truncated to remain within token budget. Additional changes omitted.)*\n");
                 truncated = true;
                 break;
             }
             md.push_str(&section);
             md.push('\n');
-            current_len = md.len();
+            current_len += section_len + 1;
         }
 
         if !truncated && files.is_empty() {
@@ -245,6 +247,11 @@ fn format_file_diff_markdown(diff: &crate::backend::FileDiff, staged: bool) -> S
         "Worktree vs Index"
     };
     out.push_str(&format!("### `{}` ({})\n", diff.path, stage_text));
+
+    if SecretFilter::is_secret(&diff.path, &[]) {
+        out.push_str("*(敏感文件：内容已排除)*\n\n");
+        return out;
+    }
 
     if diff.is_binary {
         out.push_str("*(Binary file changed)*\n\n");
@@ -289,6 +296,38 @@ mod tests {
         let formatted = format_file_diff_markdown(&diff, true);
         assert!(formatted.contains("### `assets/logo.png` (Index vs HEAD)\n"));
         assert!(formatted.contains("*(Binary file changed)*\n\n"));
+    }
+
+    #[test]
+    fn test_format_file_diff_markdown_redacts_secret_contents() {
+        let hunk = DiffHunk {
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 1,
+            header: "@@ -0,0 +1,1 @@".to_string(),
+            lines: vec![DiffLine {
+                origin: '+',
+                old_lineno: None,
+                new_lineno: Some(1),
+                content: "API_TOKEN=super-secret-value\n".to_string(),
+            }],
+        };
+        let diff = FileDiff {
+            path: ".env".to_string(),
+            old_path: None,
+            staged: true,
+            is_binary: false,
+            old_size: None,
+            new_size: Some(32),
+            is_crlf_change: false,
+            is_large: false,
+            hunks: vec![hunk],
+        };
+        let formatted = format_file_diff_markdown(&diff, true);
+        assert!(formatted.contains(".env"));
+        assert!(formatted.contains("敏感文件：内容已排除"));
+        assert!(!formatted.contains("super-secret-value"));
     }
 
     #[test]

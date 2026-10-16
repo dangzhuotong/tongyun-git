@@ -490,26 +490,10 @@ impl AiService {
             return String::new();
         }
 
-        // 1. Check for markdown code fence (```...```) anywhere in the message
-        if let (Some(start), Some(end)) = (trimmed.find("```"), trimmed.rfind("```")) {
-            if start < end {
-                let inside = &trimmed[start + 3..end];
-                // Strip optional language identifier on the first line (e.g. ```git\n, ```text\n)
-                let content = if let Some(first_newline) = inside.find('\n') {
-                    let first_line = inside[..first_newline].trim();
-                    if first_line
-                        .chars()
-                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-                    {
-                        &inside[first_newline + 1..]
-                    } else {
-                        inside
-                    }
-                } else {
-                    inside
-                };
-                return Self::clean_commit_message(content);
-            }
+        // 1. Unwrap a fence only when it wraps the whole reply (optional preamble before it).
+        // A fence inside an already-written commit body is an example, not a wrapper.
+        if let Some(content) = unwrap_wrapping_fence(trimmed) {
+            return Self::clean_commit_message(content);
         }
 
         // 2. Check for `git commit -m "..."` pattern
@@ -527,32 +511,11 @@ impl AiService {
         let lines: Vec<&str> = trimmed.lines().collect();
         let mut filtered_lines: Vec<&str> = Vec::new();
 
-        let preamble_prefixes = [
-            "好的",
-            "根据以上",
-            "建议的提交信息",
-            "提交信息如下",
-            "生成的提交信息",
-            "commit message:",
-            "commit message：",
-            "here is the commit message",
-            "here's the commit message",
-        ];
-
         let mut skipping_preamble = true;
         for line in lines {
             let l_trim = line.trim();
             if skipping_preamble {
-                if l_trim.is_empty() {
-                    continue;
-                }
-                let lower = l_trim.to_lowercase();
-                let is_preamble = preamble_prefixes.iter().any(|prefix| {
-                    lower.starts_with(prefix)
-                        || lower.contains("提交信息如下")
-                        || lower.contains("commit message:")
-                });
-                if is_preamble {
+                if l_trim.is_empty() || is_ai_preamble_line(l_trim) {
                     continue;
                 }
                 skipping_preamble = false;
@@ -630,6 +593,57 @@ impl AiService {
     }
 }
 
+fn is_ai_preamble_line(line: &str) -> bool {
+    let lower = line.trim().to_lowercase();
+    const PREFIXES: &[&str] = &[
+        "好的",
+        "根据以上",
+        "建议的提交信息",
+        "提交信息如下",
+        "生成的提交信息",
+        "commit message:",
+        "commit message：",
+        "here is the commit message",
+        "here's the commit message",
+    ];
+    PREFIXES.iter().any(|prefix| {
+        lower.starts_with(prefix)
+            || lower.contains("提交信息如下")
+            || lower.contains("commit message:")
+    })
+}
+
+/// Returns the inside of a fence when the text before it is empty or only AI preamble.
+fn unwrap_wrapping_fence(trimmed: &str) -> Option<&str> {
+    let start = trimmed.find("```")?;
+    let end = trimmed.rfind("```")?;
+    if start >= end {
+        return None;
+    }
+    let before = &trimmed[..start];
+    if !before
+        .lines()
+        .all(|line| line.trim().is_empty() || is_ai_preamble_line(line))
+    {
+        return None;
+    }
+    let inside = &trimmed[start + 3..end];
+    Some(strip_fence_language(inside))
+}
+
+fn strip_fence_language(inside: &str) -> &str {
+    if let Some(first_newline) = inside.find('\n') {
+        let first_line = inside[..first_newline].trim();
+        if first_line
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return &inside[first_newline + 1..];
+        }
+    }
+    inside
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,6 +688,20 @@ mod tests {
         assert_eq!(
             AiService::clean_commit_message(preamble_only),
             "docs: update readme"
+        );
+    }
+
+    #[test]
+    fn keeps_commit_body_when_it_contains_a_code_fence() {
+        let raw = "feat: document parser\n\nExample:\n\n```\ncode sample\n```\n";
+        let cleaned = AiService::clean_commit_message(raw);
+        assert!(
+            cleaned.contains("feat: document parser"),
+            "title dropped: {cleaned}"
+        );
+        assert!(
+            cleaned.contains("code sample"),
+            "example dropped: {cleaned}"
         );
     }
 

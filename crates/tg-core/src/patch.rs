@@ -216,7 +216,9 @@ fn repo_relative_path_ok(path: &str) -> bool {
         return false;
     }
     for component in path.split(['/', '\\']) {
-        if component == ".." {
+        // `.git` is the repository itself. A patch that stages it can write hooks
+        // or config on checkout, including the case-insensitive `.GIT` on Windows/macOS.
+        if component == ".." || component.eq_ignore_ascii_case(".git") {
             return false;
         }
     }
@@ -363,6 +365,18 @@ diff --git a/multi_hunk.txt b/multi_hunk.txt
         assert!(
             validate_index_patch("diff --git \"a/\\056\\056/x\" \"b/\\056\\056/x\"\n").is_err()
         );
+        assert!(validate_index_patch("diff --git a/.git/config b/.git/config\n").is_err());
+        assert!(validate_index_patch(
+            "diff --git a/.GIT/hooks/pre-commit b/.GIT/hooks/pre-commit\n"
+        )
+        .is_err());
+        assert!(validate_index_patch("rename to .git/hooks/pre-commit\n").is_err());
+        assert!(
+            validate_index_patch("diff --git \"a/\\056git/config\" \"b/\\056git/config\"\n")
+                .is_err()
+        );
+        validate_index_patch("diff --git a/.gitignore b/.gitignore\n").unwrap();
+        validate_index_patch("diff --git a/.gitmodules b/.gitmodules\n").unwrap();
     }
 
     #[test]
@@ -554,6 +568,10 @@ diff --git a/f.txt b/f.txt
         assert!(!repo_relative_path_ok("C:/drive"));
         assert!(!repo_relative_path_ok("../outside"));
         assert!(!repo_relative_path_ok("foo/../../bar"));
+        assert!(!repo_relative_path_ok(".git/config"));
+        assert!(!repo_relative_path_ok("dir/.GIT/hooks/pre-commit"));
+        assert!(repo_relative_path_ok(".gitignore"));
+        assert!(repo_relative_path_ok(".gitmodules"));
         assert!(!repo_relative_path_ok("has\0null"));
         assert!(!repo_relative_path_ok("has\nnewline"));
         assert!(!repo_relative_path_ok("has\rcarriage"));

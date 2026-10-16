@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{CliOutput, CliRunner, RunOptions};
 use crate::error::{CoreError, Result};
+use crate::workspace::safe_path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConflictFileSummary {
@@ -80,6 +81,9 @@ impl ConflictService {
     /// Retrieve full Base (Ancestor), Ours (Local), Theirs (Remote), and Worktree contents for a conflicted file.
     pub fn get_conflict_details(repo_path: &Path, file_path: &str) -> Result<ConflictFileDetails> {
         let repo = Repository::open(repo_path)?;
+        let worktree_dir = repo.workdir().ok_or(CoreError::BareRepository)?;
+        // Reject `..`, absolute paths, `.git`, and symlink escapes before reading.
+        let worktree_file_path = safe_path(worktree_dir, file_path)?;
         let index = repo.index()?;
 
         let mut base_content = None;
@@ -129,11 +133,6 @@ impl ConflictService {
                 break;
             }
         }
-
-        let worktree_file_path = repo
-            .workdir()
-            .ok_or(CoreError::BareRepository)?
-            .join(file_path);
 
         let worktree_content = if worktree_file_path.exists() {
             fs::read_to_string(&worktree_file_path).unwrap_or_default()
@@ -222,7 +221,7 @@ impl ConflictService {
     ) -> Result<()> {
         let repo = Repository::open(repo_path)?;
         let worktree_dir = repo.workdir().ok_or(CoreError::BareRepository)?;
-        let full_path = worktree_dir.join(file_path);
+        let full_path = safe_path(worktree_dir, file_path)?;
 
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
