@@ -395,4 +395,73 @@ Aborting
         let files = parse_checkout_conflicts(err);
         assert_eq!(files, vec!["src/api/user.ts", "src/db.ts"]);
     }
+
+    #[test]
+    fn test_parse_checkout_conflicts_no_marker_returns_empty() {
+        assert!(parse_checkout_conflicts("").is_empty());
+        assert!(parse_checkout_conflicts("fatal: not a git repository\n").is_empty());
+        assert!(parse_checkout_conflicts(
+            "error: Your local changes would be overwritten by merge:\n\ta.txt\n"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn test_parse_checkout_conflicts_skips_blank_lines_and_trims() {
+        let err = "error: Your local changes to the following files would be overwritten by checkout:\n\n\t  spaced.txt  \nplain.txt\n\nPlease commit your changes or stash them before you switch branches.\nAborting\n";
+        let files = parse_checkout_conflicts(err);
+        assert_eq!(files, vec!["spaced.txt", "plain.txt"]);
+    }
+
+    #[test]
+    fn test_parse_checkout_conflicts_stops_at_aborting() {
+        let err = "error: Your local changes to the following files would be overwritten by checkout:\n\ta.txt\nAborting\n\tnot-a-file.txt\n";
+        let files = parse_checkout_conflicts(err);
+        assert_eq!(files, vec!["a.txt"]);
+    }
+
+    #[test]
+    fn test_parse_checkout_conflicts_does_not_include_header() {
+        let err = "error: Your local changes to the following files would be overwritten by checkout:\n\tone.txt\n";
+        let files = parse_checkout_conflicts(err);
+        assert_eq!(files, vec!["one.txt"]);
+        assert!(!files.iter().any(|f| f.contains("error:")));
+    }
+
+    #[test]
+    fn test_branch_result_structs_serde_roundtrip() {
+        let item = BranchItem {
+            name: "feature/x".to_string(),
+            is_remote: false,
+            is_head: true,
+            upstream: Some("origin/feature/x".to_string()),
+            ahead: 2,
+            behind: 1,
+            target_oid: "a".repeat(40),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert_eq!(item, serde_json::from_str::<BranchItem>(&json).unwrap());
+
+        let validation = ValidationResult {
+            valid: false,
+            error_message: Some("分支名称不能为空".to_string()),
+        };
+        let v_json = serde_json::to_string(&validation).unwrap();
+        assert_eq!(
+            validation,
+            serde_json::from_str::<ValidationResult>(&v_json).unwrap()
+        );
+
+        let switch = SwitchBranchResult {
+            success: false,
+            current_branch: "main".to_string(),
+            conflicting_files: vec!["src/db.ts".to_string()],
+            error_message: None,
+        };
+        let s_json = serde_json::to_string(&switch).unwrap();
+        assert_eq!(
+            switch,
+            serde_json::from_str::<SwitchBranchResult>(&s_json).unwrap()
+        );
+    }
 }
