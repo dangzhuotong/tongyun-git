@@ -631,17 +631,50 @@ mod tests {
 
     #[test]
     fn test_map_repo_state() {
-        assert_eq!(map_repo_state(git2::RepositoryState::Clean), RepoState::Clean);
-        assert_eq!(map_repo_state(git2::RepositoryState::Merge), RepoState::Merge);
-        assert_eq!(map_repo_state(git2::RepositoryState::Rebase), RepoState::Rebase);
-        assert_eq!(map_repo_state(git2::RepositoryState::RebaseInteractive), RepoState::Rebase);
-        assert_eq!(map_repo_state(git2::RepositoryState::RebaseMerge), RepoState::Rebase);
-        assert_eq!(map_repo_state(git2::RepositoryState::CherryPick), RepoState::CherryPick);
-        assert_eq!(map_repo_state(git2::RepositoryState::CherryPickSequence), RepoState::CherryPick);
-        assert_eq!(map_repo_state(git2::RepositoryState::Revert), RepoState::Revert);
-        assert_eq!(map_repo_state(git2::RepositoryState::RevertSequence), RepoState::Revert);
-        assert_eq!(map_repo_state(git2::RepositoryState::Bisect), RepoState::Bisect);
-        assert_eq!(map_repo_state(git2::RepositoryState::ApplyMailbox), RepoState::Other);
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Clean),
+            RepoState::Clean
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Merge),
+            RepoState::Merge
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Rebase),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RebaseInteractive),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RebaseMerge),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::CherryPick),
+            RepoState::CherryPick
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::CherryPickSequence),
+            RepoState::CherryPick
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Revert),
+            RepoState::Revert
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RevertSequence),
+            RepoState::Revert
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Bisect),
+            RepoState::Bisect
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::ApplyMailbox),
+            RepoState::Other
+        );
     }
 
     #[test]
@@ -735,4 +768,3 @@ mod tests {
         assert_eq!(tree_file, tf_de);
     }
 }
-

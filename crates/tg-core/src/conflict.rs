@@ -537,4 +537,3 @@ block 2 theirs
         assert_eq!(details, d_de);
     }
 }
-

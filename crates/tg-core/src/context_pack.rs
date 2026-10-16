@@ -366,4 +366,3 @@ mod tests {
         assert_eq!(file_summary.hunk_headers, fs_de.hunk_headers);
     }
 }
-

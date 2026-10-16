@@ -247,4 +247,3 @@ mod tests {
         assert!(!SecretFilter::is_secret("other/api_config.json", &custom));
     }
 }
-

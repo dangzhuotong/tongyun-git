@@ -406,4 +406,3 @@ mod tests {
         assert_eq!(parsed.hunk_overlaps, vec!["file.txt"]);
     }
 }
-

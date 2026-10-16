@@ -285,4 +285,3 @@ mod tests {
         assert_eq!(res, r_de);
     }
 }
-

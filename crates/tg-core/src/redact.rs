@@ -180,11 +180,17 @@ mod tests {
     fn test_redact_empty_user_or_password() {
         let input_empty_user = "https://:secret@example.com/repo.git";
         let expected_empty_user = "https://:***@example.com/repo.git";
-        assert_eq!(redact_url_credentials(input_empty_user), expected_empty_user);
+        assert_eq!(
+            redact_url_credentials(input_empty_user),
+            expected_empty_user
+        );
 
         let input_empty_pass = "https://alice:@example.com/repo.git";
         let expected_empty_pass = "https://alice:***@example.com/repo.git";
-        assert_eq!(redact_url_credentials(input_empty_pass), expected_empty_pass);
+        assert_eq!(
+            redact_url_credentials(input_empty_pass),
+            expected_empty_pass
+        );
     }
 
     #[test]
@@ -237,7 +243,9 @@ mod tests {
         assert_eq!(redact_url_credentials(""), "");
         assert_eq!(redact_url_credentials("https://"), "https://");
         assert_eq!(redact_url_credentials("https:///"), "https:///");
-        assert_eq!(redact_url_credentials("://user:pass@host"), "://user:pass@host");
+        assert_eq!(
+            redact_url_credentials("://user:pass@host"),
+            "://user:pass@host"
+        );
     }
 }
-

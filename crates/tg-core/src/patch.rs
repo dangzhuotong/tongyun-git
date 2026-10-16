@@ -523,7 +523,10 @@ diff --git a/f.txt b/f.txt
         assert_eq!(tokens, vec!["a/foo.txt", "b/bar.txt"]);
 
         let tokens_quoted = split_diff_tokens(r#""a/my file.txt" "b/my file.txt""#).unwrap();
-        assert_eq!(tokens_quoted, vec![r#""a/my file.txt""#, r#""b/my file.txt""#]);
+        assert_eq!(
+            tokens_quoted,
+            vec![r#""a/my file.txt""#, r#""b/my file.txt""#]
+        );
 
         let extra_spaces = split_diff_tokens("   a/x     b/y   ").unwrap();
         assert_eq!(extra_spaces, vec!["a/x", "b/y"]);
@@ -623,7 +626,8 @@ diff --git a/deleted.txt b/deleted.txt
         };
 
         // When selected_line_indices is empty, it means ALL lines selected
-        let patch = build_selected_patch("src\\folder\\file.txt", &hunk, &[], false, false).unwrap();
+        let patch =
+            build_selected_patch("src\\folder\\file.txt", &hunk, &[], false, false).unwrap();
         // Path backslash converted to forward slash
         assert!(patch.contains("--- a/src/folder/file.txt\n+++ b/src/folder/file.txt\n"));
         // CRLF stripped before appending \n
@@ -631,4 +635,3 @@ diff --git a/deleted.txt b/deleted.txt
         assert!(!patch.contains("\r"));
     }
 }
-
