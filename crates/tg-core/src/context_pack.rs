@@ -266,3 +266,104 @@ fn format_file_diff_markdown(diff: &crate::backend::FileDiff, staged: bool) -> S
     out.push_str("```\n");
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{DiffHunk, DiffLine, FileDiff};
+
+    #[test]
+    fn test_format_file_diff_markdown_binary() {
+        let diff = FileDiff {
+            path: "assets/logo.png".to_string(),
+            old_path: None,
+            staged: true,
+            is_binary: true,
+            old_size: Some(100),
+            new_size: Some(120),
+            is_crlf_change: false,
+            is_large: false,
+            hunks: vec![],
+        };
+
+        let formatted = format_file_diff_markdown(&diff, true);
+        assert!(formatted.contains("### `assets/logo.png` (Index vs HEAD)\n"));
+        assert!(formatted.contains("*(Binary file changed)*\n\n"));
+    }
+
+    #[test]
+    fn test_format_file_diff_markdown_staged_and_unstaged_headers() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 1,
+            new_start: 1,
+            new_lines: 2,
+            header: "@@ -1,1 +1,2 @@".to_string(),
+            lines: vec![
+                DiffLine {
+                    origin: ' ',
+                    old_lineno: Some(1),
+                    new_lineno: Some(1),
+                    content: "unchanged\n".to_string(),
+                },
+                DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(2),
+                    content: "new line".to_string(),
+                },
+            ],
+        };
+
+        let diff = FileDiff {
+            path: "src/main.rs".to_string(),
+            old_path: None,
+            staged: true,
+            is_binary: false,
+            old_size: Some(10),
+            new_size: Some(20),
+            is_crlf_change: false,
+            is_large: false,
+            hunks: vec![hunk],
+        };
+
+        let staged_md = format_file_diff_markdown(&diff, true);
+        assert!(staged_md.contains("### `src/main.rs` (Index vs HEAD)\n"));
+        assert!(staged_md.contains("```diff\n@@ -1,1 +1,2 @@\n unchanged\n+new line\n```\n"));
+
+        let unstaged_md = format_file_diff_markdown(&diff, false);
+        assert!(unstaged_md.contains("### `src/main.rs` (Worktree vs Index)\n"));
+    }
+
+    #[test]
+    fn test_context_pack_summary_serde_roundtrip() {
+        let summary = ContextPackSummary {
+            total_changed_files: 3,
+            staged_count: 1,
+            unstaged_count: 2,
+            untracked_count: 1,
+            additions: 15,
+            deletions: 5,
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        let de: ContextPackSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(summary.total_changed_files, de.total_changed_files);
+        assert_eq!(summary.additions, de.additions);
+        assert_eq!(summary.deletions, de.deletions);
+
+        let file_summary = ContextFileSummary {
+            path: "file.txt".to_string(),
+            status: "M".to_string(),
+            staged: true,
+            additions: 10,
+            deletions: 2,
+            hunk_count: 1,
+            hunk_headers: vec!["@@ -1,5 +1,13 @@".to_string()],
+        };
+        let fs_json = serde_json::to_string(&file_summary).unwrap();
+        let fs_de: ContextFileSummary = serde_json::from_str(&fs_json).unwrap();
+        assert_eq!(file_summary.path, fs_de.path);
+        assert_eq!(file_summary.hunk_headers, fs_de.hunk_headers);
+    }
+}
+

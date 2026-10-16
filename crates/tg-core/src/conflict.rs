@@ -373,4 +373,168 @@ footer";
         assert_eq!(hunks[1].our_lines, vec!["second our"]);
         assert_eq!(hunks[1].their_lines, vec!["second their"]);
     }
+
+    #[test]
+    fn test_parse_conflict_hunks_deletion_only() {
+        let content = "\
+<<<<<<< HEAD
+=======
+incoming added line
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, Vec::<String>::new());
+        assert_eq!(hunks[0].their_lines, vec!["incoming added line"]);
+        assert!(hunks[0].base_lines.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_addition_only() {
+        let content = "\
+<<<<<<< HEAD
+local added line
+=======
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["local added line"]);
+        assert_eq!(hunks[0].their_lines, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_both_empty() {
+        let content = "\
+<<<<<<< HEAD
+=======
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert!(hunks[0].our_lines.is_empty());
+        assert!(hunks[0].their_lines.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_diff3_empty_base() {
+        let content = "\
+<<<<<<< HEAD
+local line
+|||||||
+=======
+remote line
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["local line"]);
+        assert!(hunks[0].base_lines.is_empty());
+        assert_eq!(hunks[0].their_lines, vec!["remote line"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_marker_labels_and_hashes() {
+        let content = "\
+<<<<<<< HEAD (Current Change)
+ours
+||||||| 1234abc (Base Ancestor)
+base
+=======
+theirs
+>>>>>>> feature-xyz (Incoming Change)";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_unclosed_marker_yields_no_hunk() {
+        let content = "\
+<<<<<<< HEAD
+unclosed conflict text
+=======
+partial text without closing marker";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_partial_markers_treated_as_content() {
+        let content = "\
+<<<< shorter marker
+==== shorter equal
+>>>> shorter closing
+line 4";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_consecutive_no_intervening_lines() {
+        let content = "\
+<<<<<<< HEAD
+block 1 ours
+=======
+block 1 theirs
+>>>>>>> branch1
+<<<<<<< HEAD
+block 2 ours
+=======
+block 2 theirs
+>>>>>>> branch2";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(hunks[0].hunk_index, 0);
+        assert_eq!(hunks[0].our_lines, vec!["block 1 ours"]);
+        assert_eq!(hunks[0].their_lines, vec!["block 1 theirs"]);
+        assert_eq!(hunks[1].hunk_index, 1);
+        assert_eq!(hunks[1].our_lines, vec!["block 2 ours"]);
+        assert_eq!(hunks[1].their_lines, vec!["block 2 theirs"]);
+    }
+
+    #[test]
+    fn test_conflict_structs_serde_roundtrip() {
+        let summary = ConflictFileSummary {
+            path: "src/lib.rs".to_string(),
+            has_ancestor: true,
+            has_our: true,
+            has_their: false,
+        };
+        let s_json = serde_json::to_string(&summary).expect("serialize summary");
+        let s_de: ConflictFileSummary = serde_json::from_str(&s_json).expect("deserialize summary");
+        assert_eq!(summary, s_de);
+
+        let hunk = ConflictHunk {
+            hunk_index: 0,
+            our_start_line: 10,
+            our_lines: vec!["a".to_string()],
+            their_start_line: 12,
+            their_lines: vec!["b".to_string()],
+            base_lines: vec!["c".to_string()],
+        };
+        let h_json = serde_json::to_string(&hunk).expect("serialize hunk");
+        let h_de: ConflictHunk = serde_json::from_str(&h_json).expect("deserialize hunk");
+        assert_eq!(hunk, h_de);
+
+        let details = ConflictFileDetails {
+            path: "src/lib.rs".to_string(),
+            base_content: Some("base".to_string()),
+            our_content: Some("ours".to_string()),
+            their_content: None,
+            worktree_content: "worktree".to_string(),
+            hunks: vec![hunk],
+            is_binary: false,
+        };
+        let d_json = serde_json::to_string(&details).expect("serialize details");
+        let d_de: ConflictFileDetails = serde_json::from_str(&d_json).expect("deserialize details");
+        assert_eq!(details, d_de);
+    }
 }
+

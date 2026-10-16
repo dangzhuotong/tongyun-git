@@ -222,3 +222,67 @@ impl StashService {
         (String::new(), subject.trim().to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_subject_wip_with_message() {
+        let (branch, msg) = StashService::parse_subject("WIP on main: 1234abc feat: my feature");
+        assert_eq!(branch, "main");
+        assert_eq!(msg, "1234abc feat: my feature");
+    }
+
+    #[test]
+    fn test_parse_subject_wip_without_message() {
+        let (branch, msg) = StashService::parse_subject("WIP on feature-branch");
+        assert_eq!(branch, "feature-branch");
+        assert_eq!(msg, "");
+    }
+
+    #[test]
+    fn test_parse_subject_on_with_message() {
+        let (branch, msg) = StashService::parse_subject("On dev: custom stash note");
+        assert_eq!(branch, "dev");
+        assert_eq!(msg, "custom stash note");
+    }
+
+    #[test]
+    fn test_parse_subject_on_without_message() {
+        let (branch, msg) = StashService::parse_subject("On dev");
+        assert_eq!(branch, "dev");
+        assert_eq!(msg, "");
+    }
+
+    #[test]
+    fn test_parse_subject_custom_message() {
+        let (branch, msg) = StashService::parse_subject("just a custom message");
+        assert_eq!(branch, "");
+        assert_eq!(msg, "just a custom message");
+    }
+
+    #[test]
+    fn test_stash_structs_serde_roundtrip() {
+        let item = StashItem {
+            index: 0,
+            name: "stash@{0}".to_string(),
+            branch: "main".to_string(),
+            message: "wip".to_string(),
+            date: Some("2 hours ago".to_string()),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let de: StashItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, de);
+
+        let res = StashApplyResult {
+            success: true,
+            has_conflict: false,
+            message: Some("applied".to_string()),
+        };
+        let r_json = serde_json::to_string(&res).unwrap();
+        let r_de: StashApplyResult = serde_json::from_str(&r_json).unwrap();
+        assert_eq!(res, r_de);
+    }
+}
+
