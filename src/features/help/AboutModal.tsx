@@ -6,9 +6,17 @@ interface AboutModalProps {
   isOpen: boolean;
   onClose: () => void;
   appInfo: AppInfo | null;
+  checkingUpdate?: boolean;
+  onCheckUpdate?: () => void;
 }
 
-export function AboutModal({ isOpen, onClose, appInfo }: AboutModalProps) {
+export function AboutModal({
+  isOpen,
+  onClose,
+  appInfo,
+  checkingUpdate = false,
+  onCheckUpdate,
+}: AboutModalProps) {
   useEscapeKey(onClose, isOpen);
 
   if (!isOpen) return null;
@@ -49,7 +57,7 @@ export function AboutModal({ isOpen, onClose, appInfo }: AboutModalProps) {
               对标 IntelliJ IDEA 的独立桌面 Git 客户端 · 自带智能 AI 能力
             </p>
             <div className="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 text-[var(--color-accent)] text-xs font-mono font-medium">
-              v{appInfo?.version || "0.1.0"}
+              当前版本 v{appInfo?.version || "0.1.0"}
             </div>
           </div>
 
@@ -85,6 +93,24 @@ export function AboutModal({ isOpen, onClose, appInfo }: AboutModalProps) {
             <span>© 2026 橦云 Tongyun. 保留所有权利。</span>
             <span className="text-[var(--color-accent)]">生产环境就绪</span>
           </div>
+        </div>
+
+        <div className="px-4 py-2.5 bg-[var(--color-surface-raised)] border-t border-[var(--color-border)] flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCheckUpdate}
+            disabled={checkingUpdate || !onCheckUpdate}
+            className="px-4 py-1.5 rounded-md text-xs font-medium border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {checkingUpdate ? "正在检查更新…" : "检查更新"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            确定
+          </button>
         </div>
       </div>
     </div>

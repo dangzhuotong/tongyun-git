@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   getAppInfo,
@@ -45,6 +46,8 @@ import { CreateTagModal } from "./features/tag/CreateTagModal";
 import { FileHistoryModal } from "./features/history/FileHistoryModal";
 import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
 import { AboutModal } from "./features/help/AboutModal";
+import { UpdateModal } from "./UpdateModal";
+import { checkForAppUpdate } from "./updater";
 import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
 import { InteractiveRebaseModal } from "./features/rebase/InteractiveRebaseModal";
 import { WorktreeModal } from "./features/worktree/WorktreeModal";
@@ -59,6 +62,12 @@ import { useAppModals } from "./hooks/useAppModals";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
+  const [updateToast, setUpdateToast] = useState<{ text: string; tone: "ok" | "danger" } | null>(
+    null,
+  );
+  const checkingUpdateRef = useRef(false);
   const [gitAvailable, setGitAvailable] = useState(true);
   const [gitError, setGitError] = useState<string | null>(null);
 
@@ -251,7 +260,7 @@ export default function App() {
         // Fallback for browser preview
         setAppInfo({
           name: "tongyun-git",
-          version: "0.0.0",
+          version: "0.1.0",
           identifier: "com.tongyun.git",
           git_version: "2.47.3",
           libgit2_version: "1.9.7",
@@ -456,7 +465,7 @@ export default function App() {
         if (mounted) {
           setAppInfo({
             name: "tongyun-git",
-            version: "0.0.0",
+            version: "0.1.0",
             identifier: "com.tongyun.git",
             git_version: "2.47.3",
             libgit2_version: "1.9.7",
@@ -603,6 +612,44 @@ export default function App() {
       unlisten?.();
     };
   }, [handleOpenRepo]);
+
+  const handleCheckUpdate = useCallback(async (manual: boolean) => {
+    if (checkingUpdateRef.current) return;
+    checkingUpdateRef.current = true;
+    setCheckingUpdate(true);
+    try {
+      const update = await checkForAppUpdate();
+      if (update) {
+        setActiveUpdate((prev) => {
+          prev?.close().catch(() => {});
+          return update;
+        });
+      } else if (manual) {
+        setUpdateToast({ text: "已是最新版本", tone: "ok" });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (manual) {
+        setUpdateToast({ text: `检查更新失败：${message}`, tone: "danger" });
+      }
+    } finally {
+      checkingUpdateRef.current = false;
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void handleCheckUpdate(false);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [handleCheckUpdate]);
+
+  useEffect(() => {
+    if (!updateToast) return;
+    const timer = window.setTimeout(() => setUpdateToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [updateToast]);
 
   // Command list for CommandPalette (R-16)
   const commandList: CommandItem[] = useMemo(() => {
@@ -1503,6 +1550,8 @@ export default function App() {
           localStorage.setItem("tongyun_git_path", p);
         }}
         initialTab={settingsTab}
+        checkingUpdate={checkingUpdate}
+        onCheckUpdate={() => void handleCheckUpdate(true)}
       />
 
       {/* Branch Modal (R-08) */}
@@ -1646,7 +1695,32 @@ export default function App() {
         isOpen={aboutModalOpen}
         onClose={() => setAboutModalOpen(false)}
         appInfo={appInfo}
+        checkingUpdate={checkingUpdate}
+        onCheckUpdate={() => void handleCheckUpdate(true)}
       />
+
+      {activeUpdate && (
+        <UpdateModal
+          update={activeUpdate}
+          onClose={() => {
+            activeUpdate.close().catch(() => {});
+            setActiveUpdate(null);
+          }}
+        />
+      )}
+
+      {updateToast && (
+        <div
+          role="status"
+          className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg text-xs font-medium shadow-lg border ${
+            updateToast.tone === "danger"
+              ? "bg-[var(--color-danger)]/15 border-[var(--color-danger)]/40 text-[var(--color-danger)]"
+              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
+          }`}
+        >
+          {updateToast.text}
+        </div>
+      )}
 
       {/* Command Palette (R-16) */}
       <CommandPalette

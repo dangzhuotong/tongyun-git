@@ -1,6 +1,6 @@
 [package]
 name = "tongyun-git"
-version = "0.0.0"
+version = "0.1.0"
 description = "tongyun-git desktop host"
 edition.workspace = true
 
@@ -18,3 +18,5 @@ serde_json = "1"
 tg-core = { path = "../crates/tg-core" }
 rfd = "0.15"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

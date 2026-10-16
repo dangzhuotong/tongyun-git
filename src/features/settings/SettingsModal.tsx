@@ -28,6 +28,8 @@ interface SettingsModalProps {
   gitPath: string;
   onGitPathChange: (path: string) => void;
   initialTab?: "general" | "ai";
+  checkingUpdate?: boolean;
+  onCheckUpdate?: () => void;
 }
 
 const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -51,6 +53,8 @@ export function SettingsModal({
   gitPath,
   onGitPathChange,
   initialTab = "general",
+  checkingUpdate = false,
+  onCheckUpdate,
 }: SettingsModalProps) {
   useEscapeKey(onClose, isOpen);
 
@@ -410,9 +414,21 @@ export function SettingsModal({
                   <span>应用名称</span>
                   <span className="font-medium text-[var(--color-text)]">{appInfo?.name}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center gap-2">
                   <span>应用版本</span>
-                  <span className="font-mono">{appInfo?.version}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-[var(--color-text)]">
+                      v{appInfo?.version || "0.1.0"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onCheckUpdate}
+                      disabled={checkingUpdate || !onCheckUpdate}
+                      className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {checkingUpdate ? "正在检查更新…" : "检查更新"}
+                    </button>
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>libgit2</span>

@@ -353,4 +353,33 @@ describe("SettingsModal component", () => {
     expect(screen.getByPlaceholderText(/输入 API Key/)).toBeDefined();
     expect(screen.getByText(/未配置 Key/)).toBeDefined();
   });
+
+  it("checks for updates from the general tab", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: false,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+    const onCheckUpdate = vi.fn();
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        appInfo={defaultAppInfo}
+        theme="system"
+        onThemeChange={vi.fn()}
+        gitPath=""
+        onGitPathChange={vi.fn()}
+        onCheckUpdate={onCheckUpdate}
+      />
+    );
+
+    await waitFor(() => {
+      expect(host.getAiKeyStatus).toHaveBeenCalled();
+    });
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+    expect(onCheckUpdate).toHaveBeenCalledOnce();
+  });
 });
