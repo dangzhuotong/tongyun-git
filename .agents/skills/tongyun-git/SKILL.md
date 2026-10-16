@@ -16,6 +16,7 @@ description: >-
 - **AI 写**：外部 Agent 将意图（Prompt/任务说明）、推荐的 Conventional Commit 信息与审查便签推送到桌面 UI；
 - **安全网**：外部 Agent 执行前自动打快照（`snapshot`），一旦测试报错或改崩，一键 100% 确定性回滚（`rewind`）；
 - **人终审**：人类在精雕细琢的桌面 UI 上监看动态、一键采纳提交并归档。
+- **受控 Git CLI**：`tongyun-git-agent status / diff / history / commit`，JSON v1，复用核心服务；写入必须显式授权。契约见 [Agent 安全与追溯](../../../docs/agent-safety.md)。它不读取钥匙串，也不提供 `tg ai commit --json`。
 
 ---
 

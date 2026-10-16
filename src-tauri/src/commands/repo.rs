@@ -44,12 +44,15 @@ pub fn open_repository(path: String) -> std::result::Result<RepoInfo, String> {
 
 #[tauri::command]
 pub fn init_repository(path: String) -> std::result::Result<RepoInfo, String> {
-    let p = Path::new(&path);
-    if !p.exists() {
-        return Err("指定的路径不存在".to_string());
-    }
-    Git2Backend::init(p).map_err(|e| e.to_string())?;
-    open_repository(path)
+    let audit_target = path.clone();
+    crate::journal_cmd::run("init_repository", &audit_target, || {
+        let p = Path::new(&path);
+        if !p.exists() {
+            return Err("指定的路径不存在".to_string());
+        }
+        Git2Backend::init(p).map_err(|e| e.to_string())?;
+        open_repository(path)
+    })
 }
 
 #[tauri::command]

@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod audit;
 pub mod backend;
 pub mod branch;
 pub mod cli;
@@ -7,6 +8,7 @@ pub mod conflict;
 pub mod context_pack;
 pub mod discard;
 pub mod error;
+pub mod journal;
 pub mod log;
 pub mod patch;
 pub mod rebase;

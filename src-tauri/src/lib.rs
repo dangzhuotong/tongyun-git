@@ -1,5 +1,6 @@
 mod bridge;
 mod commands;
+mod journal_cmd;
 mod workspace;
 
 pub use commands::{AiKeyStatus, AppInfo, GitCheckResult, RepoInfo, RepoStatusResult};
@@ -9,6 +10,7 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             bridge::start_bridge_server(app.handle().clone());
+            tg_core::journal::configure(&app.path().app_data_dir()?.join("audit"))?;
             Ok(())
         })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -21,6 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            commands::operation_history,
             workspace::workspace_task,
             commands::app_info,
             commands::check_git,

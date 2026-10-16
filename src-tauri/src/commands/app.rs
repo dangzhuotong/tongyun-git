@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::AppHandle;
 use tg_core::{
     clear_operation_logs as tg_clear_operation_logs, get_operation_logs as tg_get_operation_logs,
-    CliRunner, OperationLogEntry,
+    CliRunner,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,8 +61,39 @@ pub fn check_git(custom_path: Option<String>) -> GitCheckResult {
 }
 
 #[tauri::command]
-pub fn get_operation_logs() -> Vec<OperationLogEntry> {
-    tg_get_operation_logs()
+pub fn get_operation_logs() -> Vec<serde_json::Value> {
+    let mut entries = tg_get_operation_logs()
+        .into_iter()
+        .filter_map(|entry| serde_json::to_value(entry).ok())
+        .collect::<Vec<_>>();
+    // A corrupt audit file is skipped inside journal::history. If the directory
+    // itself cannot be read, keep the in-memory CLI output instead of failing the panel.
+    if let Ok(events) = tg_core::journal::history() {
+        entries.extend(events.into_iter().rev().take(200).map(|event| {
+            serde_json::json!({
+                "id": format!("{}-{}", event.operation_id, event.phase),
+                "operation_id": event.operation_id,
+                "timestamp_ms": event.timestamp_ms,
+                "command_line": event.action,
+                "cwd": event.target,
+                "duration_ms": 0,
+                "exit_code": null,
+                "audit_phase": event.phase,
+                "audit_outcome": event.outcome,
+                "actor": event.actor,
+                "task_id": event.task_id,
+            })
+        }));
+    }
+    entries
+        .sort_by_key(|entry| std::cmp::Reverse(entry["timestamp_ms"].as_u64().unwrap_or_default()));
+    entries.truncate(200);
+    entries
+}
+
+#[tauri::command]
+pub fn operation_history() -> Result<Vec<tg_core::audit::Event>, String> {
+    tg_core::journal::history().map_err(|_| "AUDIT_UNAVAILABLE".into())
 }
 
 #[tauri::command]
