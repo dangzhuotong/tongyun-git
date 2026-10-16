@@ -38,9 +38,23 @@ npm run tauri dev
 # 运行全量自动化检查（TypeScript + ESLint + Vitest + Clippy + Cargo Test）
 npm run check
 
-# 打包生产环境单文件客户端
-npx tauri build --no-bundle
+# 打包生产环境单文件客户端（不签名、不生成更新包）
+npx tauri build --no-bundle -- --config src-tauri/tauri.unsigned.json
 ```
+
+## 检查更新
+
+日常更新用桌面 App 里的 **检查更新**（设置 → 常规，以及关于窗口），或等启动大约 3 秒后的提示。已经是最新会提示「已是最新版本」。
+
+新版本来自 tag `vX.Y.Z`，并且和 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 的版本一致。GitHub Actions 会发布 Release，并带上更新器用的 `latest.json`。合进 main 不会自动发版。步骤见 [docs/development.md](docs/development.md)。
+
+安装包没有 Apple 签名和公证，所以 macOS 首次打开会提示无法验证开发者。三种解决办法：
+
+1. 系统设置 → 隐私与安全性 → 往下找到提示，点「仍要打开」；
+2. 在「应用程序」里右键点 App，选「打开」，再确认一次；
+3. 终端执行：`xattr -dr com.apple.quarantine /Applications/tongyun-git.app`
+
+已经装上的 App 用「检查更新」换的是 minisign 签过的包，不受这次隔离提示影响。`0.1.0` 是第一个带更新器的版本。
 
 ## 文档
 
