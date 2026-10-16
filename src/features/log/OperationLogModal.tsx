@@ -124,7 +124,9 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
             </div>
           ) : (
             logs.map((log) => {
-              const isSuccess = log.exit_code === 0;
+              const isAudit=Boolean(log.audit_phase);
+              const isSuccess=isAudit?log.audit_phase==='finished' && log.audit_outcome==='succeeded':log.exit_code===0;
+              const label=isAudit?(log.audit_phase==='started'?'进行中或待核查':isSuccess?'已完成':'失败或结果待核查'):(log.exit_code==null?'结果待核查':isSuccess?'成功':`退出码: ${log.exit_code}`);
               return (
                 <div
                   key={log.id}
@@ -137,19 +139,20 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
                         className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                           isSuccess
                             ? "bg-[var(--ty-matcha)]/20 text-[#c4d7b2]"
-                            : "bg-[var(--ty-peach)]/20 text-[#f0b4a5]"
+                            : isAudit || log.exit_code==null ? "text-[var(--log-muted)]" : "bg-[var(--ty-peach)]/20 text-[#f0b4a5]"
                         }`}
                       >
-                        {isSuccess ? "成功" : `退出码: ${log.exit_code ?? "Err"}`}
+                        {label}
                       </span>
                     </div>
-                    <span className="text-[var(--log-muted)]">{log.duration_ms} ms</span>
+                    <span className="text-[var(--log-muted)]">{isAudit ? "审计记录" : `${log.duration_ms} ms`}</span>
                   </div>
 
                   <div className="text-[#c4d7b2] select-all break-all font-semibold">
                     {log.command_line}
                   </div>
 
+                  {isAudit && <div className="text-[var(--log-muted)] break-all">{log.actor} · {log.task_id} · {log.operation_id}</div>}
                   {log.error_message && (
                     <div className="mt-1 text-[#f0b4a5] break-all bg-[var(--ty-peach)]/10 p-1.5 rounded border border-[var(--ty-peach)]/20">
                       {log.error_message}

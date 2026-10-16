@@ -57,3 +57,5 @@ npx tauri build --no-bundle
 | [docs/architecture.md](docs/architecture.md) | 架构设计 |
 | [docs/development.md](docs/development.md) | 开发命令、CI、发版 |
 | [docs/decisions/](docs/decisions/) | 决策记录 |
+
+2026-10-16：R-19 外部 Agent 入口与 R-15 持久化审计见 [Agent 安全与追溯](docs/agent-safety.md)。

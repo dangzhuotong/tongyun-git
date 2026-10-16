@@ -8,10 +8,10 @@ use tg_core::{
     CommitDetails, CommitService, ConflictFileDetails, ConflictFileSummary, ConflictService,
     CoreError, DiffReviewResult, FetchResult, FileDiff, FileHistoryItem, FileStatus, Git2Backend,
     GitBackend, HeadInfo, KeyringStore, LogQuery, LogResult, LogService, MultiPushItemResult,
-    OperationLogEntry, PullResult, PullStrategy, PushInspection, PushResult, RebaseItem,
-    RebasePlan, RebaseResult, RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter,
-    StashApplyResult, StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem,
-    TagService, TreeFile, ValidationResult, WorktreeItem, WorktreeService,
+    PullResult, PullStrategy, PushInspection, PushResult, RebaseItem, RebasePlan, RebaseResult,
+    RebaseService, RemoteDetail, RemoteService, RunOptions, SecretFilter, StashApplyResult,
+    StashItem, StashService, SwitchBranchResult, SystemKeyring, TagItem, TagService, TreeFile,
+    ValidationResult, WorktreeItem, WorktreeService,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -109,12 +109,21 @@ fn open_repository(path: String) -> std::result::Result<RepoInfo, String> {
 
 #[tauri::command]
 fn init_repository(path: String) -> std::result::Result<RepoInfo, String> {
-    let p = Path::new(&path);
-    if !p.exists() {
-        return Err("指定的路径不存在".to_string());
-    }
-    Git2Backend::init(p).map_err(|e| e.to_string())?;
-    open_repository(path)
+    let audit_target = path.clone();
+    tg_core::journal::run(
+        "init_repository",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&path);
+            if !p.exists() {
+                return Err("指定的路径不存在".to_string());
+            }
+            Git2Backend::init(p).map_err(|e| e.to_string())?;
+            open_repository(path)
+        },
+    )
 }
 
 #[tauri::command]
@@ -152,24 +161,42 @@ fn get_file_diff(
 
 #[tauri::command]
 fn stage_files(root_path: String, paths: Vec<String>) -> std::result::Result<(), String> {
-    let p = Path::new(&root_path);
-    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
-    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-    backend
-        .stage_files(&path_slices)
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "stage_files",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+            let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+            backend
+                .stage_files(&path_slices)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
 fn unstage_files(root_path: String, paths: Vec<String>) -> std::result::Result<(), String> {
-    let p = Path::new(&root_path);
-    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
-    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-    backend
-        .unstage_files(&path_slices)
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "unstage_files",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+            let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+            backend
+                .unstage_files(&path_slices)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
@@ -181,22 +208,36 @@ fn stage_lines(
     reverse: bool,
     is_new_file: bool,
 ) -> std::result::Result<(), String> {
-    let p = Path::new(&root_path);
-    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
-    let diff = backend
-        .diff_file(&path, reverse)
-        .map_err(|e| e.to_string())?;
-    let hunk = diff
-        .hunks
-        .get(hunk_index)
-        .ok_or_else(|| "未找到对应的 Hunk".to_string())?;
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "stage_lines",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+            let diff = backend
+                .diff_file(&path, reverse)
+                .map_err(|e| e.to_string())?;
+            let hunk = diff
+                .hunks
+                .get(hunk_index)
+                .ok_or_else(|| "未找到对应的 Hunk".to_string())?;
 
-    let patch =
-        tg_core::build_selected_patch(&path, hunk, &selected_line_indices, reverse, is_new_file)
+            let patch = tg_core::build_selected_patch(
+                &path,
+                hunk,
+                &selected_line_indices,
+                reverse,
+                is_new_file,
+            )
             .map_err(|e| e.to_string())?;
 
-    tg_core::apply_patch_to_index(p, &patch).map_err(|e| e.to_string())?;
-    Ok(())
+            tg_core::apply_patch_to_index(p, &patch).map_err(|e| e.to_string())?;
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
@@ -214,9 +255,18 @@ fn discard_files(
     root_path: String,
     paths: Vec<String>,
 ) -> std::result::Result<tg_core::DiscardResult, String> {
-    let p = Path::new(&root_path);
-    let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-    tg_core::DiscardService::discard_files(p, &path_slices).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "discard_files",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let path_slices: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+            tg_core::DiscardService::discard_files(p, &path_slices).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -224,8 +274,17 @@ fn undo_discard(
     root_path: String,
     skip_conflict: bool,
 ) -> std::result::Result<tg_core::UndoDiscardResult, String> {
-    let p = Path::new(&root_path);
-    tg_core::DiscardService::undo_last_discard(p, skip_conflict).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "undo_discard",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            tg_core::DiscardService::undo_last_discard(p, skip_conflict).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,10 +312,20 @@ fn set_commit_identity(
     email: String,
     global: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::set_identity(&runner, p, &name, &email, global).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "set_commit_identity",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            CommitService::set_identity(&runner, p, &name, &email, global)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -278,9 +347,18 @@ fn create_commit(
     message: String,
     amend: bool,
 ) -> std::result::Result<tg_core::CommitResult, String> {
-    let p = Path::new(&root_path);
-    let runner = CliRunner::new("git");
-    CommitService::commit(&runner, p, &message, amend).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "create_commit",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let runner = CliRunner::new("git");
+            CommitService::commit(&runner, p, &message, amend).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -319,25 +397,53 @@ fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
 
 #[tauri::command]
 fn save_ai_key(provider: String, key: String) -> std::result::Result<(), String> {
-    let keyring = SystemKeyring;
-    if !keyring.is_available() {
-        return Err("系统钥匙串不可用，无法安全存储 Key".to_string());
-    }
-    keyring.set_key(&provider, &key).map_err(|e| e.to_string())
+    let audit_target = "application".to_string();
+    tg_core::journal::run(
+        "save_ai_key",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let keyring = SystemKeyring;
+            if !keyring.is_available() {
+                return Err("系统钥匙串不可用，无法安全存储 Key".to_string());
+            }
+            keyring.set_key(&provider, &key).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
-    let keyring = SystemKeyring;
-    keyring.delete_key(&provider).map_err(|e| e.to_string())
+    let audit_target = "application".to_string();
+    tg_core::journal::run(
+        "delete_ai_key",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let keyring = SystemKeyring;
+            keyring.delete_key(&provider).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 async fn test_ai_connection(settings: AiSettings) -> std::result::Result<String, String> {
-    let keyring = SystemKeyring;
-    AiService::test_connection(&settings, &keyring)
-        .await
-        .map_err(|e| e.to_string())
+    let audit_target = "application".to_string();
+    tg_core::journal::run_async(
+        "test_ai_connection",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        async {
+            let keyring = SystemKeyring;
+            AiService::test_connection(&settings, &keyring)
+                .await
+                .map_err(|e| e.to_string())
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -352,57 +458,69 @@ async fn generate_ai_commit_message(
     root_path: String,
     settings: AiSettings,
 ) -> std::result::Result<String, String> {
-    let p = Path::new(&root_path);
-    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let audit_target = root_path.clone();
+    tg_core::journal::run_async(
+        "generate_ai_commit_message",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        async {
+            let p = Path::new(&root_path);
+            let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
 
-    // 1. Get current branch
-    let head = backend.head().map_err(|e| e.to_string())?;
-    let branch = head.branch.unwrap_or_else(|| "HEAD".to_string());
+            // 1. Get current branch
+            let head = backend.head().map_err(|e| e.to_string())?;
+            let branch = head.branch.unwrap_or_else(|| "HEAD".to_string());
 
-    // 2. Get recent commits for style reference
-    let runner = CliRunner::new("git");
-    let log_res = runner.run(p, &["log", "-n", "10", "--oneline"], RunOptions::default());
-    let recent_commits: Vec<String> = match log_res {
-        Ok(out) if out.exit_code == Some(0) => out.stdout.lines().map(|s| s.to_string()).collect(),
-        _ => Vec::new(),
-    };
+            // 2. Get recent commits for style reference
+            let runner = CliRunner::new("git");
+            let log_res = runner.run(p, &["log", "-n", "10", "--oneline"], RunOptions::default());
+            let recent_commits: Vec<String> = match log_res {
+                Ok(out) if out.exit_code == Some(0) => {
+                    out.stdout.lines().map(|s| s.to_string()).collect()
+                }
+                _ => Vec::new(),
+            };
 
-    // 3. Collect staged diffs
-    let status_files = backend.status().map_err(|e| e.to_string())?;
-    let staged_files: Vec<_> = status_files
-        .into_iter()
-        .filter(|f| f.index.is_some())
-        .collect();
+            // 3. Collect staged diffs
+            let status_files = backend.status().map_err(|e| e.to_string())?;
+            let staged_files: Vec<_> = status_files
+                .into_iter()
+                .filter(|f| f.index.is_some())
+                .collect();
 
-    if staged_files.is_empty() {
-        return Err("当前没有已暂存的改动，请先暂存文件".to_string());
-    }
+            if staged_files.is_empty() {
+                return Err("当前没有已暂存的改动，请先暂存文件".to_string());
+            }
 
-    let mut staged_diffs = Vec::new();
-    for file in staged_files {
-        if let Ok(diff) = backend.diff_file(&file.path, true) {
-            staged_diffs.push(diff);
-        }
-    }
+            let mut staged_diffs = Vec::new();
+            for file in staged_files {
+                if let Ok(diff) = backend.diff_file(&file.path, true) {
+                    staged_diffs.push(diff);
+                }
+            }
 
-    // 4. Sanitize and filter sensitive contents
-    let sanitized_diff = SecretFilter::build_sanitized_diff(
-        &staged_diffs,
-        &settings.custom_secret_patterns,
-        settings.max_diff_chars,
-    );
+            // 4. Sanitize and filter sensitive contents
+            let sanitized_diff = SecretFilter::build_sanitized_diff(
+                &staged_diffs,
+                &settings.custom_secret_patterns,
+                settings.max_diff_chars,
+            );
 
-    // 5. Generate message via AI
-    let keyring = SystemKeyring;
-    AiService::generate_commit_message(
-        &settings,
-        &keyring,
-        &branch,
-        &recent_commits,
-        &sanitized_diff,
+            // 5. Generate message via AI
+            let keyring = SystemKeyring;
+            AiService::generate_commit_message(
+                &settings,
+                &keyring,
+                &branch,
+                &recent_commits,
+                &sanitized_diff,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        },
     )
     .await
-    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -410,37 +528,47 @@ async fn review_staged_diff(
     root_path: String,
     settings: AiSettings,
 ) -> std::result::Result<DiffReviewResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
+    let audit_target = root_path.clone();
+    tg_core::journal::run_async(
+        "review_staged_diff",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        async {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let backend = Git2Backend::open(p).map_err(|e| e.to_string())?;
 
-    let status_files = backend.status().map_err(|e| e.to_string())?;
-    let staged_files: Vec<_> = status_files
-        .into_iter()
-        .filter(|f| f.index.is_some())
-        .collect();
+            let status_files = backend.status().map_err(|e| e.to_string())?;
+            let staged_files: Vec<_> = status_files
+                .into_iter()
+                .filter(|f| f.index.is_some())
+                .collect();
 
-    if staged_files.is_empty() {
-        return Err("当前没有已暂存的改动，请先暂存文件后再进行审查".to_string());
-    }
+            if staged_files.is_empty() {
+                return Err("当前没有已暂存的改动，请先暂存文件后再进行审查".to_string());
+            }
 
-    let mut staged_diffs = Vec::new();
-    for file in staged_files {
-        if let Ok(diff) = backend.diff_file(&file.path, true) {
-            staged_diffs.push(diff);
-        }
-    }
+            let mut staged_diffs = Vec::new();
+            for file in staged_files {
+                if let Ok(diff) = backend.diff_file(&file.path, true) {
+                    staged_diffs.push(diff);
+                }
+            }
 
-    let sanitized_diff = SecretFilter::build_sanitized_diff(
-        &staged_diffs,
-        &settings.custom_secret_patterns,
-        settings.max_diff_chars,
-    );
+            let sanitized_diff = SecretFilter::build_sanitized_diff(
+                &staged_diffs,
+                &settings.custom_secret_patterns,
+                settings.max_diff_chars,
+            );
 
-    let keyring = SystemKeyring;
-    AiService::review_diff(&settings, &keyring, &sanitized_diff)
-        .await
-        .map_err(|e| e.to_string())
+            let keyring = SystemKeyring;
+            AiService::review_diff(&settings, &keyring, &sanitized_diff)
+                .await
+                .map_err(|e| e.to_string())
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -449,31 +577,41 @@ async fn ai_search_log(
     query: String,
     settings: AiSettings,
 ) -> std::result::Result<AiLogQueryResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
+    let audit_target = root_path.clone();
+    tg_core::journal::run_async(
+        "ai_search_log",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        async {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
 
-    let runner = CliRunner::new("git");
-    let log_res = runner.run(
-        p,
-        &[
-            "log",
-            "-n",
-            "60",
-            "--pretty=format:%h|%ad|%an|%s",
-            "--date=short",
-        ],
-        RunOptions::default(),
-    );
+            let runner = CliRunner::new("git");
+            let log_res = runner.run(
+                p,
+                &[
+                    "log",
+                    "-n",
+                    "60",
+                    "--pretty=format:%h|%ad|%an|%s",
+                    "--date=short",
+                ],
+                RunOptions::default(),
+            );
 
-    let commits_summary = match log_res {
-        Ok(out) if out.exit_code == Some(0) => out.stdout,
-        _ => return Err("未能读取仓库历史提交记录".to_string()),
-    };
+            let commits_summary = match log_res {
+                Ok(out) if out.exit_code == Some(0) => out.stdout,
+                _ => return Err("未能读取仓库历史提交记录".to_string()),
+            };
 
-    let keyring = SystemKeyring;
-    AiService::query_log(&settings, &keyring, &query, &commits_summary)
-        .await
-        .map_err(|e| e.to_string())
+            let keyring = SystemKeyring;
+            AiService::query_log(&settings, &keyring, &query, &commits_summary)
+                .await
+                .map_err(|e| e.to_string())
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -504,16 +642,25 @@ fn create_branch(
     start_point: Option<String>,
     checkout: bool,
 ) -> std::result::Result<(), String> {
-    let runner = CliRunner::new("git");
-    let service = BranchService::new(&runner);
-    service
-        .create_branch(
-            Path::new(&root_path),
-            &name,
-            start_point.as_deref(),
-            checkout,
-        )
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "create_branch",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = BranchService::new(&runner);
+            service
+                .create_branch(
+                    Path::new(&root_path),
+                    &name,
+                    start_point.as_deref(),
+                    checkout,
+                )
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -522,11 +669,20 @@ fn switch_branch(
     target_name: String,
     is_remote: bool,
 ) -> std::result::Result<SwitchBranchResult, String> {
-    let runner = CliRunner::new("git");
-    let service = BranchService::new(&runner);
-    service
-        .switch_branch(Path::new(&root_path), &target_name, is_remote)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "switch_branch",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = BranchService::new(&runner);
+            service
+                .switch_branch(Path::new(&root_path), &target_name, is_remote)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -558,11 +714,20 @@ fn fetch_remote(
     remote: Option<String>,
     prune: bool,
 ) -> std::result::Result<FetchResult, String> {
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    service
-        .fetch(Path::new(&root_path), remote.as_deref(), prune)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "fetch_remote",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            service
+                .fetch(Path::new(&root_path), remote.as_deref(), prune)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -572,16 +737,25 @@ fn pull_remote(
     branch: Option<String>,
     strategy: PullStrategy,
 ) -> std::result::Result<PullResult, String> {
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    service
-        .pull(
-            Path::new(&root_path),
-            remote.as_deref(),
-            branch.as_deref(),
-            strategy,
-        )
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "pull_remote",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            service
+                .pull(
+                    Path::new(&root_path),
+                    remote.as_deref(),
+                    branch.as_deref(),
+                    strategy,
+                )
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -600,25 +774,57 @@ fn push_remote(
     branch: String,
     set_upstream: bool,
 ) -> std::result::Result<PushResult, String> {
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    service
-        .push(Path::new(&root_path), &remote, &branch, set_upstream)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "push_remote",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            service
+                .push(Path::new(&root_path), &remote, &branch, set_upstream)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn abort_merge_or_rebase(root_path: String) -> std::result::Result<AbortResult, String> {
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    service
-        .abort_action(Path::new(&root_path))
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "abort_merge_or_rebase",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            service
+                .abort_action(Path::new(&root_path))
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
-fn get_operation_logs() -> Vec<OperationLogEntry> {
-    tg_get_operation_logs()
+fn get_operation_logs() -> Result<Vec<serde_json::Value>, String> {
+    let mut entries = tg_get_operation_logs()
+        .into_iter()
+        .map(|entry| serde_json::to_value(entry).map_err(|_| "SERIALIZE_FAILED".to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let events = tg_core::journal::history().map_err(|_| "AUDIT_UNAVAILABLE")?;
+    entries.extend(events.into_iter().rev().take(200).map(|event| serde_json::json!({
+        "id":format!("{}-{}",event.operation_id,event.phase),"operation_id":event.operation_id,
+        "timestamp_ms":event.timestamp_ms,"command_line":event.action,"cwd":event.target,
+        "duration_ms":0,"exit_code":null,"audit_phase":event.phase,"audit_outcome":event.outcome,
+        "actor":event.actor,"task_id":event.task_id,
+    })));
+    entries
+        .sort_by_key(|entry| std::cmp::Reverse(entry["timestamp_ms"].as_u64().unwrap_or_default()));
+    entries.truncate(200);
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -634,14 +840,23 @@ async fn select_folder() -> Option<String> {
 
 #[tauri::command]
 fn clone_repository(url: String, target_path: String) -> std::result::Result<RepoInfo, String> {
-    let p = Path::new(&target_path);
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    let res = service.clone_repo(&url, p).map_err(|e| e.to_string())?;
-    if !res.success {
-        return Err(res.error_message.unwrap_or(res.output));
-    }
-    open_repository(target_path)
+    let audit_target = "application".to_string();
+    tg_core::journal::run(
+        "clone_repository",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&target_path);
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            let res = service.clone_repo(&url, p).map_err(|e| e.to_string())?;
+            if !res.success {
+                return Err(res.error_message.unwrap_or(res.output));
+            }
+            open_repository(target_path)
+        },
+    )
 }
 
 #[tauri::command]
@@ -659,12 +874,21 @@ fn push_multiple_remotes(
     branch: String,
     set_upstream: bool,
 ) -> std::result::Result<Vec<MultiPushItemResult>, String> {
-    let p = Path::new(&root_path);
-    let runner = CliRunner::new("git");
-    let service = RemoteService::new(&runner);
-    service
-        .push_multiple(p, &remotes, &branch, set_upstream)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "push_multiple_remotes",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let p = Path::new(&root_path);
+            let runner = CliRunner::new("git");
+            let service = RemoteService::new(&runner);
+            service
+                .push_multiple(p, &remotes, &branch, set_upstream)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -681,11 +905,20 @@ fn create_stash(
     message: Option<String>,
     include_untracked: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::create_stash(&runner, p, message.as_deref(), include_untracked)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "create_stash",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            StashService::create_stash(&runner, p, message.as_deref(), include_untracked)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -694,26 +927,53 @@ fn apply_stash(
     index: usize,
     pop: bool,
 ) -> std::result::Result<StashApplyResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::apply_stash(&runner, p, index, pop).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "apply_stash",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            StashService::apply_stash(&runner, p, index, pop).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn drop_stash(root_path: String, index: usize) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::drop_stash(&runner, p, index).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "drop_stash",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            StashService::drop_stash(&runner, p, index).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn clear_stashes(root_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    StashService::clear_stashes(&runner, p).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "clear_stashes",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            StashService::clear_stashes(&runner, p).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -738,19 +998,37 @@ fn create_tag(
     target_oid: Option<String>,
     message: Option<String>,
 ) -> std::result::Result<TagItem, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    TagService::create_tag(&runner, p, &name, target_oid.as_deref(), message.as_deref())
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "create_tag",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            TagService::create_tag(&runner, p, &name, target_oid.as_deref(), message.as_deref())
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn delete_tag(root_path: String, name: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    TagService::delete_tag(&runner, p, &name).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "delete_tag",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            TagService::delete_tag(&runner, p, &name).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -759,18 +1037,36 @@ fn push_tag(
     name: String,
     remote: Option<String>,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    TagService::push_tag(&runner, p, &name, remote.as_deref()).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "push_tag",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            TagService::push_tag(&runner, p, &name, remote.as_deref()).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn push_all_tags(root_path: String, remote: Option<String>) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    TagService::push_all_tags(&runner, p, remote.as_deref()).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "push_all_tags",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            TagService::push_all_tags(&runner, p, remote.as_deref()).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -779,10 +1075,20 @@ fn delete_remote_tag(
     name: String,
     remote: Option<String>,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    TagService::delete_remote_tag(&runner, p, &name, remote.as_deref()).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "delete_remote_tag",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            TagService::delete_remote_tag(&runner, p, &name, remote.as_deref())
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -800,10 +1106,19 @@ fn get_file_history(
 
 #[tauri::command]
 fn checkout_commit(root_path: String, oid: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::checkout_commit(&runner, p, &oid).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "checkout_commit",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            CommitService::checkout_commit(&runner, p, &oid).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -812,10 +1127,19 @@ fn reset_to_commit(
     oid: String,
     mode: String,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "reset_to_commit",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            CommitService::reset_to_commit(&runner, p, &oid, &mode).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -841,37 +1165,74 @@ fn resolve_conflict_file(
     file_path: String,
     resolved_content: String,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    ConflictService::resolve_conflict_file(p, &file_path, &resolved_content)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "resolve_conflict_file",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            ConflictService::resolve_conflict_file(p, &file_path, &resolved_content)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn accept_ours(root_path: String, file_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    ConflictService::accept_ours(p, &file_path).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "accept_ours",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            ConflictService::accept_ours(p, &file_path).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn accept_theirs(root_path: String, file_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    ConflictService::accept_theirs(p, &file_path).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "accept_theirs",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            ConflictService::accept_theirs(p, &file_path).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn continue_merge_or_rebase(root_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    let out = ConflictService::continue_merge_or_rebase(&runner, p).map_err(|e| e.to_string())?;
-    if out.exit_code != Some(0) {
-        let err = format!("{}\n{}", out.stdout, out.stderr).trim().to_string();
-        return Err(err);
-    }
-    Ok(())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "continue_merge_or_rebase",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            let out =
+                ConflictService::continue_merge_or_rebase(&runner, p).map_err(|e| e.to_string())?;
+            if out.exit_code != Some(0) {
+                let err = format!("{}\n{}", out.stdout, out.stderr).trim().to_string();
+                return Err(err);
+            }
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
@@ -889,10 +1250,19 @@ fn execute_interactive_rebase(
     root_path: String,
     plan: RebasePlan,
 ) -> std::result::Result<RebaseResult, String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    RebaseService::execute_interactive_rebase(&runner, p, &plan).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "execute_interactive_rebase",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            RebaseService::execute_interactive_rebase(&runner, p, &plan).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -910,11 +1280,26 @@ fn add_worktree(
     branch: Option<String>,
     create_branch: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    WorktreeService::add_worktree(&runner, p, &worktree_path, branch.as_deref(), create_branch)
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "add_worktree",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            WorktreeService::add_worktree(
+                &runner,
+                p,
+                &worktree_path,
+                branch.as_deref(),
+                create_branch,
+            )
+            .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -923,10 +1308,20 @@ fn remove_worktree(
     worktree_path: String,
     force: bool,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    WorktreeService::remove_worktree(&runner, p, &worktree_path, force).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "remove_worktree",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            WorktreeService::remove_worktree(&runner, p, &worktree_path, force)
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
@@ -935,27 +1330,59 @@ fn lock_worktree(
     worktree_path: String,
     reason: Option<String>,
 ) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    WorktreeService::lock_worktree(&runner, p, &worktree_path, reason.as_deref())
-        .map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "lock_worktree",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            WorktreeService::lock_worktree(&runner, p, &worktree_path, reason.as_deref())
+                .map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn unlock_worktree(root_path: String, worktree_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    WorktreeService::unlock_worktree(&runner, p, &worktree_path).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "unlock_worktree",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            WorktreeService::unlock_worktree(&runner, p, &worktree_path).map_err(|e| e.to_string())
+        },
+    )
 }
 
 #[tauri::command]
 fn prune_worktrees(root_path: String) -> std::result::Result<(), String> {
-    let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
-    let p = Path::new(clean_path);
-    let runner = CliRunner::new("git");
-    WorktreeService::prune_worktrees(&runner, p).map_err(|e| e.to_string())
+    let audit_target = root_path.clone();
+    tg_core::journal::run(
+        "prune_worktrees",
+        &audit_target,
+        "desktop:local",
+        "desktop-session",
+        || {
+            let clean_path = root_path.trim().trim_matches('"').trim_matches('\'').trim();
+            let p = Path::new(clean_path);
+            let runner = CliRunner::new("git");
+            WorktreeService::prune_worktrees(&runner, p).map_err(|e| e.to_string())
+        },
+    )
+}
+
+#[tauri::command]
+fn operation_history() -> Result<Vec<tg_core::audit::Event>, String> {
+    tg_core::journal::history().map_err(|_| "AUDIT_UNAVAILABLE".into())
 }
 
 pub fn run() {
@@ -967,7 +1394,12 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .setup(|app| {
+            tg_core::journal::configure(&app.path().app_data_dir()?.join("audit"))?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            operation_history,
             workspace::workspace_task,
             app_info,
             check_git,

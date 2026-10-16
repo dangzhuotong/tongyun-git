@@ -433,3 +433,5 @@
 - lazygit v0.66.0：https://github.com/jesseduffield/lazygit/releases
 - IntelliJ IDEA 提交与 changelist：https://www.jetbrains.com/help/idea/commit-and-push-changes.html ；AI in VCS：https://www.jetbrains.com/help/ai-assistant/ai-in-vcs-integration.html
 - 需求雷达：`/workspace/demand-radar/2026-10-07-github-opportunities.md`（本机文件，不随仓库分发）
+
+2026-10-16：R-19 外部 Agent 入口与 R-15 持久化审计见 [Agent 安全与追溯](agent-safety.md)。

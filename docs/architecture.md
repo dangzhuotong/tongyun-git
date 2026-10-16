@@ -123,3 +123,5 @@ tongyun-git/
 - `src-tauri/src/workspace.rs`：带标签枚举的 IPC 参数，后台线程执行，串行锁，系统 Git 统一经 CliRunner；外部应用用固定启动器参数调用。
 - `src/features/workspace/WorkspaceTools.tsx`：总览、会话/搁置、提交/分支、blame 四个入口；复用现有主题变量。按行丢弃复用原确认框。
 - 整文件丢弃也采用清单格式，恢复工作区和 index 的独立 blob；旧有损快照保留但不自动恢复。此前关键数据流中有损恢复描述不再适用。
+
+2026-10-16：R-19 外部 Agent 入口与 R-15 持久化审计见 [Agent 安全与追溯](agent-safety.md)。

@@ -65,52 +65,69 @@ pub async fn workspace_task(
     request: WorkspaceRequest,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = WORKSPACE_LOCK
-            .lock()
-            .map_err(|_| "工作区操作锁不可用".to_string())?;
-        let backend =
-            tg_core::Git2Backend::open(Path::new(&root_path)).map_err(|e| e.to_string())?;
-        use tg_core::GitBackend;
-        let root = backend.repo_root();
-        let runner = CliRunner::new(
-            git_path
-                .filter(|p| !p.is_empty())
-                .unwrap_or_else(|| "git".into()),
-        );
-        match request {
-            WorkspaceRequest::Overview => value(workspace::overview(&runner, root)),
-            WorkspaceRequest::Compare { from, to } => value(workspace::compare(root, &from, &to)),
-            WorkspaceRequest::Blame { path, start, count } => {
-                value(workspace::blame(root, &path, start, count))
-            }
-            WorkspaceRequest::History { action, target } => {
-                value(workspace::history_action(&runner, root, action, &target))
-            }
-            WorkspaceRequest::Snapshots => value(snapshot::list(root)),
-            WorkspaceRequest::Capture { label } => {
-                value(snapshot::capture(root, &label, "agent", None))
-            }
-            WorkspaceRequest::Finish { reference } => value(snapshot::finish(root, &reference)),
-            WorkspaceRequest::Changes { reference } => value(snapshot::changes(root, &reference)),
-            WorkspaceRequest::Restore { reference, changes } => {
-                value(snapshot::restore(root, &reference, &changes))
-            }
-            WorkspaceRequest::Delete { reference } => value(snapshot::delete(root, &reference)),
-            WorkspaceRequest::Shelve { label, paths } => {
-                value(snapshot::shelve(root, &label, &paths))
-            }
-            WorkspaceRequest::DiscardLines {
-                expected,
-                hunk_index,
-                selected,
-            } => value(snapshot::discard_lines(
-                root, &expected, hunk_index, &selected,
-            )),
-            WorkspaceRequest::Open { application } => {
-                open_external(root, &application)?;
-                Ok(Value::Null)
-            }
-        }
+        let audit_target = root_path.clone();
+        tg_core::journal::run(
+            "workspace_task",
+            &audit_target,
+            "desktop:local",
+            "desktop-session",
+            || {
+                let _guard = WORKSPACE_LOCK
+                    .lock()
+                    .map_err(|_| "工作区操作锁不可用".to_string())?;
+                let backend =
+                    tg_core::Git2Backend::open(Path::new(&root_path)).map_err(|e| e.to_string())?;
+                use tg_core::GitBackend;
+                let root = backend.repo_root();
+                let runner = CliRunner::new(
+                    git_path
+                        .filter(|p| !p.is_empty())
+                        .unwrap_or_else(|| "git".into()),
+                );
+                match request {
+                    WorkspaceRequest::Overview => value(workspace::overview(&runner, root)),
+                    WorkspaceRequest::Compare { from, to } => {
+                        value(workspace::compare(root, &from, &to))
+                    }
+                    WorkspaceRequest::Blame { path, start, count } => {
+                        value(workspace::blame(root, &path, start, count))
+                    }
+                    WorkspaceRequest::History { action, target } => {
+                        value(workspace::history_action(&runner, root, action, &target))
+                    }
+                    WorkspaceRequest::Snapshots => value(snapshot::list(root)),
+                    WorkspaceRequest::Capture { label } => {
+                        value(snapshot::capture(root, &label, "agent", None))
+                    }
+                    WorkspaceRequest::Finish { reference } => {
+                        value(snapshot::finish(root, &reference))
+                    }
+                    WorkspaceRequest::Changes { reference } => {
+                        value(snapshot::changes(root, &reference))
+                    }
+                    WorkspaceRequest::Restore { reference, changes } => {
+                        value(snapshot::restore(root, &reference, &changes))
+                    }
+                    WorkspaceRequest::Delete { reference } => {
+                        value(snapshot::delete(root, &reference))
+                    }
+                    WorkspaceRequest::Shelve { label, paths } => {
+                        value(snapshot::shelve(root, &label, &paths))
+                    }
+                    WorkspaceRequest::DiscardLines {
+                        expected,
+                        hunk_index,
+                        selected,
+                    } => value(snapshot::discard_lines(
+                        root, &expected, hunk_index, &selected,
+                    )),
+                    WorkspaceRequest::Open { application } => {
+                        open_external(root, &application)?;
+                        Ok(Value::Null)
+                    }
+                }
+            },
+        )
     })
     .await
     .map_err(|e| e.to_string())?

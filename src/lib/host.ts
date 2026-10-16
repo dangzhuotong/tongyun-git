@@ -543,6 +543,11 @@ export interface AbortResult {
 }
 
 export interface OperationLogEntry {
+  audit_phase?: string;
+  audit_outcome?: string | null;
+  operation_id?: string;
+  task_id?: string;
+  actor?: string;
   id: string;
   timestamp_ms: number;
   command_line: string;

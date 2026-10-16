@@ -13,8 +13,9 @@ description: >-
 ## 结论先行
 
 - **已有**：桌面 App 内 AI——生成 Conventional Commit、提交前审 diff、自然语言查 log；Key 只进 OS 钥匙串。
-- **没有**：对外稳定 CLI（如 `tg ai commit --json`）、MCP、给外部 Agent 的 HTTP API。外部 Agent **不能**在无 GUI 的情况下直接调用这些 AI 能力。
-- **本批不做** `tg ai commit --json`（成本高：需独立 CLI 入口、钥匙串、与 Tauri 命令对齐）。若以后要做，应复用 `tg-core` 的 `AiService`，输出 `--json`，且仍禁止读环境变量里的 key。
+- **已有外部入口**：`tongyun-git-agent status / diff / history / commit`，JSON v1，复用核心服务；契约见 [Agent 安全与追溯](../../../docs/agent-safety.md)。
+- **仍没有**：`tg ai commit --json`、MCP 或外部 AI 提供方 HTTP API。App 内模型与钥匙串能力仍从 GUI 调用。
+- **尚未实现** `tg ai commit --json`（成本高：需独立 CLI 入口、钥匙串、与 Tauri 命令对齐）。若以后要做，应复用 `tg-core` 的 `AiService`，输出 `--json`，且仍禁止读环境变量里的 key。
 
 ## 1. 人在 App 里怎么用
 

@@ -49,4 +49,12 @@ describe("OperationLogModal", () => {
       expect(screen.getByText("暂无 Git 命令行执行记录")).toBeDefined();
     });
   });
+  it("shows durable started records as pending investigation, not a fake exit code", async () => {
+    vi.mocked(host.getOperationLogs).mockResolvedValue([{...mockLogs[0],id:"audit-started",exit_code:null,audit_phase:"started",operation_id:"op-fixture",task_id:"task-fixture",actor:"agent:fixture"}]);
+    render(<OperationLogModal isOpen={true} onClose={vi.fn()} />);
+    expect(await screen.findByText("进行中或待核查")).toBeDefined();
+    expect(screen.queryByText("退出码: Err")).toBeNull();
+    expect(screen.getByText(/agent:fixture/)).toBeDefined();
+  });
+
 });
