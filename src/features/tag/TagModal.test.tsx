@@ -88,9 +88,12 @@ describe("TagModal", () => {
       expect(host.pushTag).toHaveBeenCalledWith(rootPath, "v1.0.0");
     });
 
-    // Click push all tags
-    const pushAllBtn = screen.getByRole("button", { name: /推送全部标签/ });
-    fireEvent.click(pushAllBtn);
+    // 单条推送完成前「推送全部」是禁用的，这时点击不会调用 pushAllTags。
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: /推送全部标签/ }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /推送全部标签/ }));
 
     await waitFor(() => {
       expect(host.pushAllTags).toHaveBeenCalledWith(rootPath);
