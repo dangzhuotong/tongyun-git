@@ -147,3 +147,20 @@ mod tests {
         assert_eq!(keyring.get_key("local-test").unwrap(), None);
     }
 }
+
+#[cfg(test)]
+mod username_tests {
+    use super::make_user_name;
+
+    #[test]
+    fn test_make_user_name_lowercases_provider() {
+        assert_eq!(make_user_name("KIE"), "ai-key:kie");
+        assert_eq!(make_user_name("OpenAI"), "ai-key:openai");
+        assert_eq!(make_user_name("ollama"), "ai-key:ollama");
+    }
+
+    #[test]
+    fn test_make_user_name_keeps_inner_characters() {
+        assert_eq!(make_user_name("My-Provider_1"), "ai-key:my-provider_1");
+    }
+}

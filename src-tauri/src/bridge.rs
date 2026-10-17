@@ -699,3 +699,41 @@ fn send_response(
     let _ = stream.write_all(response.as_bytes());
     let _ = stream.flush();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_path_and_query;
+
+    #[test]
+    fn test_parse_path_without_query() {
+        let (path, query) = parse_path_and_query("/status");
+        assert_eq!(path, "/status");
+        assert!(query.is_empty());
+    }
+
+    #[test]
+    fn test_parse_path_with_multiple_query_params() {
+        let (path, query) = parse_path_and_query("/open?repo=%2Ftmp%2Frepo&name=my%20repo&flag");
+        assert_eq!(path, "/open");
+        assert_eq!(query.get("repo").map(String::as_str), Some("/tmp/repo"));
+        assert_eq!(query.get("name").map(String::as_str), Some("my repo"));
+        assert_eq!(query.get("flag").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn test_parse_query_percent_decoding_of_backslash() {
+        let (_, query) = parse_path_and_query("/x?p=a%5Cb");
+        assert_eq!(query.get("p").map(String::as_str), Some("a\\b"));
+    }
+
+    #[test]
+    fn test_parse_empty_and_query_only_inputs() {
+        let (path, query) = parse_path_and_query("");
+        assert_eq!(path, "");
+        assert!(query.is_empty());
+
+        let (path, query) = parse_path_and_query("?repo=/tmp/r");
+        assert_eq!(path, "");
+        assert_eq!(query.get("repo").map(String::as_str), Some("/tmp/r"));
+    }
+}
