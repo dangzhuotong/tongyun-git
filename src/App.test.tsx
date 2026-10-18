@@ -37,6 +37,13 @@ vi.mock("./lib/host.ts", () => ({
   initRepository: vi.fn(),
   listRepoFiles: vi.fn(),
   getFileHistory: vi.fn(),
+  workspaceTask: vi.fn(async () => ({
+    active: false,
+    session_reference: null,
+    session_label: null,
+    action_taken: null,
+    warning: null,
+  })),
 }));
 
 describe("App workspace and components", () => {
@@ -74,6 +81,13 @@ describe("App workspace and components", () => {
     });
     vi.mocked(host.listRepoFiles).mockResolvedValue([]);
     vi.mocked(host.getFileHistory).mockResolvedValue([]);
+    vi.mocked(host.workspaceTask).mockResolvedValue({
+      active: false,
+      session_reference: null,
+      session_label: null,
+      action_taken: null,
+      warning: null,
+    });
   });
 
   it("renders empty workspace when no repository is opened", async () => {
@@ -744,6 +758,84 @@ describe("App workspace and components", () => {
     });
     expect(screen.getByText("大小变化: 1.0 KB → 2.0 KB")).toBeDefined();
   });
+
+  async function openRepoWithFiles(files: host.FileStatus[]) {
+    vi.mocked(host.getAppInfo).mockResolvedValue({
+      name: "tongyun-git",
+      version: "0.0.0",
+      identifier: "test-id",
+      git_version: "2.47.3",
+      libgit2_version: "1.9.7",
+    });
+    vi.mocked(host.checkGit).mockResolvedValue({
+      available: true,
+      version: "git version 2.47.3",
+      error: null,
+    });
+    vi.mocked(host.openRepository).mockResolvedValue({
+      root_path: "/test/my-repo",
+      name: "my-repo",
+      head: { branch: "main", oid: "abc1234", unborn: false },
+    });
+    vi.mocked(host.getRepoStatus).mockResolvedValue({
+      head: { branch: "main", oid: "abc1234", unborn: false },
+      files,
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByText("打开本地仓库"));
+    fireEvent.change(screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/), {
+      target: { value: "/test/my-repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+    expect((await screen.findAllByText("my-repo")).length).toBeGreaterThanOrEqual(1);
+  }
+
+  it("does not send the dirty-file total as the auto-check change count", async () => {
+    const files = Array.from({ length: 6 }, (_, i) => ({
+      path: `dirty${i}.txt`,
+      old_path: null,
+      index: null,
+      worktree: "Modified" as const,
+      conflicted: false,
+    }));
+    await openRepoWithFiles(files);
+    await waitFor(() => {
+      expect(vi.mocked(host.workspaceTask).mock.calls.length).toBeGreaterThan(0);
+    });
+    for (const [, request] of vi.mocked(host.workspaceTask).mock.calls) {
+      if (request.type === "auto_check") {
+        expect(request.change_count).toBe(0);
+        expect(request.change_count).not.toBe(files.length);
+      }
+    }
+  });
+
+  it("still auto-checks when detection is disabled", async () => {
+    localStorage.setItem(
+      "tongyun_auto_agent_settings",
+      JSON.stringify({ enabled: false }),
+    );
+    await openRepoWithFiles([]);
+    await waitFor(() => {
+      const auto = vi.mocked(host.workspaceTask).mock.calls.filter(([, request]) => request.type === "auto_check");
+      expect(auto.length).toBeGreaterThan(0);
+      expect(auto[0][1]).toMatchObject({
+        type: "auto_check",
+        config: expect.objectContaining({
+          enabled: false,
+          burst_threshold: 5,
+          silence_timeout_secs: 300,
+        }),
+      });
+    });
+  });
+
+  it("shows auto-check failures instead of ignoring them", async () => {
+    vi.mocked(host.workspaceTask).mockRejectedValue("快照写入失败");
+    await openRepoWithFiles([]);
+    expect(await screen.findByText("快照写入失败")).toBeDefined();
+  });
+
 });
 
 

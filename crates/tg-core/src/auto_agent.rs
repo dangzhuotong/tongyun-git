@@ -1,10 +1,18 @@
 use crate::snapshot;
-use crate::Result;
+use crate::{Git2Backend, GitBackend, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-/// Known agent process identifiers.
-pub const KNOWN_AGENT_PROCESSES: &[&str] = &["cursor", "tongyun-cli", "claude", "codex"];
+/// Real agent CLIs. Cursor is intentionally absent: it is the editor the user
+/// leaves open, so its process is not evidence that an agent run has started.
+pub const KNOWN_AGENT_PROCESSES: &[&str] = &["tongyun-cli", "claude", "codex"];
+
+/// IDE hosts that stay running while the user edits. Presence alone must not
+/// start or keep an auto session alive.
+pub const IDE_HOST_PROCESSES: &[&str] = &["cursor"];
 
 /// Normalize process path or executable name to lowercase identifier without path or .exe.
 pub fn normalize_process_name(raw: &str) -> String {
@@ -22,17 +30,21 @@ pub fn normalize_process_name(raw: &str) -> String {
 /// Returns Some(canonical_name) if matched, None otherwise.
 pub fn match_agent_process(process_path_or_name: &str) -> Option<&'static str> {
     let normalized = normalize_process_name(process_path_or_name);
-    for &agent in KNOWN_AGENT_PROCESSES {
-        if normalized == agent {
-            return Some(agent);
-        }
-    }
-    None
+    KNOWN_AGENT_PROCESSES
+        .iter()
+        .copied()
+        .find(|&agent| normalized == agent)
 }
 
 /// Helper returning true if process name matches any known agent.
 pub fn is_known_agent_process(process_path_or_name: &str) -> bool {
     match_agent_process(process_path_or_name).is_some()
+}
+
+/// Cursor and other long-lived IDE hosts. These are not an agent signal.
+pub fn is_ide_host_process(process_path_or_name: &str) -> bool {
+    let normalized = normalize_process_name(process_path_or_name);
+    IDE_HOST_PROCESSES.contains(&normalized.as_str())
 }
 
 /// Returns a user-friendly display name for an agent identifier.
@@ -72,7 +84,9 @@ pub struct BurstDetector {
 
 impl BurstDetector {
     pub fn new() -> Self {
-        Self { history: Vec::new() }
+        Self {
+            history: Vec::new(),
+        }
     }
 
     pub fn record_change(&mut self, timestamp_ms: u64) {
@@ -131,12 +145,31 @@ pub fn evaluate_timestamp_burst(
     count >= threshold
 }
 
+fn default_enabled() -> bool {
+    true
+}
+fn default_burst_threshold() -> usize {
+    5
+}
+fn default_burst_window_secs() -> u64 {
+    5
+}
+fn default_silence_timeout_secs() -> u64 {
+    300
+}
+
 /// Auto Agent configuration.
+/// Missing fields deserialize to the defaults so an older or hand-edited
+/// settings blob cannot disable detection by failing to parse.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoAgentConfig {
+    #[serde(default = "default_enabled")]
     pub enabled: bool,
+    #[serde(default = "default_burst_threshold")]
     pub burst_threshold: usize,
+    #[serde(default = "default_burst_window_secs")]
     pub burst_window_secs: u64,
+    #[serde(default = "default_silence_timeout_secs")]
     pub silence_timeout_secs: u64,
 }
 
@@ -260,7 +293,11 @@ impl AutoAgentStateMachine {
     }
 
     /// Handle process list check (e.g. from process scan).
-    pub fn handle_process_check(&mut self, processes: &[String], now_ms: u64) -> AutoSessionAction {
+    pub fn handle_process_check(
+        &mut self,
+        processes: &[String],
+        _now_ms: u64,
+    ) -> AutoSessionAction {
         if !self.config.enabled {
             if let AutoSessionState::Active { reference, .. } = &self.state {
                 let ref_clone = reference.clone();
@@ -292,15 +329,15 @@ impl AutoAgentStateMachine {
             AutoSessionState::Active {
                 reference,
                 detected_agent,
-                last_activity_ms,
                 ..
             } => {
                 if let Some(agent) = detected_agent.clone() {
                     let still_running = processes
                         .iter()
-                        .any(|p| match_agent_process(p) == Some(&agent));
+                        .any(|p| match_agent_process(p) == Some(agent.as_str()));
                     if still_running {
-                        *last_activity_ms = now_ms;
+                        // Process presence is not file activity. Silence is
+                        // measured only from workspace changes.
                         AutoSessionAction::None
                     } else {
                         let ref_clone = reference.clone();
@@ -313,7 +350,6 @@ impl AutoAgentStateMachine {
                 } else {
                     if let Some(agent) = matched_agent {
                         *detected_agent = Some(agent.to_string());
-                        *last_activity_ms = now_ms;
                     }
                     AutoSessionAction::None
                 }
@@ -332,7 +368,9 @@ impl AutoAgentStateMachine {
                 self.burst_detector.record_changes(change_count, now_ms);
                 let burst_cfg = self.config.burst_config();
                 if self.burst_detector.is_burst(now_ms, &burst_cfg) {
-                    let total = self.burst_detector.recent_count(now_ms, burst_cfg.window_secs);
+                    let total = self
+                        .burst_detector
+                        .recent_count(now_ms, burst_cfg.window_secs);
                     self.burst_detector.reset();
                     return AutoSessionAction::StartSession {
                         label: format!("自动变更检测快照 ({total} 个文件)"),
@@ -347,7 +385,9 @@ impl AutoAgentStateMachine {
             AutoSessionState::Active {
                 last_activity_ms, ..
             } => {
-                *last_activity_ms = now_ms;
+                if change_count > 0 {
+                    *last_activity_ms = now_ms;
+                }
                 AutoSessionAction::None
             }
         }
@@ -451,10 +491,7 @@ pub fn find_running_agent_processes() -> Vec<String> {
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
-        if let Ok(output) = Command::new("ps")
-            .args(["-A", "-o", "comm="])
-            .output()
-        {
+        if let Ok(output) = Command::new("ps").args(["-A", "-o", "comm="]).output() {
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout);
                 for line in text.lines() {
@@ -479,48 +516,355 @@ pub struct AutoCheckReport {
     pub session_reference: Option<String>,
     pub session_label: Option<String>,
     pub action_taken: Option<String>,
+    /// Non-fatal problem (for example a rolling baseline that could not be refreshed).
+    #[serde(default)]
+    pub warning: Option<String>,
 }
 
+/// Worktree fingerprint: dirty/untracked path -> content key.
+/// `None` means the path is missing (deleted).
+pub type DirtyFingerprint = BTreeMap<String, Option<String>>;
+
+/// How often a host-wide process scan may spawn `tasklist` / walk `/proc`.
+pub const PROCESS_SCAN_TTL: Duration = Duration::from_secs(15);
+
+/// Idle auto-session managers older than this are dropped.
+pub const MANAGER_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
+
 /// High-level manager coordinating state machine and workspace snapshot operations.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AutoAgentManager {
     pub sm: AutoAgentStateMachine,
+    last_fp: Option<DirtyFingerprint>,
+    baseline_fp: Option<DirtyFingerprint>,
+    pending_ref: Option<String>,
+    suppress_until_burst: bool,
+    suppressed_processes: BTreeSet<String>,
+    last_real_agents: Vec<String>,
+    pub generation: u64,
+    pub in_flight: bool,
+    pub last_used: Instant,
+    created_refs: Vec<String>,
+    rewritten: Option<snapshot::Snapshot>,
+    retire_refs: Vec<String>,
 }
 
 impl AutoAgentManager {
     pub fn new(config: AutoAgentConfig) -> Self {
         Self {
             sm: AutoAgentStateMachine::new(config),
+            last_fp: None,
+            baseline_fp: None,
+            pending_ref: None,
+            suppress_until_burst: false,
+            suppressed_processes: BTreeSet::new(),
+            last_real_agents: Vec::new(),
+            generation: 0,
+            in_flight: false,
+            last_used: Instant::now(),
+            created_refs: Vec::new(),
+            rewritten: None,
+            retire_refs: Vec::new(),
         }
     }
 
+    pub fn apply_config(&mut self, config: AutoAgentConfig) {
+        let enabling = config.enabled && !self.sm.config.enabled;
+        self.sm.set_config(config);
+        if enabling {
+            self.suppress_until_burst = false;
+            self.suppressed_processes.clear();
+        }
+    }
+
+    /// Begin a check. `None` means another check is already in flight.
+    pub fn begin_check(&mut self) -> Option<u64> {
+        if self.in_flight {
+            return None;
+        }
+        self.in_flight = true;
+        self.last_used = Instant::now();
+        self.generation = self.generation.wrapping_add(1);
+        Some(self.generation)
+    }
+
+    /// Install `working` only when no manual end or newer check invalidated `generation`.
+    pub fn commit_inflight(&mut self, generation: u64, mut working: Self) -> bool {
+        if self.generation != generation {
+            self.in_flight = false;
+            return false;
+        }
+        working.in_flight = false;
+        working.generation = generation;
+        *self = working;
+        true
+    }
+
+    pub fn abort_inflight(&mut self, generation: u64) {
+        if self.generation == generation {
+            self.in_flight = false;
+        }
+    }
+
+    pub fn report_snapshot(&self) -> AutoCheckReport {
+        self.report(None, None)
+    }
+
+    /// User finished or deleted the auto session. Suppresses process restart
+    /// until a new file burst, and arms a baseline at the current worktree
+    /// so the next burst can still rewind its own first batch.
+    /// The caller must already have finished the session snapshot.
+    /// Same as [`note_manual_end`](Self::note_manual_end), using the agents
+    /// observed on the previous check.
+    pub fn note_manual_end_observed(&mut self, root: &Path) -> Result<()> {
+        let running = self.last_real_agents.clone();
+        self.note_manual_end(root, &running)
+    }
+
+    /// Stop an in-flight auto start and hold the manager until the manual
+    /// snapshot is captured. Fails when an auto session is already active.
+    pub fn hold_for_manual_start(&mut self) -> std::result::Result<u64, &'static str> {
+        if self.sm.is_active() {
+            return Err("已有进行中的自动会话，请先结束后再手动开始");
+        }
+        self.generation = self.generation.wrapping_add(1);
+        self.in_flight = true;
+        self.last_used = Instant::now();
+        Ok(self.generation)
+    }
+
+    /// Block auto checks while the user finishes or deletes this session.
+    /// The snapshot itself must be written after this returns, outside the lock.
+    pub fn reserve_user_mutation(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.in_flight = true;
+        self.last_used = Instant::now();
+        self.generation
+    }
+
+    pub fn release_user_mutation(&mut self, generation: u64) {
+        if self.generation == generation {
+            self.in_flight = false;
+        }
+    }
+
+    /// Idle and suppress using the agents seen on the previous check.
+    pub fn mark_manual_end_observed(&mut self) -> u64 {
+        let running = self.last_real_agents.clone();
+        self.mark_manual_end(&running)
+    }
+
+    /// Idle and suppress. Leaves `in_flight` set so the caller can arm a
+    /// baseline before the next auto check runs.
+    pub fn mark_manual_end(&mut self, running_processes: &[String]) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.suppress_until_burst = true;
+        self.suppressed_processes = canonical_agents(running_processes).into_iter().collect();
+        self.sm.set_idle();
+        self.in_flight = true;
+        self.last_used = Instant::now();
+        self.generation
+    }
+
+    /// Capture the current worktree as the next rolling baseline. Snapshot IO
+    /// stays with the caller so it can run outside the manager lock.
+    pub fn arm_fresh_baseline(&mut self, root: &Path) -> Result<()> {
+        self.arm_baseline(root)
+    }
+
+    /// Refs superseded by this check. Clearing the bookkeeping here means a
+    /// later rollback will not delete a baseline that was already committed.
+    pub fn take_retired_refs(&mut self) -> Vec<String> {
+        self.created_refs.clear();
+        self.rewritten = None;
+        std::mem::take(&mut self.retire_refs)
+    }
+
+    pub fn note_manual_end(&mut self, root: &Path, running_processes: &[String]) -> Result<()> {
+        self.mark_manual_end(running_processes);
+        let armed = self.arm_baseline(root);
+        match &armed {
+            Ok(()) => self.commit_side_effects(root),
+            Err(_) => self.rollback_side_effects(root),
+        }
+        self.in_flight = false;
+        armed
+    }
+
+    /// Bump the generation so an in-flight auto start cannot commit over a
+    /// manual or bridge session that was just created.
+    pub fn invalidate_inflight(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.in_flight = false;
+    }
+
+    /// `change_count` is ignored. The manager diffs the worktree against the
+    /// previous observation so a stable dirty tree cannot retrigger.
     pub fn check(
         &mut self,
         root: &Path,
-        change_count: usize,
+        _change_count: usize,
         running_processes: Option<&[String]>,
         now_ms: u64,
     ) -> Result<AutoCheckReport> {
-        let os_procs;
-        let procs = match running_processes {
-            Some(p) => p,
+        let result = self.check_detached(root, running_processes, now_ms);
+        match &result {
+            Ok(_) => self.commit_side_effects(root),
+            Err(_) => self.rollback_side_effects(root),
+        }
+        result
+    }
+
+    /// Like [`check`](Self::check) but leaves snapshot creates/deletes uncommitted
+    /// so the caller can roll them back when `generation` is stale.
+    pub fn check_detached(
+        &mut self,
+        root: &Path,
+        running_processes: Option<&[String]>,
+        now_ms: u64,
+    ) -> Result<AutoCheckReport> {
+        self.last_used = Instant::now();
+        let scanned;
+        let procs: &[String] = match running_processes {
+            Some(procs) => procs,
             None => {
-                os_procs = find_running_agent_processes();
-                &os_procs
+                scanned = find_running_agent_processes();
+                &scanned
             }
         };
+        self.last_real_agents = canonical_agents(procs);
+        self.suppressed_processes
+            .retain(|agent| self.last_real_agents.iter().any(|running| running == agent));
 
-        let mut action = if change_count > 0 {
-            self.sm.handle_file_changes(change_count, now_ms)
-        } else {
-            AutoSessionAction::None
-        };
-
-        if action == AutoSessionAction::None {
-            action = self.sm.handle_tick(procs, now_ms);
+        if !self.sm.config.enabled {
+            return self.finish_if_disabled(root);
         }
 
-        let mut action_taken = None;
+        let fp = dirty_fingerprint(root)?;
+        if self.sm.is_active() {
+            return self.check_active(root, &fp, procs, now_ms);
+        }
+        if has_open_agent_session(root)? {
+            self.observe_blocked(fp);
+            return Ok(self.report(None, None));
+        }
+        self.check_idle(root, fp, procs, now_ms)
+    }
+
+    pub fn commit_side_effects(&mut self, root: &Path) {
+        for reference in self.retire_refs.drain(..) {
+            let _ = snapshot::delete(root, &reference);
+        }
+        self.created_refs.clear();
+        self.rewritten = None;
+    }
+
+    pub fn rollback_side_effects(&mut self, root: &Path) {
+        if let Some(previous) = self.rewritten.take() {
+            if let Ok(repo) = git2::Repository::open(root) {
+                let _ = snapshot::save(&repo, &previous);
+            }
+        }
+        let created = std::mem::take(&mut self.created_refs);
+        for reference in &created {
+            let _ = snapshot::delete(root, reference);
+            if self.pending_ref.as_ref() == Some(reference) {
+                self.pending_ref = None;
+                self.baseline_fp = None;
+            }
+        }
+        self.retire_refs.clear();
+    }
+
+    fn finish_if_disabled(&mut self, root: &Path) -> Result<AutoCheckReport> {
+        let saved = self.sm.clone();
+        let action = self.sm.handle_tick(&[], 0);
+        match action {
+            AutoSessionAction::FinishSession { reference, reason } => {
+                self.complete_finish(root, &reference, &reason, saved)
+            }
+            _ => Ok(self.report(None, None)),
+        }
+    }
+
+    fn check_active(
+        &mut self,
+        root: &Path,
+        fp: &DirtyFingerprint,
+        procs: &[String],
+        now_ms: u64,
+    ) -> Result<AutoCheckReport> {
+        let delta = self
+            .last_fp
+            .as_ref()
+            .map(|prev| fingerprint_delta(prev, fp))
+            .unwrap_or(0);
+        self.last_fp = Some(fp.clone());
+        if delta > 0 {
+            let _ = self.sm.handle_file_changes(delta, now_ms);
+        }
+        let saved = self.sm.clone();
+        let action = self.sm.handle_tick(procs, now_ms);
+        match action {
+            AutoSessionAction::FinishSession { reference, reason } => {
+                self.complete_finish(root, &reference, &reason, saved)
+            }
+            _ => Ok(self.report(None, None)),
+        }
+    }
+
+    fn check_idle(
+        &mut self,
+        root: &Path,
+        fp: DirtyFingerprint,
+        procs: &[String],
+        now_ms: u64,
+    ) -> Result<AutoCheckReport> {
+        let mut delta = self
+            .last_fp
+            .as_ref()
+            .map(|prev| fingerprint_delta(prev, &fp))
+            .unwrap_or(0);
+        if self.pending_ref.is_none() {
+            // First sight of this worktree is the baseline, not a burst.
+            self.capture_baseline(root, &fp)?;
+            delta = 0;
+            self.sm.burst_detector.reset();
+        }
+        self.last_fp = Some(fp.clone());
+
+        let saved = self.sm.clone();
+        let mut action = AutoSessionAction::None;
+        if delta > 0 {
+            action = self.sm.handle_file_changes(delta, now_ms);
+        }
+        if matches!(action, AutoSessionAction::None) && self.process_start_allowed() {
+            let process_action = self.sm.handle_process_check(procs, now_ms);
+            if matches!(process_action, AutoSessionAction::StartSession { .. }) {
+                action = process_action;
+            }
+        }
+
+        if matches!(action, AutoSessionAction::None) {
+            self.sm
+                .burst_detector
+                .prune(now_ms, self.sm.config.burst_window_secs);
+            let quiet = self
+                .sm
+                .burst_detector
+                .recent_count(now_ms, self.sm.config.burst_window_secs)
+                == 0;
+            if quiet && self.baseline_fp.as_ref() != Some(&fp) {
+                if let Err(err) = self.capture_baseline(root, &fp) {
+                    if self.pending_ref.is_none() {
+                        self.sm = saved;
+                        return Err(err);
+                    }
+                    return Ok(self.report(None, Some(format!("滚动基线没有更新：{err}"))));
+                }
+            }
+            return Ok(self.report(None, None));
+        }
 
         match action {
             AutoSessionAction::StartSession {
@@ -528,31 +872,241 @@ impl AutoAgentManager {
                 trigger,
                 agent,
             } => {
-                let snap = snapshot::capture(root, &label, "agent", None)?;
-                let reference = snap.reference.clone();
-                self.sm
-                    .set_active(reference.clone(), label.clone(), trigger, now_ms, agent);
-                action_taken = Some(format!("已自动开启会话快照: {label}"));
+                let snap = match self.promote_pending(root, &label) {
+                    Ok(snap) => snap,
+                    Err(err) => {
+                        self.sm = saved;
+                        return Err(err);
+                    }
+                };
+                self.suppress_until_burst = false;
+                self.suppressed_processes.clear();
+                self.sm.set_active(
+                    snap.reference.clone(),
+                    label.clone(),
+                    trigger,
+                    now_ms,
+                    agent,
+                );
+                Ok(self.report(Some(format!("已自动开启会话快照: {label}")), None))
             }
             AutoSessionAction::FinishSession { reference, reason } => {
-                let _ = snapshot::finish(root, &reference);
-                action_taken = Some(format!("已自动结束会话: {reason}"));
+                self.complete_finish(root, &reference, &reason, saved)
             }
-            AutoSessionAction::None => {}
+            AutoSessionAction::None => Ok(self.report(None, None)),
         }
+    }
 
+    fn complete_finish(
+        &mut self,
+        root: &Path,
+        reference: &str,
+        reason: &str,
+        saved: AutoAgentStateMachine,
+    ) -> Result<AutoCheckReport> {
+        if let Err(err) = snapshot::finish(root, reference) {
+            let already_finished = snapshot::load(root, reference)
+                .ok()
+                .is_some_and(|snap| snap.kind == "agent_finished");
+            if !already_finished {
+                self.sm = saved;
+                return Err(err);
+            }
+        }
+        let silence_or_disable = reason.contains("静默") || reason.contains("关闭");
+        if silence_or_disable {
+            self.suppress_until_burst = true;
+            self.suppressed_processes = self.last_real_agents.iter().cloned().collect();
+        }
+        let warning = match self.arm_baseline(root) {
+            Ok(()) => None,
+            Err(err) => Some(format!("会话已结束，但新的基线快照没有保存：{err}")),
+        };
+        Ok(self.report(Some(format!("已自动结束会话: {reason}")), warning))
+    }
+
+    fn process_start_allowed(&self) -> bool {
+        if !self.suppress_until_burst {
+            return true;
+        }
+        // The same still-running process instance stays suppressed.
+        // After it exits, a later start is a new instance.
+        self.suppressed_processes.is_empty()
+    }
+
+    fn observe_blocked(&mut self, fp: DirtyFingerprint) {
+        self.last_fp = Some(fp);
+        self.sm.burst_detector.reset();
+        if let Some(old) = self.pending_ref.take() {
+            self.retire_refs.push(old);
+        }
+        self.baseline_fp = None;
+    }
+
+    fn arm_baseline(&mut self, root: &Path) -> Result<()> {
+        let fp = dirty_fingerprint(root)?;
+        self.capture_baseline(root, &fp)?;
+        self.last_fp = Some(fp);
+        Ok(())
+    }
+
+    fn capture_baseline(&mut self, root: &Path, fp: &DirtyFingerprint) -> Result<()> {
+        let snap = snapshot::capture(root, "自动基线", "auto_baseline", None)?;
+        if let Some(old) = self.pending_ref.replace(snap.reference.clone()) {
+            self.retire_refs.push(old);
+        }
+        self.created_refs.push(snap.reference);
+        self.baseline_fp = Some(fp.clone());
+        Ok(())
+    }
+
+    fn promote_pending(&mut self, root: &Path, label: &str) -> Result<snapshot::Snapshot> {
+        let Some(reference) = self.pending_ref.clone() else {
+            let snap = snapshot::capture(root, label, "agent", None)?;
+            self.created_refs.push(snap.reference.clone());
+            return Ok(snap);
+        };
+        let previous = snapshot::load(root, &reference)?;
+        let mut snap = previous.clone();
+        snap.kind = "agent".into();
+        snap.label = label.into();
+        let repo = git2::Repository::open(root)?;
+        snapshot::save(&repo, &snap)?;
+        if self.rewritten.is_none() {
+            self.rewritten = Some(previous);
+        }
+        self.pending_ref = None;
+        self.baseline_fp = None;
+        Ok(snap)
+    }
+
+    fn report(&self, action_taken: Option<String>, warning: Option<String>) -> AutoCheckReport {
         let (active, session_reference, session_label) = match self.sm.state() {
             AutoSessionState::Active {
                 reference, label, ..
             } => (true, Some(reference.clone()), Some(label.clone())),
             AutoSessionState::Idle => (false, None, None),
         };
-
-        Ok(AutoCheckReport {
+        AutoCheckReport {
             active,
             session_reference,
             session_label,
             action_taken,
-        })
+            warning,
+        }
     }
+}
+
+fn canonical_agents(processes: &[String]) -> Vec<String> {
+    let mut agents = BTreeSet::new();
+    for process in processes {
+        if let Some(agent) = match_agent_process(process) {
+            agents.insert(agent.to_string());
+        }
+    }
+    agents.into_iter().collect()
+}
+
+fn dirty_fingerprint(root: &Path) -> Result<DirtyFingerprint> {
+    let backend = Git2Backend::open(root)?;
+    let repo = git2::Repository::open(root)?;
+    let mut map = BTreeMap::new();
+    for file in backend.status()? {
+        if repo
+            .status_should_ignore(Path::new(&file.path))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let full = root.join(&file.path);
+        if full.is_dir() {
+            continue;
+        }
+        let key = match snapshot::read_version(&repo, root, &file.path) {
+            Ok(version) => version.map(|version| format!("{}:{}", version.oid, version.mode)),
+            Err(_) => {
+                let len = std::fs::metadata(&full).map(|meta| meta.len()).unwrap_or(0);
+                Some(format!("unreadable:{len}"))
+            }
+        };
+        map.insert(file.path, key);
+    }
+    Ok(map)
+}
+
+pub fn fingerprint_delta(prev: &DirtyFingerprint, next: &DirtyFingerprint) -> usize {
+    let mut keys = BTreeSet::new();
+    keys.extend(prev.keys().cloned());
+    keys.extend(next.keys().cloned());
+    keys.into_iter()
+        .filter(|key| prev.get(key) != next.get(key))
+        .count()
+}
+
+fn has_open_agent_session(root: &Path) -> Result<bool> {
+    Ok(snapshot::list(root)?
+        .iter()
+        .any(|snap| snap.kind == "agent"))
+}
+
+/// Drop idle managers that are stale or point at a removed worktree.
+/// Returns `(repo path, pending baseline ref)` pairs the caller should delete.
+pub fn prune_idle_managers(
+    map: &mut HashMap<String, AutoAgentManager>,
+    now: Instant,
+    max_idle: Duration,
+) -> Vec<(String, String)> {
+    let mut dropped = Vec::new();
+    map.retain(|path, manager| {
+        let keep = manager.sm.is_active()
+            || manager.in_flight
+            || (Path::new(path).exists()
+                && now.saturating_duration_since(manager.last_used) < max_idle);
+        if !keep {
+            if let Some(reference) = &manager.pending_ref {
+                dropped.push((path.clone(), reference.clone()));
+            }
+        }
+        keep
+    });
+    dropped
+}
+
+/// Remembers the last process scan so several repos and the 5s timer share one.
+#[derive(Debug, Clone)]
+pub struct ProcessScanCache {
+    scanned_at: Option<Instant>,
+    procs: Vec<String>,
+    ttl: Duration,
+}
+
+impl ProcessScanCache {
+    pub const fn new(ttl: Duration) -> Self {
+        Self {
+            scanned_at: None,
+            procs: Vec::new(),
+            ttl,
+        }
+    }
+
+    pub fn get_or_scan(&mut self, now: Instant, scan: impl FnOnce() -> Vec<String>) -> Vec<String> {
+        if let Some(scanned_at) = self.scanned_at {
+            if now.saturating_duration_since(scanned_at) < self.ttl {
+                return self.procs.clone();
+            }
+        }
+        let procs = scan();
+        self.scanned_at = Some(now);
+        self.procs = procs.clone();
+        procs
+    }
+}
+
+static PROCESS_CACHE: Mutex<ProcessScanCache> = Mutex::new(ProcessScanCache::new(PROCESS_SCAN_TTL));
+
+/// Process scan shared across repos. At most once per [`PROCESS_SCAN_TTL`].
+pub fn cached_running_agent_processes() -> Vec<String> {
+    let now = Instant::now();
+    let mut cache = PROCESS_CACHE.lock().unwrap_or_else(|err| err.into_inner());
+    cache.get_or_scan(now, find_running_agent_processes)
 }

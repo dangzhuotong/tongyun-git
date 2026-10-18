@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod audit;
+pub mod auto_agent;
 pub mod backend;
 pub mod branch;
 pub mod cli;
@@ -17,7 +18,6 @@ pub mod remote;
 pub mod snapshot;
 pub mod stash;
 pub mod tag;
-pub mod auto_agent;
 pub mod workspace;
 pub mod worktree;
 
@@ -25,10 +25,12 @@ pub mod worktree;
 mod win_job;
 
 pub use auto_agent::{
-    agent_display_name, find_running_agent_processes, is_known_agent_process, match_agent_process,
-    normalize_process_name, AutoAgentConfig, AutoAgentManager, AutoAgentStateMachine,
-    AutoCheckReport, AutoSessionAction, AutoSessionState, AutoTrigger, BurstConfig, BurstDetector,
-    evaluate_burst, evaluate_timestamp_burst, KNOWN_AGENT_PROCESSES,
+    agent_display_name, cached_running_agent_processes, evaluate_burst, evaluate_timestamp_burst,
+    find_running_agent_processes, fingerprint_delta, is_ide_host_process, is_known_agent_process,
+    match_agent_process, normalize_process_name, prune_idle_managers, AutoAgentConfig,
+    AutoAgentManager, AutoAgentStateMachine, AutoCheckReport, AutoSessionAction, AutoSessionState,
+    AutoTrigger, BurstConfig, BurstDetector, DirtyFingerprint, ProcessScanCache,
+    IDE_HOST_PROCESSES, KNOWN_AGENT_PROCESSES, MANAGER_IDLE_TTL, PROCESS_SCAN_TTL,
 };
 
 pub use ai::{

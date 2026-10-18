@@ -316,6 +316,10 @@ pub fn list(root: &Path) -> Result<Vec<Snapshot>> {
         let reference = reference?;
         if let Ok(name) = reference.name() {
             if let Ok(snapshot) = load(root, name) {
+                // Rolling pre-session baselines are an implementation detail.
+                if snapshot.kind == "auto_baseline" {
+                    continue;
+                }
                 snapshots.push(snapshot);
             }
         }

@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import type { AppInfo, AiSettings, AiKeyStatus, AiProvider, AutoAgentConfig } from "../../lib/host";
 import {
+  AUTO_AGENT_SETTINGS_EVENT,
+  AUTO_AGENT_SETTINGS_KEY,
+  loadAutoAgentConfig,
+} from "../../lib/autoAgentConfig";
+import {
   checkGit,
   type GitCheckResult,
   getAiKeyStatus,
@@ -31,13 +36,6 @@ interface SettingsModalProps {
   checkingUpdate?: boolean;
   onCheckUpdate?: () => void;
 }
-
-const DEFAULT_AUTO_AGENT_SETTINGS: AutoAgentConfig = {
-  enabled: true,
-  burst_threshold: 5,
-  burst_window_secs: 5,
-  silence_timeout_secs: 300,
-};
 
 const DEFAULT_AI_SETTINGS: AiSettings = {
   provider: "kie",
@@ -73,20 +71,15 @@ export function SettingsModal({
   const [testing, setTesting] = useState(false);
 
   // Auto Agent settings (V2-07)
-  const [autoAgentSettings, setAutoAgentSettings] = useState<AutoAgentConfig>(() => {
-    try {
-      const stored = localStorage.getItem("tongyun_auto_agent_settings");
-      if (stored) return { ...DEFAULT_AUTO_AGENT_SETTINGS, ...JSON.parse(stored) };
-    } catch {
-      // ignore
-    }
-    return DEFAULT_AUTO_AGENT_SETTINGS;
-  });
+  const [autoAgentSettings, setAutoAgentSettings] = useState<AutoAgentConfig>(() =>
+    loadAutoAgentConfig(localStorage.getItem(AUTO_AGENT_SETTINGS_KEY)),
+  );
 
   const updateAutoAgentSettings = (partial: Partial<AutoAgentConfig>) => {
     const updated = { ...autoAgentSettings, ...partial };
     setAutoAgentSettings(updated);
-    localStorage.setItem("tongyun_auto_agent_settings", JSON.stringify(updated));
+    localStorage.setItem(AUTO_AGENT_SETTINGS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event(AUTO_AGENT_SETTINGS_EVENT));
   };
 
   // AI tab state
@@ -440,7 +433,7 @@ export function SettingsModal({
                       Agent 会话自动检测与快照 (V2-07)
                     </label>
                     <p className="text-[11px] text-[var(--color-text-muted)]">
-                      检测已知 Agent 进程（Cursor、tongyun-cli、claude、codex）启动或文件短时间突增，自动开会话并打快照
+                      检测 claude、codex、tongyun-cli 进程，或短时间文件突增，自动开会话并打快照。Cursor 作为常驻编辑器不会单独触发。关闭后会结束进行中的自动会话。
                     </p>
                   </div>
                   <input

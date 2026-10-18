@@ -405,7 +405,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<BridgeState>) {
                 }
             };
 
-            match snapshot::capture(Path::new(&p), label, "agent", None) {
+            match crate::workspace::start_manual_session(Path::new(&p), label) {
                 Ok(snap) => {
                     send_json(
                         &mut stream,

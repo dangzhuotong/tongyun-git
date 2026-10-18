@@ -1012,6 +1012,7 @@ export interface AutoCheckReport {
   session_reference?: string | null;
   session_label?: string | null;
   action_taken?: string | null;
+  warning?: string | null;
 }
 export type WorkspaceRequest =
   | { type: "overview" | "snapshots" }
