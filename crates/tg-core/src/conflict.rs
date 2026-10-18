@@ -37,6 +37,15 @@ pub struct ConflictFileDetails {
     pub is_binary: bool,
 }
 
+/// Git's default conflict marker is exactly seven characters. A label may follow
+/// a space (`<<<<<<< HEAD`). Eight or more of the same character is file content.
+fn is_conflict_marker(line: &str, token: &str) -> bool {
+    match line.strip_prefix(token) {
+        Some(rest) => rest.is_empty() || rest.starts_with([' ', '\t']),
+        None => false,
+    }
+}
+
 pub struct ConflictService;
 
 impl ConflictService {
@@ -169,7 +178,10 @@ impl ConflictService {
         let mut normal_line_count = 0;
 
         for line in content.lines() {
-            if line.starts_with("<<<<<<<") {
+            // An opening marker only starts a hunk. Inside a hunk, a longer
+            // lookalike (`<<<<<<<<`, `========`) is file content, and a real
+            // `<<<<<<<` line is content too — Git does not nest conflicts.
+            if !in_conflict && is_conflict_marker(line, "<<<<<<<") {
                 in_conflict = true;
                 in_base = false;
                 in_their = false;
@@ -178,13 +190,13 @@ impl ConflictService {
                 base_lines.clear();
                 current_our_start = normal_line_count + 1;
                 current_their_start = normal_line_count + 1;
-            } else if in_conflict && line.starts_with("|||||||") {
+            } else if in_conflict && is_conflict_marker(line, "|||||||") {
                 in_base = true;
                 in_their = false;
-            } else if in_conflict && line.starts_with("=======") {
+            } else if in_conflict && is_conflict_marker(line, "=======") {
                 in_base = false;
                 in_their = true;
-            } else if in_conflict && line.starts_with(">>>>>>>") {
+            } else if in_conflict && is_conflict_marker(line, ">>>>>>>") {
                 hunks.push(ConflictHunk {
                     hunk_index: hunks.len(),
                     our_start_line: current_our_start,
@@ -472,6 +484,34 @@ line 4";
 
         let hunks = ConflictService::parse_conflict_hunks(content);
         assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn longer_equals_and_angle_lines_stay_inside_the_side() {
+        let content = "\
+<<<<<<< HEAD
+title
+========
+<<<<<<<< still ours
+=======
+theirs
+>>>>>>>> not a closer
+>>>>>>> branch
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(
+            hunks.len(),
+            1,
+            "a longer equals line must not split the hunk"
+        );
+        assert_eq!(
+            hunks[0].our_lines,
+            vec!["title", "========", "<<<<<<<< still ours"]
+        );
+        assert_eq!(
+            hunks[0].their_lines,
+            vec!["theirs", ">>>>>>>> not a closer"]
+        );
     }
 
     #[test]

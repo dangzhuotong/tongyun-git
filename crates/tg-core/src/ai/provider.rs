@@ -606,11 +606,9 @@ fn is_ai_preamble_line(line: &str) -> bool {
         "here is the commit message",
         "here's the commit message",
     ];
-    PREFIXES.iter().any(|prefix| {
-        lower.starts_with(prefix)
-            || lower.contains("提交信息如下")
-            || lower.contains("commit message:")
-    })
+    // Match only a leading preamble. A subject that merely mentions
+    // "commit message:" or "提交信息如下" is the commit text itself.
+    PREFIXES.iter().any(|prefix| lower.starts_with(prefix))
 }
 
 /// Returns the inside of a fence when the text before it is empty or only AI preamble.
@@ -689,6 +687,22 @@ mod tests {
             AiService::clean_commit_message(preamble_only),
             "docs: update readme"
         );
+    }
+
+    #[test]
+    fn keeps_subject_that_mentions_commit_message_phrasing() {
+        let raw = "docs: commit message: document the hook\n\n正文里写提交信息如下所示";
+        let cleaned = AiService::clean_commit_message(raw);
+        assert_eq!(
+            cleaned, raw,
+            "a real subject was treated as an AI preamble: {cleaned}"
+        );
+    }
+
+    #[test]
+    fn still_strips_a_leading_commit_message_preamble() {
+        let raw = "commit message:\ndocs: update readme\n";
+        assert_eq!(AiService::clean_commit_message(raw), "docs: update readme");
     }
 
     #[test]
