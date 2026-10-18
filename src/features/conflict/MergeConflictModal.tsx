@@ -19,6 +19,7 @@ import {
   RefreshIcon,
 } from "../../components/icons";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { applyConflictHunk, hasUnresolvedConflictMarkers } from "./applyHunk";
 
 interface MergeConflictModalProps {
   isOpen: boolean;
@@ -167,13 +168,9 @@ function MergeConflictModalContent({
   const handleSaveAndResolve = async () => {
     if (!selectedFilePath) return;
     // Warn if result still contains conflict markers
-    if (
-      resultContent.includes("<<<<<<<") ||
-      resultContent.includes("=======") ||
-      resultContent.includes(">>>>>>>")
-    ) {
+    if (hasUnresolvedConflictMarkers(resultContent)) {
       const confirmSave = window.confirm(
-        "合并结果中仍包含 Git 冲突标记 (<<<<<<< 或 =======)。确定仍要以此内容标记解决吗？"
+        "合并结果中仍包含 Git 冲突标记 (<<<<<<<、||||||| 或 =======)。确定仍要以此内容标记解决吗？"
       );
       if (!confirmSave) return;
     }
@@ -195,72 +192,17 @@ function MergeConflictModalContent({
   // Accept specific hunk from Ours into Result
   const handleAcceptHunkOurs = (hunkIdx: number) => {
     if (!details || !details.hunks[hunkIdx]) return;
-    const hunk = details.hunks[hunkIdx];
-    const ourText = hunk.our_lines.join("\n");
-    // Replace the hunk marker block in resultContent
-    const markerHeader = "<<<<<<<";
-    const markerFooter = ">>>>>>>";
-
-    const lines = resultContent.split("\n");
-    let inTargetHunk = false;
-    let targetHunkCount = 0;
-    const newLines: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.startsWith(markerHeader)) {
-        if (targetHunkCount === hunkIdx) {
-          inTargetHunk = true;
-          if (ourText) {
-            newLines.push(ourText);
-          }
-        } else {
-          newLines.push(line);
-        }
-        targetHunkCount++;
-      } else if (inTargetHunk && line.startsWith(markerFooter)) {
-        inTargetHunk = false;
-      } else if (!inTargetHunk) {
-        newLines.push(line);
-      }
-    }
-
-    setResultContent(newLines.join("\n"));
+    setResultContent(
+      applyConflictHunk(resultContent, hunkIdx, details.hunks[hunkIdx].our_lines),
+    );
   };
 
   // Accept specific hunk from Theirs into Result
   const handleAcceptHunkTheirs = (hunkIdx: number) => {
     if (!details || !details.hunks[hunkIdx]) return;
-    const hunk = details.hunks[hunkIdx];
-    const theirText = hunk.their_lines.join("\n");
-    const markerHeader = "<<<<<<<";
-    const markerFooter = ">>>>>>>";
-
-    const lines = resultContent.split("\n");
-    let inTargetHunk = false;
-    let targetHunkCount = 0;
-    const newLines: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.startsWith(markerHeader)) {
-        if (targetHunkCount === hunkIdx) {
-          inTargetHunk = true;
-          if (theirText) {
-            newLines.push(theirText);
-          }
-        } else {
-          newLines.push(line);
-        }
-        targetHunkCount++;
-      } else if (inTargetHunk && line.startsWith(markerFooter)) {
-        inTargetHunk = false;
-      } else if (!inTargetHunk) {
-        newLines.push(line);
-      }
-    }
-
-    setResultContent(newLines.join("\n"));
+    setResultContent(
+      applyConflictHunk(resultContent, hunkIdx, details.hunks[hunkIdx].their_lines),
+    );
   };
 
   // Complete Merge / Continue

@@ -37,6 +37,17 @@ pub struct ConflictFileDetails {
     pub is_binary: bool,
 }
 
+/// Git's default conflict marker is exactly seven characters. A label may follow
+/// a space (`<<<<<<< HEAD`). Eight or more of the same character is file content.
+fn is_conflict_marker(line: &str, token: &str) -> bool {
+    // `str::lines` drops `\n` / `\r\n`, but a raw line can still end in `\r`.
+    let line = line.trim_end_matches('\r');
+    match line.strip_prefix(token) {
+        Some(rest) => rest.is_empty() || rest.starts_with([' ', '\t']),
+        None => false,
+    }
+}
+
 pub struct ConflictService;
 
 impl ConflictService {
@@ -169,7 +180,10 @@ impl ConflictService {
         let mut normal_line_count = 0;
 
         for line in content.lines() {
-            if line.starts_with("<<<<<<<") {
+            // An opening marker only starts a hunk. Inside a hunk, a longer
+            // lookalike (`<<<<<<<<`, `========`) is file content, and a real
+            // `<<<<<<<` line is content too — Git does not nest conflicts.
+            if !in_conflict && is_conflict_marker(line, "<<<<<<<") {
                 in_conflict = true;
                 in_base = false;
                 in_their = false;
@@ -178,13 +192,13 @@ impl ConflictService {
                 base_lines.clear();
                 current_our_start = normal_line_count + 1;
                 current_their_start = normal_line_count + 1;
-            } else if in_conflict && line.starts_with("|||||||") {
+            } else if in_conflict && is_conflict_marker(line, "|||||||") {
                 in_base = true;
                 in_their = false;
-            } else if in_conflict && line.starts_with("=======") {
+            } else if in_conflict && is_conflict_marker(line, "=======") {
                 in_base = false;
                 in_their = true;
-            } else if in_conflict && line.starts_with(">>>>>>>") {
+            } else if in_conflict && is_conflict_marker(line, ">>>>>>>") {
                 hunks.push(ConflictHunk {
                     hunk_index: hunks.len(),
                     our_start_line: current_our_start,
@@ -475,6 +489,34 @@ line 4";
     }
 
     #[test]
+    fn longer_equals_and_angle_lines_stay_inside_the_side() {
+        let content = "\
+<<<<<<< HEAD
+title
+========
+<<<<<<<< still ours
+=======
+theirs
+>>>>>>>> not a closer
+>>>>>>> branch
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(
+            hunks.len(),
+            1,
+            "a longer equals line must not split the hunk"
+        );
+        assert_eq!(
+            hunks[0].our_lines,
+            vec!["title", "========", "<<<<<<<< still ours"]
+        );
+        assert_eq!(
+            hunks[0].their_lines,
+            vec!["theirs", ">>>>>>>> not a closer"]
+        );
+    }
+
+    #[test]
     fn test_parse_conflict_hunks_consecutive_no_intervening_lines() {
         let content = "\
 <<<<<<< HEAD
@@ -496,6 +538,103 @@ block 2 theirs
         assert_eq!(hunks[1].hunk_index, 1);
         assert_eq!(hunks[1].our_lines, vec!["block 2 ours"]);
         assert_eq!(hunks[1].their_lines, vec!["block 2 theirs"]);
+    }
+
+    #[test]
+    fn rust8_crlf_markers_and_trailing_cr_match() {
+        let content =
+            "<<<<<<< HEAD\r\nours\r\n|||||||\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> branch\r\n";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+        assert!(is_conflict_marker("<<<<<<<\r", "<<<<<<<"));
+        assert!(is_conflict_marker("||||||| base\r", "|||||||"));
+        assert!(is_conflict_marker("=======\r", "======="));
+        assert!(is_conflict_marker(">>>>>>> branch\r", ">>>>>>>"));
+        assert!(!is_conflict_marker("========\r", "======="));
+    }
+
+    #[test]
+    fn rust8_inner_opening_marker_does_not_start_another_hunk() {
+        let content = "\
+<<<<<<< HEAD
+ours-a
+<<<<<<< inner
+still-a
+=======
+theirs-a
+>>>>>>> a
+<<<<<<< HEAD
+ours-b
+=======
+theirs-b
+>>>>>>> b
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(
+            hunks[0].our_lines,
+            vec!["ours-a", "<<<<<<< inner", "still-a"]
+        );
+        assert_eq!(hunks[0].their_lines, vec!["theirs-a"]);
+        assert_eq!(hunks[1].hunk_index, 1);
+        assert_eq!(hunks[1].our_lines, vec!["ours-b"]);
+        assert_eq!(hunks[1].their_lines, vec!["theirs-b"]);
+    }
+
+    #[test]
+    fn rust8_bare_seven_character_markers_without_labels() {
+        let content = "\
+<<<<<<<
+only ours
+=======
+only theirs
+>>>>>>>
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["only ours"]);
+        assert_eq!(hunks[0].their_lines, vec!["only theirs"]);
+        assert!(hunks[0].base_lines.is_empty());
+    }
+
+    #[test]
+    fn rust8_tab_and_labeled_separator_still_split_sides() {
+        let content = "\
+<<<<<<<\tHEAD
+ours
+|||||||\tancestor
+base
+======= incoming
+theirs
+>>>>>>>\tfeature
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+    }
+
+    #[test]
+    fn rust8_diff3_base_keeps_every_line() {
+        let content = "\
+<<<<<<< HEAD
+ours
+||||||| merged common
+base 1
+base 2
+=======
+theirs
+>>>>>>> incoming
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base 1", "base 2"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
     }
 
     #[test]
