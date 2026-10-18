@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import type { AppInfo, AiSettings, AiKeyStatus, AiProvider } from "../../lib/host";
+import type { AppInfo, AiSettings, AiKeyStatus, AiProvider, AutoAgentConfig } from "../../lib/host";
+import {
+  AUTO_AGENT_SETTINGS_EVENT,
+  AUTO_AGENT_SETTINGS_KEY,
+  loadAutoAgentConfig,
+} from "../../lib/autoAgentConfig";
 import {
   checkGit,
   type GitCheckResult,
@@ -64,6 +69,18 @@ export function SettingsModal({
   const [customPath, setCustomPath] = useState(gitPath);
   const [testResult, setTestResult] = useState<GitCheckResult | null>(null);
   const [testing, setTesting] = useState(false);
+
+  // Auto Agent settings (V2-07)
+  const [autoAgentSettings, setAutoAgentSettings] = useState<AutoAgentConfig>(() =>
+    loadAutoAgentConfig(localStorage.getItem(AUTO_AGENT_SETTINGS_KEY)),
+  );
+
+  const updateAutoAgentSettings = (partial: Partial<AutoAgentConfig>) => {
+    const updated = { ...autoAgentSettings, ...partial };
+    setAutoAgentSettings(updated);
+    localStorage.setItem(AUTO_AGENT_SETTINGS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event(AUTO_AGENT_SETTINGS_EVENT));
+  };
 
   // AI tab state
   const [aiSettings, setAiSettings] = useState<AiSettings>(() => {
@@ -404,6 +421,84 @@ export function SettingsModal({
                         ? `Git 正常可用: ${testResult.version}`
                         : `Git 检测失败: ${testResult.error || "找不到可执行文件"}`}
                     </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Agent Session Auto-Detection (V2-07) */}
+              <div className="space-y-3 pt-2 border-t border-[var(--color-border)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label htmlFor="auto-agent-toggle" className="block text-xs font-semibold text-[var(--color-text)]">
+                      Agent 会话自动检测与快照 (V2-07)
+                    </label>
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      检测 claude、codex、tongyun-cli 进程，或短时间文件突增，自动开会话并打快照。Cursor 作为常驻编辑器不会单独触发。关闭后会结束进行中的自动会话。
+                    </p>
+                  </div>
+                  <input
+                    id="auto-agent-toggle"
+                    type="checkbox"
+                    checked={autoAgentSettings.enabled}
+                    onChange={(e) => updateAutoAgentSettings({ enabled: e.target.checked })}
+                    className="cursor-pointer"
+                  />
+                </div>
+
+                {autoAgentSettings.enabled && (
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        突增阈值 (个文件)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={autoAgentSettings.burst_threshold}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            burst_threshold: Math.max(1, parseInt(e.target.value) || 1),
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        判定窗口 (秒)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={autoAgentSettings.burst_window_secs}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            burst_window_secs: Math.max(1, parseInt(e.target.value) || 1),
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        静默超时 (分钟)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={Math.round(autoAgentSettings.silence_timeout_secs / 60)}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            silence_timeout_secs:
+                              Math.max(1, parseInt(e.target.value) || 1) * 60,
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

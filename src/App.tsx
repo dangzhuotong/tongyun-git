@@ -23,7 +23,15 @@ import {
   type RepoInfo,
   type FileStatus,
   type FileDiff,
+  type AutoCheckReport,
 } from "./lib/host";
+import {
+  AUTO_AGENT_SETTINGS_EVENT,
+  AUTO_AGENT_SETTINGS_KEY,
+  autoCheckRequest,
+  formatHostError,
+  loadAutoAgentConfig,
+} from "./lib/autoAgentConfig";
 import { WorkspaceTools } from "./features/workspace/WorkspaceTools";
 import { Toolbar } from "./features/toolbar/Toolbar";
 import { ChangesList } from "./features/changes/ChangesList";
@@ -300,6 +308,22 @@ export default function App() {
     });
   }, []);
 
+  const reportAutoCheck = useCallback((repoRoot: string) => {
+    const config = loadAutoAgentConfig(localStorage.getItem(AUTO_AGENT_SETTINGS_KEY));
+    return Promise.resolve()
+      .then(() => workspaceTask<AutoCheckReport>(repoRoot, autoCheckRequest(config)))
+      .then((report) => {
+        if (report?.warning) {
+          setSyncToast({ message: report.warning, isError: true });
+        } else if (report?.action_taken) {
+          setSyncToast({ message: report.action_taken });
+        }
+      })
+      .catch((error: unknown) => {
+        setSyncToast({ message: formatHostError(error), isError: true });
+      });
+  }, []);
+
   // Fetch repository status
   const refreshStatus = useCallback(
     async (repoRoot: string) => {
@@ -309,13 +333,14 @@ export default function App() {
         setFiles(statusRes.files);
         setCurrentRepo((prev) => (prev ? { ...prev, head: statusRes.head } : null));
         setTreeRefreshKey((k) => k + 1);
+        void reportAutoCheck(repoRoot);
       } catch {
         // Refresh error handled silently or in status
       } finally {
         setIsRefreshing(false);
       }
     },
-    []
+    [reportAutoCheck]
   );
 
   // Pull remote action (R-11)
@@ -523,6 +548,23 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [currentRepo, refreshStatus]);
+
+  // Periodic background check for Auto Agent session (V2-07).
+  // Disabled detection still checks so an active auto session can end.
+  useEffect(() => {
+    if (!currentRepo) return;
+    const repoPath = currentRepo.root_path;
+    const tick = () => {
+      void reportAutoCheck(repoPath);
+    };
+    tick();
+    const timer = setInterval(tick, 5000);
+    window.addEventListener(AUTO_AGENT_SETTINGS_EVENT, tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(AUTO_AGENT_SETTINGS_EVENT, tick);
+    };
+  }, [currentRepo, reportAutoCheck]);
 
   // Global shortcuts (R-08, R-11, R-12, R-16)
   useEffect(() => {

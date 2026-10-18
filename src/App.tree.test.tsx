@@ -37,6 +37,13 @@ vi.mock("./lib/host.ts", () => ({
   initRepository: vi.fn(),
   listRepoFiles: vi.fn(),
   getFileHistory: vi.fn(),
+  workspaceTask: vi.fn(async () => ({
+    active: false,
+    session_reference: null,
+    session_label: null,
+    action_taken: null,
+    warning: null,
+  })),
 }));
 
 describe("App Project File Tree integration", () => {
