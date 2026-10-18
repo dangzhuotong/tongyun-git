@@ -17,11 +17,19 @@ pub mod remote;
 pub mod snapshot;
 pub mod stash;
 pub mod tag;
+pub mod auto_agent;
 pub mod workspace;
 pub mod worktree;
 
 #[cfg(windows)]
 mod win_job;
+
+pub use auto_agent::{
+    agent_display_name, find_running_agent_processes, is_known_agent_process, match_agent_process,
+    normalize_process_name, AutoAgentConfig, AutoAgentManager, AutoAgentStateMachine,
+    AutoCheckReport, AutoSessionAction, AutoSessionState, AutoTrigger, BurstConfig, BurstDetector,
+    evaluate_burst, evaluate_timestamp_burst, KNOWN_AGENT_PROCESSES,
+};
 
 pub use ai::{
     AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings, DiffReviewResult,

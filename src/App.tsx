@@ -23,6 +23,8 @@ import {
   type RepoInfo,
   type FileStatus,
   type FileDiff,
+  type AutoAgentConfig,
+  type AutoCheckReport,
 } from "./lib/host";
 import { WorkspaceTools } from "./features/workspace/WorkspaceTools";
 import { Toolbar } from "./features/toolbar/Toolbar";
@@ -309,6 +311,27 @@ export default function App() {
         setFiles(statusRes.files);
         setCurrentRepo((prev) => (prev ? { ...prev, head: statusRes.head } : null));
         setTreeRefreshKey((k) => k + 1);
+
+        // Auto agent session check on file change (V2-07)
+        try {
+          const stored = localStorage.getItem("tongyun_auto_agent_settings");
+          const autoConfig: AutoAgentConfig = stored
+            ? JSON.parse(stored)
+            : { enabled: true, burst_threshold: 5, burst_window_secs: 5, silence_timeout_secs: 300 };
+          if (autoConfig.enabled && statusRes.files.length > 0) {
+            workspaceTask<AutoCheckReport>(repoRoot, {
+              type: "auto_check",
+              change_count: statusRes.files.length,
+              config: autoConfig,
+            }).then((report) => {
+              if (report?.action_taken) {
+                setSyncToast({ message: report.action_taken });
+              }
+            }).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
       } catch {
         // Refresh error handled silently or in status
       } finally {
@@ -523,6 +546,32 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [currentRepo, refreshStatus]);
+
+  // Periodic background check for Auto Agent session (V2-07)
+  useEffect(() => {
+    if (!currentRepo) return;
+    const repoPath = currentRepo.root_path;
+    const timer = setInterval(async () => {
+      try {
+        const stored = localStorage.getItem("tongyun_auto_agent_settings");
+        const autoConfig: AutoAgentConfig = stored
+          ? JSON.parse(stored)
+          : { enabled: true, burst_threshold: 5, burst_window_secs: 5, silence_timeout_secs: 300 };
+        if (!autoConfig.enabled) return;
+        const report = await workspaceTask<AutoCheckReport>(repoPath, {
+          type: "auto_check",
+          change_count: 0,
+          config: autoConfig,
+        });
+        if (report?.action_taken) {
+          setSyncToast({ message: report.action_taken });
+        }
+      } catch {
+        // ignore
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [currentRepo]);
 
   // Global shortcuts (R-08, R-11, R-12, R-16)
   useEffect(() => {

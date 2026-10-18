@@ -52,7 +52,14 @@ pub enum WorkspaceRequest {
     Open {
         application: String,
     },
+    AutoCheck {
+        change_count: usize,
+        config: Option<tg_core::AutoAgentConfig>,
+    },
 }
+
+static AUTO_AGENT_MANAGERS: Mutex<Option<std::collections::HashMap<String, tg_core::AutoAgentManager>>> =
+    Mutex::new(None);
 
 fn value<T: serde::Serialize>(result: tg_core::Result<T>) -> Result<Value, String> {
     serde_json::to_value(result.map_err(|e| e.to_string())?).map_err(|e| e.to_string())
@@ -100,6 +107,17 @@ pub async fn workspace_task(
                         value(snapshot::capture(root, &label, "agent", None))
                     }
                     WorkspaceRequest::Finish { reference } => {
+                        if let Ok(mut map_guard) = AUTO_AGENT_MANAGERS.lock() {
+                            if let Some(map) = map_guard.as_mut() {
+                                if let Some(manager) = map.get_mut(&root.to_string_lossy().to_string()) {
+                                    if let tg_core::AutoSessionState::Active { reference: active_ref, .. } = &manager.sm.state {
+                                        if active_ref == &reference {
+                                            manager.sm.set_idle();
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         value(snapshot::finish(root, &reference))
                     }
                     WorkspaceRequest::Changes { reference } => {
@@ -109,6 +127,17 @@ pub async fn workspace_task(
                         value(snapshot::restore(root, &reference, &changes))
                     }
                     WorkspaceRequest::Delete { reference } => {
+                        if let Ok(mut map_guard) = AUTO_AGENT_MANAGERS.lock() {
+                            if let Some(map) = map_guard.as_mut() {
+                                if let Some(manager) = map.get_mut(&root.to_string_lossy().to_string()) {
+                                    if let tg_core::AutoSessionState::Active { reference: active_ref, .. } = &manager.sm.state {
+                                        if active_ref == &reference {
+                                            manager.sm.set_idle();
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         value(snapshot::delete(root, &reference))
                     }
                     WorkspaceRequest::Shelve { label, paths } => {
@@ -124,6 +153,25 @@ pub async fn workspace_task(
                     WorkspaceRequest::Open { application } => {
                         open_external(root, &application)?;
                         Ok(Value::Null)
+                    }
+                    WorkspaceRequest::AutoCheck {
+                        change_count,
+                        config,
+                    } => {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        let mut map_guard = AUTO_AGENT_MANAGERS.lock().map_err(|e| e.to_string())?;
+                        let map = map_guard.get_or_insert_with(std::collections::HashMap::new);
+                        let manager = map
+                            .entry(root.to_string_lossy().to_string())
+                            .or_insert_with(|| tg_core::AutoAgentManager::new(config.clone().unwrap_or_default()));
+                        if let Some(cfg) = config {
+                            manager.sm.set_config(cfg);
+                        }
+                        let report = manager.check(root, change_count, None, now_ms);
+                        value(report)
                     }
                 }
             },

@@ -382,4 +382,49 @@ describe("SettingsModal component", () => {
     fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
     expect(onCheckUpdate).toHaveBeenCalledOnce();
   });
+
+  it("V2-07: toggles auto agent detection on and off and persists settings", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: false,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        appInfo={defaultAppInfo}
+        theme="system"
+        onThemeChange={vi.fn()}
+        gitPath=""
+        onGitPathChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(host.getAiKeyStatus).toHaveBeenCalled();
+    });
+
+    // Toggle checkbox should be present and checked by default
+    const toggle = screen.getByRole("checkbox", {
+      name: /Agent 会话自动检测与快照/,
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    // Uncheck toggle to disable auto detection
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+
+    // Check localStorage
+    const saved = JSON.parse(localStorage.getItem("tongyun_auto_agent_settings") || "{}");
+    expect(saved.enabled).toBe(false);
+
+    // Re-enable toggle
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    const reSaved = JSON.parse(localStorage.getItem("tongyun_auto_agent_settings") || "{}");
+    expect(reSaved.enabled).toBe(true);
+  });
 });

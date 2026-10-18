@@ -1001,6 +1001,18 @@ export interface WorkspaceOverview {
 export interface BranchComparison { from: string; to: string; patch: string; files: number; additions: number; deletions: number }
 export interface BlameLine { line: number; oid: string; author: string; content: string }
 export type HistoryAction = "cherry_pick" | "revert" | "merge" | "continue" | "abort";
+export interface AutoAgentConfig {
+  enabled: boolean;
+  burst_threshold: number;
+  burst_window_secs: number;
+  silence_timeout_secs: number;
+}
+export interface AutoCheckReport {
+  active: boolean;
+  session_reference?: string | null;
+  session_label?: string | null;
+  action_taken?: string | null;
+}
 export type WorkspaceRequest =
   | { type: "overview" | "snapshots" }
   | { type: "compare"; from: string; to: string }
@@ -1011,7 +1023,8 @@ export type WorkspaceRequest =
   | { type: "restore"; reference: string; changes: SnapshotChange[] }
   | { type: "shelve"; label: string; paths: string[] }
   | { type: "discard_lines"; expected: FileDiff; hunk_index: number; selected: number[] }
-  | { type: "open"; application: "idea" | "terminal" | "folder" };
+  | { type: "open"; application: "idea" | "terminal" | "folder" }
+  | { type: "auto_check"; change_count: number; config?: AutoAgentConfig };
 export async function workspaceTask<T>(rootPath: string, request: WorkspaceRequest): Promise<T> {
   return invoke<T>("workspace_task", { rootPath, request, gitPath: localStorage.getItem("tongyun_git_path") || null });
 }
