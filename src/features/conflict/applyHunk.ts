@@ -4,8 +4,9 @@
  * Longer lookalikes (`========`, `<<<<<<<<`) are file content.
  */
 export function isGitConflictMarker(line: string, token: string): boolean {
-  if (!line.startsWith(token)) return false;
-  const rest = line.slice(token.length);
+  const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
+  if (!normalized.startsWith(token)) return false;
+  const rest = normalized.slice(token.length);
   return rest.length === 0 || rest[0] === " " || rest[0] === "\t";
 }
 
@@ -13,6 +14,7 @@ export function hasUnresolvedConflictMarkers(content: string): boolean {
   return content.split("\n").some(
     (line) =>
       isGitConflictMarker(line, "<<<<<<<") ||
+      isGitConflictMarker(line, "|||||||") ||
       isGitConflictMarker(line, "=======") ||
       isGitConflictMarker(line, ">>>>>>>"),
   );
@@ -25,21 +27,16 @@ export function applyConflictHunk(
 ): string {
   const replacement = replacementLines.join("\n");
   const lines = content.split("\n");
+  let inConflict = false;
   let inTargetHunk = false;
-  let targetHunkCount = 0;
+  let hunkCount = 0;
   const newLines: string[] = [];
 
   for (const line of lines) {
-    // Once the chosen hunk is open, skip until its closer. Content that
-    // looks like `<<<<<<<` is already inside `replacement`.
-    if (inTargetHunk) {
-      if (isGitConflictMarker(line, ">>>>>>>")) {
-        inTargetHunk = false;
-      }
-      continue;
-    }
-    if (isGitConflictMarker(line, "<<<<<<<")) {
-      if (targetHunkCount === hunkIndex) {
+    // Same rule as Rust `parse_conflict_hunks`: an opening marker only starts
+    // a hunk. Inside a hunk, `<<<<<<<` is file content and does not increment.
+    if (!inConflict && isGitConflictMarker(line, "<<<<<<<")) {
+      if (hunkCount === hunkIndex) {
         inTargetHunk = true;
         if (replacement) {
           newLines.push(replacement);
@@ -47,8 +44,20 @@ export function applyConflictHunk(
       } else {
         newLines.push(line);
       }
-      targetHunkCount++;
-    } else {
+      hunkCount++;
+      inConflict = true;
+      continue;
+    }
+    if (inConflict && isGitConflictMarker(line, ">>>>>>>")) {
+      inConflict = false;
+      if (inTargetHunk) {
+        inTargetHunk = false;
+      } else {
+        newLines.push(line);
+      }
+      continue;
+    }
+    if (!inTargetHunk) {
       newLines.push(line);
     }
   }

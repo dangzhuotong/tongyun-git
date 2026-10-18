@@ -170,7 +170,7 @@ function MergeConflictModalContent({
     // Warn if result still contains conflict markers
     if (hasUnresolvedConflictMarkers(resultContent)) {
       const confirmSave = window.confirm(
-        "合并结果中仍包含 Git 冲突标记 (<<<<<<< 或 =======)。确定仍要以此内容标记解决吗？"
+        "合并结果中仍包含 Git 冲突标记 (<<<<<<<、||||||| 或 =======)。确定仍要以此内容标记解决吗？"
       );
       if (!confirmSave) return;
     }

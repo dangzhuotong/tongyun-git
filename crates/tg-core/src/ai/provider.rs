@@ -706,6 +706,56 @@ mod tests {
     }
 
     #[test]
+    fn rust8_empty_and_whitespace_commit_message() {
+        assert_eq!(AiService::clean_commit_message(""), "");
+        assert_eq!(AiService::clean_commit_message("   \n\t  "), "");
+    }
+
+    #[test]
+    fn rust8_single_quotes_and_commit_m_wrapper() {
+        assert_eq!(
+            AiService::clean_commit_message("'feat: quoted'"),
+            "feat: quoted"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("git commit -m 'fix: hook'"),
+            "fix: hook"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("git commit -m fix: bare"),
+            "git commit -m fix: bare"
+        );
+    }
+
+    #[test]
+    fn rust8_strips_leading_preamble_and_trailing_explanation() {
+        assert_eq!(
+            AiService::clean_commit_message("好的，如下：\nfeat: ok"),
+            "feat: ok"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("根据以上改动：\nfix: x"),
+            "fix: x"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("commit message：\nfeat: zh colon"),
+            "feat: zh colon"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("Here's the commit message\nfeat: title"),
+            "feat: title"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("feat: add\n\nbody\n说明: 这是解释\nmore"),
+            "feat: add\n\nbody"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("feat: add\nNote: hidden"),
+            "feat: add"
+        );
+    }
+
+    #[test]
     fn keeps_commit_body_when_it_contains_a_code_fence() {
         let raw = "feat: document parser\n\nExample:\n\n```\ncode sample\n```\n";
         let cleaned = AiService::clean_commit_message(raw);
