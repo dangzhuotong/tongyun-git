@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AUTO_AGENT_SETTINGS,
   autoCheckRequest,
+  createAutoNoticeGate,
   formatHostError,
   loadAutoAgentConfig,
 } from "./autoAgentConfig";
@@ -22,13 +23,23 @@ describe("loadAutoAgentConfig", () => {
 });
 
 describe("autoCheckRequest", () => {
-  it("does not send a dirty-file total as the burst count", () => {
+  it("sends no change count because the backend diffs the worktree", () => {
     const request = autoCheckRequest({ ...DEFAULT_AUTO_AGENT_SETTINGS, enabled: false });
     expect(request).toEqual({
       type: "auto_check",
-      change_count: 0,
       config: { ...DEFAULT_AUTO_AGENT_SETTINGS, enabled: false },
     });
+  });
+});
+
+describe("createAutoNoticeGate", () => {
+  it("dedupes the same persistent failure but reports a new one", () => {
+    const gate = createAutoNoticeGate();
+    expect(gate.shouldReport("仓库已被移走")).toBe(true);
+    expect(gate.shouldReport("仓库已被移走")).toBe(false);
+    expect(gate.shouldReport("快照写入失败")).toBe(true);
+    gate.reset();
+    expect(gate.shouldReport("仓库已被移走")).toBe(true);
   });
 });
 

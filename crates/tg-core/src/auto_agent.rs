@@ -525,11 +525,34 @@ pub struct AutoCheckReport {
 /// `None` means the path is missing (deleted).
 pub type DirtyFingerprint = BTreeMap<String, Option<String>>;
 
+/// Cached content key for one dirty path, keyed by file metadata so unchanged
+/// files are not hashed again on every tick.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FingerprintCacheEntry {
+    mtime_ns: Option<i128>,
+    len: Option<u64>,
+    key: Option<String>,
+}
+
+fn metadata_stamp(meta: &std::fs::Metadata) -> (Option<i128>, u64) {
+    let mtime_ns = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|delta| delta.as_nanos() as i128);
+    (mtime_ns, meta.len())
+}
+
 /// How often a host-wide process scan may spawn `tasklist` / walk `/proc`.
 pub const PROCESS_SCAN_TTL: Duration = Duration::from_secs(15);
 
 /// Idle auto-session managers older than this are dropped.
 pub const MANAGER_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
+
+/// Minimum spacing between rolling baseline refreshes. A quiet tick only
+/// re-captures the baseline once this much time has elapsed, so slow editing
+/// does not spawn a full snapshot every five seconds.
+pub const BASELINE_MIN_INTERVAL_MS: u64 = 30_000;
 
 /// High-level manager coordinating state machine and workspace snapshot operations.
 #[derive(Debug, Clone)]
@@ -547,6 +570,9 @@ pub struct AutoAgentManager {
     created_refs: Vec<String>,
     rewritten: Option<snapshot::Snapshot>,
     retire_refs: Vec<String>,
+    fingerprint_cache: BTreeMap<String, FingerprintCacheEntry>,
+    last_baseline_ms: u64,
+    baselines_scanned: bool,
 }
 
 impl AutoAgentManager {
@@ -565,6 +591,9 @@ impl AutoAgentManager {
             created_refs: Vec::new(),
             rewritten: None,
             retire_refs: Vec::new(),
+            fingerprint_cache: BTreeMap::new(),
+            last_baseline_ms: 0,
+            baselines_scanned: false,
         }
     }
 
@@ -698,12 +727,11 @@ impl AutoAgentManager {
         self.in_flight = false;
     }
 
-    /// `change_count` is ignored. The manager diffs the worktree against the
-    /// previous observation so a stable dirty tree cannot retrigger.
+    /// The manager diffs the worktree against the previous observation, so a
+    /// stable dirty tree cannot retrigger a burst.
     pub fn check(
         &mut self,
         root: &Path,
-        _change_count: usize,
         running_processes: Option<&[String]>,
         now_ms: u64,
     ) -> Result<AutoCheckReport> {
@@ -724,6 +752,12 @@ impl AutoAgentManager {
         now_ms: u64,
     ) -> Result<AutoCheckReport> {
         self.last_used = Instant::now();
+        if !self.baselines_scanned {
+            self.baselines_scanned = true;
+            // Refs left behind by an earlier process are invisible in the UI.
+            // Drop any we are not tracking before we start our own baseline.
+            let _ = self.cleanup_orphan_baselines(root);
+        }
         let scanned;
         let procs: &[String] = match running_processes {
             Some(procs) => procs,
@@ -740,7 +774,7 @@ impl AutoAgentManager {
             return self.finish_if_disabled(root);
         }
 
-        let fp = dirty_fingerprint(root)?;
+        let fp = self.fingerprint(root)?;
         if self.sm.is_active() {
             return self.check_active(root, &fp, procs, now_ms);
         }
@@ -827,7 +861,7 @@ impl AutoAgentManager {
             .unwrap_or(0);
         if self.pending_ref.is_none() {
             // First sight of this worktree is the baseline, not a burst.
-            self.capture_baseline(root, &fp)?;
+            self.capture_baseline(root, &fp, now_ms)?;
             delta = 0;
             self.sm.burst_detector.reset();
         }
@@ -854,8 +888,9 @@ impl AutoAgentManager {
                 .burst_detector
                 .recent_count(now_ms, self.sm.config.burst_window_secs)
                 == 0;
-            if quiet && self.baseline_fp.as_ref() != Some(&fp) {
-                if let Err(err) = self.capture_baseline(root, &fp) {
+            if quiet && self.baseline_fp.as_ref() != Some(&fp) && self.baseline_refresh_due(now_ms)
+            {
+                if let Err(err) = self.capture_baseline(root, &fp, now_ms) {
                     if self.pending_ref.is_none() {
                         self.sm = saved;
                         return Err(err);
@@ -944,19 +979,44 @@ impl AutoAgentManager {
     }
 
     fn arm_baseline(&mut self, root: &Path) -> Result<()> {
-        let fp = dirty_fingerprint(root)?;
-        self.capture_baseline(root, &fp)?;
+        let fp = self.fingerprint(root)?;
+        self.capture_baseline(root, &fp, wall_clock_ms())?;
         self.last_fp = Some(fp);
         Ok(())
     }
 
-    fn capture_baseline(&mut self, root: &Path, fp: &DirtyFingerprint) -> Result<()> {
+    fn fingerprint(&mut self, root: &Path) -> Result<DirtyFingerprint> {
+        dirty_fingerprint(root, &mut self.fingerprint_cache)
+    }
+
+    fn baseline_refresh_due(&self, now_ms: u64) -> bool {
+        now_ms.saturating_sub(self.last_baseline_ms) >= BASELINE_MIN_INTERVAL_MS
+    }
+
+    /// Reclaim `auto_baseline` refs that this process is not tracking. The
+    /// manager keeps the rolling ref only in memory, so a crash or normal exit
+    /// leaves the ref behind but hidden from [`snapshot::list`].
+    pub fn cleanup_orphan_baselines(&mut self, root: &Path) -> Result<usize> {
+        let keep = self.pending_ref.clone();
+        let mut removed = 0;
+        for reference in snapshot::baseline_refs(root)? {
+            if Some(&reference) == keep.as_ref() {
+                continue;
+            }
+            snapshot::delete(root, &reference)?;
+            removed += 1;
+        }
+        Ok(removed)
+    }
+
+    fn capture_baseline(&mut self, root: &Path, fp: &DirtyFingerprint, now_ms: u64) -> Result<()> {
         let snap = snapshot::capture(root, "自动基线", "auto_baseline", None)?;
         if let Some(old) = self.pending_ref.replace(snap.reference.clone()) {
             self.retire_refs.push(old);
         }
         self.created_refs.push(snap.reference);
         self.baseline_fp = Some(fp.clone());
+        self.last_baseline_ms = now_ms;
         Ok(())
     }
 
@@ -1007,10 +1067,21 @@ fn canonical_agents(processes: &[String]) -> Vec<String> {
     agents.into_iter().collect()
 }
 
-fn dirty_fingerprint(root: &Path) -> Result<DirtyFingerprint> {
+fn wall_clock_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn dirty_fingerprint(
+    root: &Path,
+    cache: &mut BTreeMap<String, FingerprintCacheEntry>,
+) -> Result<DirtyFingerprint> {
     let backend = Git2Backend::open(root)?;
     let repo = git2::Repository::open(root)?;
     let mut map = BTreeMap::new();
+    let mut seen = BTreeSet::new();
     for file in backend.status()? {
         if repo
             .status_should_ignore(Path::new(&file.path))
@@ -1022,15 +1093,38 @@ fn dirty_fingerprint(root: &Path) -> Result<DirtyFingerprint> {
         if full.is_dir() {
             continue;
         }
-        let key = match snapshot::read_version(&repo, root, &file.path) {
-            Ok(version) => version.map(|version| format!("{}:{}", version.oid, version.mode)),
-            Err(_) => {
-                let len = std::fs::metadata(&full).map(|meta| meta.len()).unwrap_or(0);
-                Some(format!("unreadable:{len}"))
+        seen.insert(file.path.clone());
+        let (mtime_ns, len) = match std::fs::metadata(&full) {
+            Ok(meta) => metadata_stamp(&meta),
+            Err(_) => (None, 0),
+        };
+        let cached = cache.get(&file.path);
+        let key = match cached {
+            Some(entry) if entry.mtime_ns == mtime_ns && entry.len == Some(len) => {
+                entry.key.clone()
+            }
+            _ => {
+                let key = match snapshot::read_version(&repo, root, &file.path) {
+                    Ok(version) => {
+                        version.map(|version| format!("{}:{}", version.oid, version.mode))
+                    }
+                    Err(_) => Some(format!("unreadable:{len}")),
+                };
+                cache.insert(
+                    file.path.clone(),
+                    FingerprintCacheEntry {
+                        mtime_ns,
+                        len: Some(len),
+                        key: key.clone(),
+                    },
+                );
+                key
             }
         };
         map.insert(file.path, key);
     }
+    // Deleted / no-longer-dirty paths must not keep the cache growing.
+    cache.retain(|path, _| seen.contains(path));
     Ok(map)
 }
 
@@ -1109,4 +1203,50 @@ pub fn cached_running_agent_processes() -> Vec<String> {
     let now = Instant::now();
     let mut cache = PROCESS_CACHE.lock().unwrap_or_else(|err| err.into_inner());
     cache.get_or_scan(now, find_running_agent_processes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn fingerprint_reuses_cached_key_while_metadata_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let _repo = git2::Repository::init(root).unwrap();
+        fs::write(root.join("dirty.txt"), "one\n").unwrap();
+
+        let mut cache = BTreeMap::new();
+        let first = dirty_fingerprint(root, &mut cache).unwrap();
+        assert!(first.contains_key("dirty.txt"));
+
+        // If the metadata is unchanged the cached key must be reused instead of
+        // hashing the file again.
+        cache.get_mut("dirty.txt").unwrap().key = Some("cached-sentinel".into());
+        let second = dirty_fingerprint(root, &mut cache).unwrap();
+        assert_eq!(
+            second.get("dirty.txt"),
+            Some(&Some("cached-sentinel".into()))
+        );
+    }
+
+    #[test]
+    fn fingerprint_rehashes_when_size_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let _repo = git2::Repository::init(root).unwrap();
+        fs::write(root.join("dirty.txt"), "one\n").unwrap();
+
+        let mut cache = BTreeMap::new();
+        dirty_fingerprint(root, &mut cache).unwrap();
+        cache.get_mut("dirty.txt").unwrap().key = Some("cached-sentinel".into());
+
+        fs::write(root.join("dirty.txt"), "two-longer\n").unwrap();
+        let changed = dirty_fingerprint(root, &mut cache).unwrap();
+        assert_ne!(
+            changed.get("dirty.txt"),
+            Some(&Some("cached-sentinel".into()))
+        );
+    }
 }

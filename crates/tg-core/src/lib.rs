@@ -30,7 +30,8 @@ pub use auto_agent::{
     match_agent_process, normalize_process_name, prune_idle_managers, AutoAgentConfig,
     AutoAgentManager, AutoAgentStateMachine, AutoCheckReport, AutoSessionAction, AutoSessionState,
     AutoTrigger, BurstConfig, BurstDetector, DirtyFingerprint, ProcessScanCache,
-    IDE_HOST_PROCESSES, KNOWN_AGENT_PROCESSES, MANAGER_IDLE_TTL, PROCESS_SCAN_TTL,
+    BASELINE_MIN_INTERVAL_MS, IDE_HOST_PROCESSES, KNOWN_AGENT_PROCESSES, MANAGER_IDLE_TTL,
+    PROCESS_SCAN_TTL,
 };
 
 pub use ai::{

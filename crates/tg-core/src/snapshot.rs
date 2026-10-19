@@ -327,6 +327,24 @@ pub fn list(root: &Path) -> Result<Vec<Snapshot>> {
     snapshots.sort_by(|a, b| b.reference.cmp(&a.reference));
     Ok(snapshots)
 }
+
+/// References of hidden rolling `auto_baseline` snapshots. They are skipped by
+/// [`list`](Self::list) but must still be enumerable so leaked baselines from a
+/// previous process can be reclaimed.
+pub fn baseline_refs(root: &Path) -> Result<Vec<String>> {
+    let repo = Repository::open(root)?;
+    let mut refs = Vec::new();
+    for reference in repo.references_glob(&format!("{PREFIX}*"))? {
+        let reference = reference?;
+        if let Ok(name) = reference.name() {
+            if load(root, name).is_ok_and(|snapshot| snapshot.kind == "auto_baseline") {
+                refs.push(name.to_string());
+            }
+        }
+    }
+    refs.sort();
+    Ok(refs)
+}
 pub fn changes(root: &Path, reference: &str) -> Result<Vec<SnapshotChange>> {
     let repo = Repository::open(root)?;
     let snapshot = load(root, reference)?;
