@@ -5,7 +5,8 @@ use tg_core::{
     agent_display_name, evaluate_burst, evaluate_timestamp_burst, is_ide_host_process,
     is_known_agent_process, match_agent_process, normalize_process_name, prune_idle_managers,
     snapshot, AutoAgentConfig, AutoAgentManager, AutoAgentStateMachine, AutoSessionAction,
-    AutoSessionState, AutoTrigger, BurstConfig, BurstDetector, ProcessScanCache, MANAGER_IDLE_TTL,
+    AutoSessionState, AutoTrigger, BurstConfig, BurstDetector, ProcessScanCache,
+    BASELINE_MIN_INTERVAL_MS, MANAGER_IDLE_TTL,
 };
 
 fn text(repo: &common::TestRepo, args: &[&str]) -> String {
@@ -291,7 +292,7 @@ fn test_restore_preserves_head_and_index_without_mutation() {
 
     // 1. Auto start session via known process detection ("claude")
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1000)
+        .check(repo.path(), Some(&["claude".into()]), 1000)
         .unwrap();
     assert!(report.active);
     let session_ref = report.session_reference.expect("session reference");
@@ -312,7 +313,7 @@ fn test_restore_preserves_head_and_index_without_mutation() {
     fs::write(repo.path().join("ignored.log"), "agent touched ignored\n").unwrap();
 
     // 3. Agent exits -> auto finish session
-    let report = manager.check(repo.path(), 0, Some(&[]), 2000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 2000).unwrap();
     assert!(!report.active);
 
     // 4. Preview changes via snapshot::changes
@@ -383,15 +384,15 @@ fn preexisting_dirty_files_do_not_start_auto_session() {
         fs::write(repo.path().join(format!("dirty{i}.txt")), "already\n").unwrap();
     }
     let mut manager = AutoAgentManager::new(enabled_config());
-    // 旧前端把脏文件总数当作 change_count。后端必须忽略这个总数。
-    let report = manager.check(repo.path(), 6, Some(&[]), 1_000).unwrap();
+    // A stable dirty set is the baseline; it must never look like a burst.
+    let report = manager.check(repo.path(), Some(&[]), 1_000).unwrap();
     assert!(
         !report.active,
         "existing dirty files must not open a session"
     );
     assert!(report.action_taken.is_none());
 
-    let report = manager.check(repo.path(), 6, Some(&[]), 2_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 2_000).unwrap();
     assert!(
         !report.active,
         "the same dirty set must not open a session on the next refresh"
@@ -400,7 +401,7 @@ fn preexisting_dirty_files_do_not_start_auto_session() {
     for i in 0..5 {
         fs::write(repo.path().join(format!("burst{i}.txt")), "new\n").unwrap();
     }
-    let report = manager.check(repo.path(), 11, Some(&[]), 3_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 3_000).unwrap();
     assert!(
         report.active,
         "five new paths inside the window should start a session"
@@ -412,7 +413,7 @@ fn preexisting_dirty_files_do_not_start_auto_session() {
 fn auto_session_can_rewind_the_burst_that_opened_it() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
-    let report = manager.check(repo.path(), 0, Some(&[]), 1_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 1_000).unwrap();
     assert!(
         !report.active,
         "watching a clean tree must only arm the baseline"
@@ -425,7 +426,7 @@ fn auto_session_can_rewind_the_burst_that_opened_it() {
         )
         .unwrap();
     }
-    let report = manager.check(repo.path(), 5, Some(&[]), 2_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 2_000).unwrap();
     assert!(report.active);
     let session_ref = report.session_reference.expect("session reference");
     let snap = snapshot::load(repo.path(), &session_ref).unwrap();
@@ -494,7 +495,7 @@ fn manual_end_does_not_reopen_until_new_burst() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     assert!(report.active);
     let reference = report.session_reference.expect("session");
@@ -504,14 +505,14 @@ fn manual_end_does_not_reopen_until_new_burst() {
         .unwrap();
 
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 2_000)
+        .check(repo.path(), Some(&["claude".into()]), 2_000)
         .unwrap();
     assert!(
         !report.active,
         "manual end must suppress reopen while the same agent process is still running"
     );
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 8_000)
+        .check(repo.path(), Some(&["claude".into()]), 8_000)
         .unwrap();
     assert!(!report.active);
 
@@ -519,7 +520,7 @@ fn manual_end_does_not_reopen_until_new_burst() {
         fs::write(repo.path().join(format!("again{i}.txt")), "x\n").unwrap();
     }
     let report = manager
-        .check(repo.path(), 5, Some(&["claude".into()]), 9_000)
+        .check(repo.path(), Some(&["claude".into()]), 9_000)
         .unwrap();
     assert!(
         report.active,
@@ -533,7 +534,7 @@ fn disabling_auto_detect_finishes_the_active_session() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     let reference = report.session_reference.expect("session");
     manager.sm.set_config(AutoAgentConfig {
@@ -541,7 +542,7 @@ fn disabling_auto_detect_finishes_the_active_session() {
         ..enabled_config()
     });
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 2_000)
+        .check(repo.path(), Some(&["claude".into()]), 2_000)
         .unwrap();
     assert!(!report.active);
     let taken = report.action_taken.unwrap_or_default();
@@ -571,7 +572,7 @@ fn finish_failure_is_not_reported_as_success() {
         enabled: false,
         ..enabled_config()
     });
-    let err = manager.check(repo.path(), 0, Some(&[]), 2_000);
+    let err = manager.check(repo.path(), Some(&[]), 2_000);
     assert!(err.is_err(), "finish failure must surface, got {err:?}");
     assert!(
         manager.sm.is_active(),
@@ -586,7 +587,7 @@ fn open_manual_session_blocks_auto_start() {
     snapshot::capture(repo.path(), "manual", "agent", None).unwrap();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     assert!(
         !report.active,
@@ -615,19 +616,20 @@ fn partial_config_json_fills_defaults() {
 fn subthreshold_edits_move_into_the_rolling_baseline() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
-    manager.check(repo.path(), 0, Some(&[]), 1_000).unwrap();
+    manager.check(repo.path(), Some(&[]), 1_000).unwrap();
     for i in 0..4 {
         fs::write(repo.path().join(format!("slow{i}.txt")), "slow\n").unwrap();
     }
-    let report = manager.check(repo.path(), 4, Some(&[]), 2_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 2_000).unwrap();
     assert!(!report.active);
-    let report = manager.check(repo.path(), 4, Some(&[]), 9_000).unwrap();
+    // The rolling baseline refreshes at most every 30s, so wait past that.
+    let report = manager.check(repo.path(), Some(&[]), 40_000).unwrap();
     assert!(!report.active);
 
     for i in 0..5 {
         fs::write(repo.path().join(format!("burst{i}.txt")), "burst\n").unwrap();
     }
-    let report = manager.check(repo.path(), 9, Some(&[]), 10_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 41_000).unwrap();
     assert!(report.active);
     let session_ref = report.session_reference.expect("session");
     let snap = snapshot::load(repo.path(), &session_ref).unwrap();
@@ -658,7 +660,7 @@ fn subthreshold_edits_move_into_the_rolling_baseline() {
 fn stale_generation_discards_inflight_session() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
-    manager.check(repo.path(), 0, Some(&[]), 1_000).unwrap();
+    manager.check(repo.path(), Some(&[]), 1_000).unwrap();
     let generation = manager.begin_check().expect("check begins");
     let mut working = manager.clone();
     working.sm.set_active(
@@ -736,11 +738,11 @@ fn silence_finish_does_not_reopen_for_the_same_process() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     assert!(report.active);
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000 + 60_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000 + 60_000)
         .unwrap();
     assert!(
         !report.active,
@@ -752,7 +754,7 @@ fn silence_finish_does_not_reopen_for_the_same_process() {
         "expected silence finish, got {taken}"
     );
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000 + 65_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000 + 65_000)
         .unwrap();
     assert!(
         !report.active,
@@ -766,7 +768,7 @@ fn manual_end_allows_a_new_process_instance_after_exit() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     let reference = report.session_reference.expect("session");
     snapshot::finish(repo.path(), &reference).unwrap();
@@ -774,13 +776,13 @@ fn manual_end_allows_a_new_process_instance_after_exit() {
         .note_manual_end(repo.path(), &["claude".into()])
         .unwrap();
 
-    let report = manager.check(repo.path(), 0, Some(&[]), 2_000).unwrap();
+    let report = manager.check(repo.path(), Some(&[]), 2_000).unwrap();
     assert!(
         !report.active,
         "seeing the process leave must not open a session"
     );
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 3_000)
+        .check(repo.path(), Some(&["claude".into()]), 3_000)
         .unwrap();
     assert!(
         report.active,
@@ -794,7 +796,7 @@ fn already_finished_snapshot_ends_the_manager() {
     let repo = common::basic();
     let mut manager = AutoAgentManager::new(enabled_config());
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 1_000)
+        .check(repo.path(), Some(&["claude".into()]), 1_000)
         .unwrap();
     let reference = report.session_reference.expect("session");
     snapshot::finish(repo.path(), &reference).unwrap();
@@ -803,7 +805,7 @@ fn already_finished_snapshot_ends_the_manager() {
         ..enabled_config()
     });
     let report = manager
-        .check(repo.path(), 0, Some(&["claude".into()]), 2_000)
+        .check(repo.path(), Some(&["claude".into()]), 2_000)
         .unwrap();
     assert!(!report.active);
     let taken = report.action_taken.unwrap_or_default();
@@ -845,4 +847,62 @@ fn user_mutation_reservation_blocks_begin_check() {
     );
     manager.release_user_mutation(generation);
     assert!(manager.begin_check().is_some());
+}
+
+/// P2 上次进程崩溃/退出留下的隐藏基线 ref 要在第一次检查时清掉，
+/// 但不能碰用户可见的会话快照。
+#[test]
+fn orphan_baselines_from_a_previous_process_are_reclaimed() {
+    let repo = common::basic();
+    let stale_a = snapshot::capture(repo.path(), "自动基线", "auto_baseline", None).unwrap();
+    let stale_b = snapshot::capture(repo.path(), "自动基线", "auto_baseline", None).unwrap();
+    snapshot::capture(repo.path(), "shelf", "shelf", None).unwrap();
+
+    let mut manager = AutoAgentManager::new(enabled_config());
+    manager.check(repo.path(), Some(&[]), 1_000).unwrap();
+
+    let refs = snapshot::baseline_refs(repo.path()).unwrap();
+    assert_eq!(refs.len(), 1, "only this manager's baseline should remain");
+    assert!(!refs.contains(&stale_a.reference));
+    assert!(!refs.contains(&stale_b.reference));
+    assert!(
+        snapshot::list(repo.path())
+            .unwrap()
+            .iter()
+            .any(|snap| snap.kind == "shelf"),
+        "visible snapshots must not be touched"
+    );
+}
+
+/// P2 滚动基线最多每 30 秒刷新一次，慢速编辑不能每 5 秒拍一份。
+#[test]
+fn rolling_baseline_refresh_is_throttled_to_thirty_seconds() {
+    let repo = common::basic();
+    let mut manager = AutoAgentManager::new(enabled_config());
+    manager.check(repo.path(), Some(&[]), 1_000).unwrap();
+    let first = snapshot::baseline_refs(repo.path())
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("baseline");
+
+    for i in 0..4 {
+        fs::write(repo.path().join(format!("slow{i}.txt")), "slow\n").unwrap();
+    }
+    manager.check(repo.path(), Some(&[]), 2_000).unwrap();
+    assert_eq!(
+        snapshot::baseline_refs(repo.path()).unwrap(),
+        vec![first.clone()],
+        "a quiet tick inside 30s must reuse the existing baseline"
+    );
+
+    manager
+        .check(repo.path(), Some(&[]), 1_000 + BASELINE_MIN_INTERVAL_MS)
+        .unwrap();
+    let refreshed = snapshot::baseline_refs(repo.path()).unwrap();
+    assert_eq!(refreshed.len(), 1);
+    assert_ne!(
+        refreshed[0], first,
+        "after 30s the baseline must be re-captured"
+    );
 }

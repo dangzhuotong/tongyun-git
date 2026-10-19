@@ -1025,7 +1025,7 @@ export type WorkspaceRequest =
   | { type: "shelve"; label: string; paths: string[] }
   | { type: "discard_lines"; expected: FileDiff; hunk_index: number; selected: number[] }
   | { type: "open"; application: "idea" | "terminal" | "folder" }
-  | { type: "auto_check"; change_count: number; config?: AutoAgentConfig };
+  | { type: "auto_check"; config?: AutoAgentConfig };
 export async function workspaceTask<T>(rootPath: string, request: WorkspaceRequest): Promise<T> {
   return invoke<T>("workspace_task", { rootPath, request, gitPath: localStorage.getItem("tongyun_git_path") || null });
 }

@@ -37,9 +37,29 @@ export function loadAutoAgentConfig(raw: string | null): AutoAgentConfig {
   }
 }
 
-/** The backend diffs the worktree itself. `change_count` is not a dirty-file total. */
+/** The backend diffs the worktree itself, so the request carries no counts. */
 export function autoCheckRequest(config: AutoAgentConfig): WorkspaceRequest {
-  return { type: "auto_check", change_count: 0, config };
+  return { type: "auto_check", config };
+}
+
+export interface AutoNoticeGate {
+  shouldReport(message: string): boolean;
+  reset(): void;
+}
+
+/** Keep a persistent failure from raising a toast every five seconds. */
+export function createAutoNoticeGate(): AutoNoticeGate {
+  let last: string | null = null;
+  return {
+    shouldReport(message: string): boolean {
+      if (last === message) return false;
+      last = message;
+      return true;
+    },
+    reset(): void {
+      last = null;
+    },
+  };
 }
 
 export function formatHostError(error: unknown): string {

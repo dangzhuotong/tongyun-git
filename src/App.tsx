@@ -29,6 +29,7 @@ import {
   AUTO_AGENT_SETTINGS_EVENT,
   AUTO_AGENT_SETTINGS_KEY,
   autoCheckRequest,
+  createAutoNoticeGate,
   formatHostError,
   loadAutoAgentConfig,
 } from "./lib/autoAgentConfig";
@@ -76,6 +77,7 @@ export default function App() {
     null,
   );
   const checkingUpdateRef = useRef(false);
+  const autoNoticeGate = useMemo(() => createAutoNoticeGate(), []);
   const [gitAvailable, setGitAvailable] = useState(true);
   const [gitError, setGitError] = useState<string | null>(null);
 
@@ -313,16 +315,22 @@ export default function App() {
     return Promise.resolve()
       .then(() => workspaceTask<AutoCheckReport>(repoRoot, autoCheckRequest(config)))
       .then((report) => {
-        if (report?.warning) {
-          setSyncToast({ message: report.warning, isError: true });
-        } else if (report?.action_taken) {
-          setSyncToast({ message: report.action_taken });
+        const notice = report?.warning ?? report?.action_taken ?? null;
+        if (notice) {
+          if (autoNoticeGate.shouldReport(notice)) {
+            setSyncToast({ message: notice, isError: Boolean(report?.warning) });
+          }
+        } else {
+          autoNoticeGate.reset();
         }
       })
       .catch((error: unknown) => {
-        setSyncToast({ message: formatHostError(error), isError: true });
+        const message = formatHostError(error);
+        if (autoNoticeGate.shouldReport(message)) {
+          setSyncToast({ message, isError: true });
+        }
       });
-  }, []);
+  }, [autoNoticeGate]);
 
   // Fetch repository status
   const refreshStatus = useCallback(

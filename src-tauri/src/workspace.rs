@@ -55,7 +55,6 @@ pub enum WorkspaceRequest {
         application: String,
     },
     AutoCheck {
-        change_count: usize,
         config: Option<tg_core::AutoAgentConfig>,
     },
 }
@@ -82,14 +81,7 @@ pub async fn workspace_task(
             "desktop:local",
             "desktop-session",
             || {
-                if let WorkspaceRequest::AutoCheck {
-                    config,
-                    change_count,
-                } = &request
-                {
-                    // Older clients still send a dirty-file total. Detection
-                    // diffs the worktree, so the number is not a burst signal.
-                    let _ = *change_count;
+                if let WorkspaceRequest::AutoCheck { config } = &request {
                     return run_auto_check(Path::new(&root_path), config.clone());
                 }
                 let _guard = WORKSPACE_LOCK

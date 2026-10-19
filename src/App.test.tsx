@@ -790,7 +790,7 @@ describe("App workspace and components", () => {
     expect((await screen.findAllByText("my-repo")).length).toBeGreaterThanOrEqual(1);
   }
 
-  it("does not send the dirty-file total as the auto-check change count", async () => {
+  it("does not send a dirty-file total with the auto-check request", async () => {
     const files = Array.from({ length: 6 }, (_, i) => ({
       path: `dirty${i}.txt`,
       old_path: null,
@@ -802,11 +802,15 @@ describe("App workspace and components", () => {
     await waitFor(() => {
       expect(vi.mocked(host.workspaceTask).mock.calls.length).toBeGreaterThan(0);
     });
-    for (const [, request] of vi.mocked(host.workspaceTask).mock.calls) {
-      if (request.type === "auto_check") {
-        expect(request.change_count).toBe(0);
-        expect(request.change_count).not.toBe(files.length);
-      }
+    const autoChecks = vi
+      .mocked(host.workspaceTask)
+      .mock.calls.filter(([, request]) => request.type === "auto_check");
+    expect(autoChecks.length).toBeGreaterThan(0);
+    for (const [, request] of autoChecks) {
+      expect(request).toEqual({
+        type: "auto_check",
+        config: expect.objectContaining({ enabled: expect.any(Boolean) }),
+      });
     }
   });
 
