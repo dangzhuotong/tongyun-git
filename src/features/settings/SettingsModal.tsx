@@ -513,7 +513,7 @@ export function SettingsModal({
                   <span>应用版本</span>
                   <span className="flex items-center gap-2">
                     <span className="font-mono text-[var(--color-text)]">
-                      v{appInfo?.version || "0.1.0"}
+                      v{appInfo?.version || "0.1.1"}
                     </span>
                     <button
                       type="button"

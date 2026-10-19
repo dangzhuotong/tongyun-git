@@ -53,14 +53,14 @@ pub fn get_bridge_info() -> crate::bridge::BridgeStatus {
         crate::bridge::BridgeStatus {
             online: true,
             port,
-            version: "0.1.0".to_string(),
+            version: "0.1.1".to_string(),
             active_repo: summary,
         }
     } else {
         crate::bridge::BridgeStatus {
             online: false,
             port: 0,
-            version: "0.1.0".to_string(),
+            version: "0.1.1".to_string(),
             active_repo: None,
         }
     }

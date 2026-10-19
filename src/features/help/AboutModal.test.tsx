@@ -12,7 +12,7 @@ describe("AboutModal", () => {
         onClose={onClose}
         appInfo={{
           name: "tongyun-git",
-          version: "0.1.0",
+          version: "0.1.1",
           identifier: "com.tongyun.git",
           git_version: "2.47.0",
           libgit2_version: "1.9.0",
@@ -21,7 +21,7 @@ describe("AboutModal", () => {
       />
     );
 
-    expect(screen.getByText("当前版本 v0.1.0")).toBeDefined();
+    expect(screen.getByText("当前版本 v0.1.1")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
     expect(onCheckUpdate).toHaveBeenCalledOnce();
 

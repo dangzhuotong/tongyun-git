@@ -57,7 +57,7 @@ export function AboutModal({
               对标 IntelliJ IDEA 的独立桌面 Git 客户端 · 自带智能 AI 能力
             </p>
             <div className="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20 text-[var(--color-accent)] text-xs font-mono font-medium">
-              当前版本 v{appInfo?.version || "0.1.0"}
+              当前版本 v{appInfo?.version || "0.1.1"}
             </div>
           </div>
 

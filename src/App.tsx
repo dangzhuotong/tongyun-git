@@ -268,7 +268,7 @@ export default function App() {
         // Fallback for browser preview
         setAppInfo({
           name: "tongyun-git",
-          version: "0.1.0",
+          version: "0.1.1",
           identifier: "com.tongyun.git",
           git_version: "2.47.3",
           libgit2_version: "1.9.7",
@@ -490,7 +490,7 @@ export default function App() {
         if (mounted) {
           setAppInfo({
             name: "tongyun-git",
-            version: "0.1.0",
+            version: "0.1.1",
             identifier: "com.tongyun.git",
             git_version: "2.47.3",
             libgit2_version: "1.9.7",
