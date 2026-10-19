@@ -146,6 +146,35 @@ mod tests {
         keyring.delete_key("local-test").unwrap();
         assert_eq!(keyring.get_key("local-test").unwrap(), None);
     }
+
+    #[test]
+    fn rust9_memory_keyring_default_is_available_and_empty() {
+        let keyring = MemoryKeyring::default();
+        assert!(keyring.is_available());
+        assert_eq!(keyring.get_key("kie").unwrap(), None);
+    }
+
+    #[test]
+    fn rust9_memory_keyring_provider_names_are_case_insensitive() {
+        let keyring = MemoryKeyring::new();
+        keyring.set_key("OpenAI", "v").unwrap();
+        assert_eq!(keyring.get_key("openai").unwrap().as_deref(), Some("v"));
+        assert_eq!(keyring.get_key("OPENAI").unwrap().as_deref(), Some("v"));
+        keyring.delete_key("openAi").unwrap();
+        assert_eq!(keyring.get_key("openai").unwrap(), None);
+    }
+
+    #[test]
+    fn rust9_memory_keyring_delete_when_unavailable_fails_closed() {
+        let keyring = MemoryKeyring::new();
+        keyring.set_key("openai", "v").unwrap();
+        keyring.set_available(false);
+        assert!(keyring.get_key("openai").is_err());
+        assert!(keyring.set_key("openai", "w").is_err());
+        assert!(keyring.delete_key("openai").is_err());
+        keyring.set_available(true);
+        assert_eq!(keyring.get_key("openai").unwrap().as_deref(), Some("v"));
+    }
 }
 
 #[cfg(test)]
