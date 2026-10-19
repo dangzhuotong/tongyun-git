@@ -215,7 +215,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<BridgeState>) {
             let res = BridgeStatus {
                 online: true,
                 port,
-                version: "0.1.0".to_string(),
+                version: "0.1.1".to_string(),
                 active_repo: summary,
             };
             send_json(&mut stream, 200, "OK", &json!(res));

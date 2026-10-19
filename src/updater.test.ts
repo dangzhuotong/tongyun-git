@@ -22,7 +22,7 @@ describe("resolveDisplayedAppVersion", () => {
 });
 
 describe("release versions stay aligned", () => {
-  it("keeps package.json, tauri.conf.json, and the desktop Cargo.toml on 0.1.0", () => {
+  it("keeps package.json, tauri.conf.json, and the desktop Cargo.toml on 0.1.1", () => {
     const pkg = JSON.parse(pkgRaw) as { version: string };
     const tauri = JSON.parse(tauriRaw) as {
       version: string;
@@ -30,7 +30,7 @@ describe("release versions stay aligned", () => {
       plugins: { updater: { pubkey: string; endpoints: string[] } };
     };
     const cargoVersion = cargoRaw.match(/^version = "([^"]+)"/m)?.[1];
-    expect(pkg.version).toBe("0.1.0");
+    expect(pkg.version).toBe("0.1.1");
     expect(tauri.version).toBe(pkg.version);
     expect(cargoVersion).toBe(pkg.version);
     expect(tauri.bundle.createUpdaterArtifacts).toBe(true);
