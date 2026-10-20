@@ -6,6 +6,8 @@ import {
   UnifiedIcon,
   AlertCircleIcon,
 } from "../../components/icons";
+import { getLanguageFromPath } from "../../lib/syntax";
+import { HighlightedCodeLine } from "../../lib/HighlightedCodeLine";
 
 interface DiffViewerProps {
   diff: FileDiff | null;
@@ -43,6 +45,8 @@ export function DiffViewer({
     setLayout(newLayout);
     localStorage.setItem("tongyun_diff_layout", newLayout);
   };
+
+  const language = useMemo(() => getLanguageFromPath(diff?.path), [diff?.path]);
 
   // Reset selection when diff changes (React recommended pattern)
   const [prevDiff, setPrevDiff] = useState(diff);
@@ -293,6 +297,7 @@ export function DiffViewer({
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
             onLineClick={handleLineClick}
+            language={language}
             onStageHunk={
               readOnly
                 ? undefined
@@ -311,6 +316,7 @@ export function DiffViewer({
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
             onLineClick={handleLineClick}
+            language={language}
             onStageHunk={
               readOnly
                 ? undefined
@@ -336,6 +342,7 @@ function UnifiedDiffView({
   onLineClick,
   onStageHunk,
   staged,
+  language,
 }: {
   hunks: DiffHunk[];
   ignoreWhitespace: boolean;
@@ -344,6 +351,7 @@ function UnifiedDiffView({
   onLineClick: (hunkIdx: number, lineIdx: number, e: React.MouseEvent) => void;
   onStageHunk?: (hunkIdx: number) => void;
   staged: boolean;
+  language: string | null;
 }) {
   return (
     <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
@@ -384,14 +392,14 @@ function UnifiedDiffView({
                       onLineClick(hunkIdx, lineIdx, e);
                     }
                   }}
-                  className={`flex h-[20px] items-center transition-colors cursor-pointer select-none w-full ${
+                  className={`flex h-[20px] items-center transition-colors cursor-pointer select-none w-full border-l-2 ${
                     isSelected
-                      ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                      ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)] border-[var(--color-accent)]"
                       : isAdd
-                      ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
+                      ? "bg-[var(--color-diff-add-bg)] hover:bg-[var(--color-diff-add-strong)]/30 border-[#43a047] dark:border-[#6fad84]"
                       : isDel
-                      ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
-                      : "bg-[var(--color-bg)] text-[var(--color-text)]"
+                      ? "bg-[var(--color-diff-del-bg)] hover:bg-[var(--color-diff-del-strong)]/30 border-[#e53935] dark:border-[#e06d53]"
+                      : "bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] border-transparent"
                   }`}
                 >
                   {/* Sticky Line Number / Gutter */}
@@ -405,22 +413,42 @@ function UnifiedDiffView({
                       ●
                     </span>
                     {/* Old Line Number */}
-                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                    <span
+                      className={`w-10 shrink-0 text-right pr-2 text-[11px] select-none font-mono ${
+                        isDel
+                          ? "text-[#c62828] dark:text-[#f87171] font-semibold"
+                          : "text-[var(--color-text-muted)] opacity-60"
+                      }`}
+                    >
                       {line.old_lineno ?? ""}
                     </span>
                     {/* New Line Number */}
-                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                    <span
+                      className={`w-10 shrink-0 text-right pr-2 text-[11px] select-none font-mono ${
+                        isAdd
+                          ? "text-[#2e7d32] dark:text-[#7fcc9a] font-semibold"
+                          : "text-[var(--color-text-muted)] opacity-60"
+                      }`}
+                    >
                       {line.new_lineno ?? ""}
                     </span>
                     {/* Origin */}
-                    <span className="w-4 shrink-0 text-center font-bold select-none text-[var(--color-text-muted)]">
+                    <span
+                      className={`w-4 shrink-0 text-center font-bold select-none text-[12px] ${
+                        isAdd
+                          ? "text-[#2e7d32] dark:text-[#7fcc9a]"
+                          : isDel
+                          ? "text-[#c62828] dark:text-[#f87171]"
+                          : "text-[var(--color-text-muted)] opacity-30"
+                      }`}
+                    >
                       {line.origin}
                     </span>
                   </div>
 
-                  {/* Line Content */}
+                  {/* Line Content with Syntax Highlighting */}
                   <span className="whitespace-pre pl-1 pr-4">
-                    {line.content}
+                    <HighlightedCodeLine content={line.content} language={language} />
                   </span>
                 </div>
               );
@@ -440,6 +468,7 @@ function SplitDiffView({
   onLineClick,
   onStageHunk,
   staged,
+  language,
 }: {
   hunks: DiffHunk[];
   ignoreWhitespace: boolean;
@@ -448,6 +477,7 @@ function SplitDiffView({
   onLineClick: (hunkIdx: number, lineIdx: number, e: React.MouseEvent) => void;
   onStageHunk?: (hunkIdx: number) => void;
   staged: boolean;
+  language: string | null;
 }) {
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -550,29 +580,44 @@ function SplitDiffView({
                             onLineClick(hunkIdx, row.leftIdx, e);
                           }
                         }}
-                        className={`flex h-[20px] items-center transition-colors select-none w-full ${
+                        className={`flex h-[20px] items-center transition-colors select-none w-full border-l-2 ${
                           isDel ? "cursor-pointer" : ""
                         } ${
                           isSelected
-                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)] border-[var(--color-accent)]"
                             : isDel
-                            ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
-                            : "bg-[var(--color-bg)] text-[var(--color-text)]"
+                            ? "bg-[var(--color-diff-del-bg)] hover:bg-[var(--color-diff-del-strong)]/30 border-[#e53935] dark:border-[#e06d53]"
+                            : "bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] border-transparent"
                         }`}
                       >
                         {/* Gutter (Old lineno + Origin) */}
                         <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
-                          <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                          <span
+                            className={`w-10 shrink-0 text-right pr-2 text-[11px] select-none font-mono ${
+                              isDel
+                                ? "text-[#c62828] dark:text-[#f87171] font-semibold"
+                                : "text-[var(--color-text-muted)] opacity-60"
+                            }`}
+                          >
                             {row.left?.old_lineno ?? ""}
                           </span>
-                          <span className="w-4 shrink-0 text-center font-bold text-[var(--color-text-muted)] select-none">
+                          <span
+                            className={`w-4 shrink-0 text-center font-bold text-[12px] select-none ${
+                              isDel
+                                ? "text-[#c62828] dark:text-[#f87171]"
+                                : "text-[var(--color-text-muted)] opacity-30"
+                            }`}
+                          >
                             {row.left?.origin ?? ""}
                           </span>
                         </div>
 
                         {/* Content */}
                         <span className="whitespace-pre pl-1 pr-4">
-                          {row.left?.content ?? ""}
+                          <HighlightedCodeLine
+                            content={row.left?.content ?? ""}
+                            language={language}
+                          />
                         </span>
                       </div>
                     );
@@ -623,29 +668,44 @@ function SplitDiffView({
                             onLineClick(hunkIdx, row.rightIdx, e);
                           }
                         }}
-                        className={`flex h-[20px] items-center transition-colors select-none w-full ${
+                        className={`flex h-[20px] items-center transition-colors select-none w-full border-l-2 ${
                           isAdd ? "cursor-pointer" : ""
                         } ${
                           isSelected
-                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                            ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)] border-[var(--color-accent)]"
                             : isAdd
-                            ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
-                            : "bg-[var(--color-bg)] text-[var(--color-text)]"
+                            ? "bg-[var(--color-diff-add-bg)] hover:bg-[var(--color-diff-add-strong)]/30 border-[#43a047] dark:border-[#6fad84]"
+                            : "bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] border-transparent"
                         }`}
                       >
                         {/* Gutter (New lineno + Origin) */}
                         <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
-                          <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                          <span
+                            className={`w-10 shrink-0 text-right pr-2 text-[11px] select-none font-mono ${
+                              isAdd
+                                ? "text-[#2e7d32] dark:text-[#7fcc9a] font-semibold"
+                                : "text-[var(--color-text-muted)] opacity-60"
+                            }`}
+                          >
                             {row.right?.new_lineno ?? ""}
                           </span>
-                          <span className="w-4 shrink-0 text-center font-bold text-[var(--color-text-muted)] select-none">
+                          <span
+                            className={`w-4 shrink-0 text-center font-bold text-[12px] select-none ${
+                              isAdd
+                                ? "text-[#2e7d32] dark:text-[#7fcc9a]"
+                                : "text-[var(--color-text-muted)] opacity-30"
+                            }`}
+                          >
                             {row.right?.origin ?? ""}
                           </span>
                         </div>
 
                         {/* Content */}
                         <span className="whitespace-pre pl-1 pr-4">
-                          {row.right?.content ?? ""}
+                          <HighlightedCodeLine
+                            content={row.right?.content ?? ""}
+                            language={language}
+                          />
                         </span>
                       </div>
                     );

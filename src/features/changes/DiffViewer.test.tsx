@@ -83,7 +83,10 @@ describe("DiffViewer", () => {
       />
     );
 
-    const longLineSpan = screen.getByText(longContent);
+    const matchLongLine = (_: string, element: Element | null) =>
+      Boolean(element?.classList.contains("whitespace-pre") && element.textContent === longContent);
+
+    const longLineSpan = screen.getByText(matchLongLine);
     expect(longLineSpan).toBeDefined();
     expect(longLineSpan.className).not.toContain("truncate");
     expect(longLineSpan.className).not.toContain("overflow-x-hidden");
@@ -114,7 +117,9 @@ describe("DiffViewer", () => {
     expect(leftRows.length).toBe(rightRows.length);
 
     // Verify long line in split view does not have truncate class
-    const longLineSpan = screen.getByText(longContent);
+    const matchLongLine = (_: string, element: Element | null) =>
+      Boolean(element?.classList.contains("whitespace-pre") && element.textContent === longContent);
+    const longLineSpan = screen.getByText(matchLongLine);
     expect(longLineSpan.className).not.toContain("truncate");
     expect(longLineSpan.className).not.toContain("overflow-x-hidden");
   });
@@ -227,7 +232,9 @@ describe("DiffViewer", () => {
     );
 
     // Click addition line on right side
-    const addLine = screen.getByText(longContent);
+    const matchLongLine = (_: string, element: Element | null) =>
+      Boolean(element?.classList.contains("whitespace-pre") && element.textContent === longContent);
+    const addLine = screen.getByText(matchLongLine);
     fireEvent.click(addLine);
 
     // Space key to stage selected line

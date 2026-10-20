@@ -215,9 +215,9 @@ describe("App workspace and components", () => {
 
     // Verify diff content
     await waitFor(() => {
-      expect(screen.getByText('println!("new");')).toBeDefined();
+      expect(screen.getByText((_, el) => Boolean(el?.classList.contains("whitespace-pre") && el.textContent?.trim() === 'println!("new");'))).toBeDefined();
     });
-    expect(screen.getByText('println!("old");')).toBeDefined();
+    expect(screen.getByText((_, el) => Boolean(el?.classList.contains("whitespace-pre") && el.textContent?.trim() === 'println!("old");'))).toBeDefined();
     expect(screen.getByText("@@ -1,3 +1,4 @@")).toBeDefined();
   });
 
@@ -355,7 +355,7 @@ describe("App workspace and components", () => {
     fireEvent.click(fileItem);
 
     // Wait for diff line to render
-    const diffLine = await screen.findByText("let x = 1;");
+    const diffLine = await screen.findByText((_, el) => Boolean(el?.classList.contains("whitespace-pre") && el.textContent?.trim() === "let x = 1;"));
     fireEvent.click(diffLine);
 
     // Press space to stage the selected line

@@ -31,6 +31,7 @@ describe("OpenRepoModal", () => {
 
     expect(screen.getByText("打开本地 Git 仓库")).toBeDefined();
     expect(screen.getByText("/path/to/recent")).toBeDefined();
+    expect(screen.getByText("recent")).toBeDefined();
 
     const input = screen.getByPlaceholderText(/例如: D:\/TD\/projects\/my-repo/);
     fireEvent.change(input, { target: { value: "/my/custom/path" } });

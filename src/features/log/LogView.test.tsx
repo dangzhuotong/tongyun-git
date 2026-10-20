@@ -113,7 +113,7 @@ describe("LogView", () => {
     // Verify first commit details and file diff are loaded
     await waitFor(() => {
       expect(screen.getAllByText("src/auth.ts").length).toBeGreaterThan(0);
-      expect(screen.getByText(/const b = 2;/)).toBeDefined();
+      expect(screen.getByText((_, el) => Boolean(el?.classList.contains("whitespace-pre") && el.textContent?.includes("const b = 2;")))).toBeDefined();
     });
   });
 

@@ -368,29 +368,45 @@ export function OpenRepoModal({
               <span className="text-xs font-semibold text-[var(--color-text-muted)]">
                 最近打开的仓库 ({recentRepos.length})
               </span>
-              <div className="max-h-40 overflow-y-auto divide-y divide-[var(--color-border)]/40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
-                {recentRepos.map((path) => (
-                  <div
-                    key={path}
-                    className="flex items-center justify-between px-3 py-2 hover:bg-[var(--color-surface-raised)] transition-colors group cursor-pointer"
-                    onClick={() => onOpenRepo(path)}
-                  >
-                    <span className="truncate font-mono text-[11px] text-[var(--color-text)]">
-                      {path}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveRecent(path);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-all cursor-pointer"
-                      title="从历史记录移除"
+              <div className="max-h-48 overflow-y-auto divide-y divide-[var(--color-border)]/40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                {recentRepos.map((path) => {
+                  const name = path.split(/[\\/]/).filter(Boolean).pop() || path;
+                  return (
+                    <div
+                      key={path}
+                      title={path}
+                      className="flex items-center justify-between px-3 py-2 hover:bg-[var(--color-surface-raised)] transition-colors group cursor-pointer gap-2"
+                      onClick={() => onOpenRepo(path)}
                     >
-                      <CloseIcon width={12} height={12} />
-                    </button>
-                  </div>
-                ))}
+                      <div className="min-w-0 flex-1 flex items-start gap-2">
+                        <FolderIcon
+                          width={14}
+                          height={14}
+                          className="text-[var(--color-accent)] shrink-0 mt-0.5"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-[var(--color-text)] truncate">
+                            {name}
+                          </div>
+                          <div className="font-mono text-[10px] text-[var(--color-text-muted)] truncate leading-tight mt-0.5">
+                            {path}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveRecent(path);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-all cursor-pointer shrink-0"
+                        title="从历史记录移除"
+                      >
+                        <CloseIcon width={12} height={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

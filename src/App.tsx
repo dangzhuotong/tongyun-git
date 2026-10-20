@@ -145,6 +145,7 @@ export default function App() {
   const [createStashModalOpen, setCreateStashModalOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // Tag Management
@@ -372,19 +373,66 @@ export default function App() {
 
   // Fetch remote action (R-11)
   const handleFetch = useCallback(async () => {
-    if (!currentRepo) return;
+    if (!currentRepo || isFetching) return;
+    setIsFetching(true);
+    setSyncToast(null);
     try {
-      const res = await fetchRemote(currentRepo.root_path, null, false);
+      const res = await fetchRemote(currentRepo.root_path, null, true);
       if (res.success) {
-        setSyncToast({ message: "获取远程更新完成 (Fetch)" });
+        setSyncToast({ message: "获取所有远程分支更新完成 (Fetch All)" });
         await refreshStatus(currentRepo.root_path);
       } else {
         setSyncToast({ message: res.error_message || "获取更新失败", isError: true });
       }
     } catch (e) {
       setSyncToast({ message: typeof e === "string" ? e : String(e), isError: true });
+    } finally {
+      setIsFetching(false);
     }
-  }, [currentRepo, refreshStatus]);
+  }, [currentRepo, isFetching, refreshStatus]);
+
+  // Pull all latest code: fetch all remotes & pull current branch (R-11)
+  const handlePullAll = useCallback(async () => {
+    if (!currentRepo || isPulling || isFetching) return;
+    setIsPulling(true);
+    setSyncToast(null);
+    try {
+      // 1. First fetch all remotes to ensure all branches and refs are up to date
+      const fetchRes = await fetchRemote(currentRepo.root_path, null, true);
+      if (!fetchRes.success) {
+        setSyncToast({
+          message: fetchRes.error_message || "获取远程分支失败",
+          isError: true,
+        });
+        await refreshStatus(currentRepo.root_path);
+        return;
+      }
+
+      // 2. Pull current branch
+      const res = await pullRemote(currentRepo.root_path, null, null, "Merge");
+      if (res.success) {
+        setSyncToast({ message: "已一键拉取所有最新代码，当前分支已同步更新" });
+        await refreshStatus(currentRepo.root_path);
+      } else if (res.has_conflict) {
+        setSyncToast({ message: "拉取产生冲突，已切换至冲突解决状态", isError: true });
+        await refreshStatus(currentRepo.root_path);
+      } else {
+        const err = res.error_message || "";
+        if (err.includes("no tracking information") || err.includes("no upstream")) {
+          setSyncToast({
+            message: "已获取所有远程分支最新代码（当前分支未设置上游，未执行本地合并）",
+          });
+        } else {
+          setSyncToast({ message: err || "拉取失败", isError: true });
+        }
+        await refreshStatus(currentRepo.root_path);
+      }
+    } catch (e) {
+      setSyncToast({ message: typeof e === "string" ? e : String(e), isError: true });
+    } finally {
+      setIsPulling(false);
+    }
+  }, [currentRepo, isPulling, isFetching, refreshStatus]);
 
   // Open repository action
   const handleOpenRepo = useCallback(
@@ -576,7 +624,7 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "T" || e.key === "t")) {
         e.preventDefault();
         if (currentRepo) {
-          handlePull();
+          handlePullAll();
         }
         return;
       }
@@ -630,7 +678,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentRepo, handlePull, refreshStatus]);
+  }, [currentRepo, handlePullAll, refreshStatus]);
 
   // Global Drag & Drop folder support (Windows / Desktop)
   useEffect(() => {
@@ -992,10 +1040,16 @@ export default function App() {
     if (currentRepo) {
       list.unshift(
         {
-          id: "git-pull",
-          title: "拉取远程分支 (Git Pull)",
-          description: "从远程拉取并合并当前分支的最新提交",
+          id: "git-pull-all",
+          title: "一键拉取所有最新代码 (Fetch All & Pull)",
+          description: "抓取所有远程分支最新提交并同步更新当前分支",
           shortcut: "Ctrl+T",
+          action: () => handlePullAll(),
+        },
+        {
+          id: "git-pull",
+          title: "仅拉取当前分支 (Git Pull)",
+          description: "从远程拉取并合并当前分支的最新提交",
           action: () => handlePull(),
         },
         {
@@ -1007,8 +1061,8 @@ export default function App() {
         },
         {
           id: "git-fetch",
-          title: "获取远程更新 (Git Fetch)",
-          description: "下载远程分支与标签引用，不自动合并",
+          title: "获取所有远程分支更新 (Git Fetch All)",
+          description: "下载所有远程分支与标签引用，不自动合并",
           action: () => handleFetch(),
         },
         {
@@ -1113,7 +1167,7 @@ export default function App() {
     }
 
     return list;
-  }, [currentRepo, handlePull, handleFetch, refreshStatus, handleOpenConflictModal, handleUndoDiscard]);
+  }, [currentRepo, handlePull, handlePullAll, handleFetch, refreshStatus, handleOpenConflictModal, handleUndoDiscard]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[var(--color-bg)] text-[var(--color-text)] overflow-hidden font-sans">
@@ -1138,7 +1192,10 @@ export default function App() {
         activeView={activeView}
         onViewChange={setActiveView}
         onOpenBranchModal={() => setBranchModalOpen(true)}
+        onFetchClick={handleFetch}
+        isFetching={isFetching}
         onPullClick={handlePull}
+        onPullAllClick={handlePullAll}
         isPulling={isPulling}
         onPushClick={() => setPushModalOpen(true)}
         onOpenLogModal={() => setLogModalOpen(true)}
@@ -1562,6 +1619,7 @@ export default function App() {
         currentRepo={currentRepo}
         isRefreshing={isRefreshing}
         isPulling={isPulling}
+        isFetching={isFetching}
         gitVersion={appInfo?.git_version}
         onOpenBranchModal={() => setBranchModalOpen(true)}
         onOpenTagModal={() => setTagModalOpen(true)}

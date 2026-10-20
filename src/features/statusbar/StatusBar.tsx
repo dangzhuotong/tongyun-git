@@ -16,6 +16,7 @@ interface StatusBarProps {
   statusMessage?: string;
   isRefreshing?: boolean;
   isPulling?: boolean;
+  isFetching?: boolean;
   onOpenBranchModal: () => void;
   onOpenTagModal: () => void;
   onOpenWorktreeModal?: () => void;
@@ -34,6 +35,7 @@ export function StatusBar({
   statusMessage = "就绪",
   isRefreshing = false,
   isPulling = false,
+  isFetching = false,
   onOpenBranchModal,
   onOpenTagModal,
   onOpenWorktreeModal,
@@ -102,13 +104,13 @@ export function StatusBar({
         <div className="flex items-center gap-1.5 pl-2 border-l border-[var(--color-border)]">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              isRefreshing || isPulling
+              isRefreshing || isPulling || isFetching
                 ? "bg-[var(--color-accent)] animate-ping"
                 : "bg-[var(--color-status-added)]"
             }`}
           />
           <span className="truncate max-w-[200px]">
-            {isPulling ? "正在拉取远程..." : isRefreshing ? "正在刷新状态..." : statusMessage}
+            {isPulling ? "正在拉取远程..." : isFetching ? "正在抓取远程分支..." : isRefreshing ? "正在刷新状态..." : statusMessage}
           </span>
         </div>
       </div>

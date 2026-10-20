@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   listBranches,
   switchBranch,
+  fetchRemote,
   type BranchItem,
 } from "../../lib/host";
 import {
@@ -35,6 +36,7 @@ function BranchModalContent({
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Conflicting files blocking modal (AT-08c / wireframe S5)
@@ -55,6 +57,23 @@ function BranchModalContent({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFetchAll = async () => {
+    if (fetching) return;
+    setFetching(true);
+    setError(null);
+    try {
+      const res = await fetchRemote(rootPath, null, true);
+      if (!res.success) {
+        setError(res.error_message || "获取远程分支失败");
+      }
+      await refreshBranches();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFetching(false);
     }
   };
 
@@ -124,6 +143,28 @@ function BranchModalContent({
               <span>分支管理</span>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleFetchAll}
+                disabled={fetching}
+                title="抓取所有远程分支最新状态 (Fetch All: git fetch --all --prune)"
+                className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] font-medium text-[11px] cursor-pointer disabled:opacity-50"
+              >
+                <svg
+                  className={`w-3 h-3 ${fetching ? "animate-spin text-[var(--color-accent)]" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{fetching ? "获取中..." : "获取远程"}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setCreateModalOpen(true)}

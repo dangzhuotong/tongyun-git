@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@types/prismjs": "^1.26.6",
+    "prismjs": "^1.30.0",
     "react": "^19",
     "react-dom": "^19"
   },

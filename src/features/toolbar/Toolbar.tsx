@@ -30,7 +30,10 @@ interface ToolbarProps {
   activeView?: "changes" | "log";
   onViewChange?: (view: "changes" | "log") => void;
   onOpenBranchModal?: () => void;
+  onFetchClick?: () => void;
+  isFetching?: boolean;
   onPullClick?: () => void;
+  onPullAllClick?: () => void;
   isPulling?: boolean;
   onPushClick?: () => void;
   onOpenLogModal?: () => void;
@@ -63,7 +66,10 @@ export function Toolbar({
   activeView = "changes",
   onViewChange,
   onOpenBranchModal,
+  onFetchClick,
+  isFetching = false,
   onPullClick,
+  onPullAllClick,
   isPulling = false,
   onPushClick,
   onOpenLogModal,
@@ -80,11 +86,16 @@ export function Toolbar({
 }: ToolbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [pullMenuOpen, setPullMenuOpen] = useState(false);
+  const pullMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
+      }
+      if (pullMenuRef.current && !pullMenuRef.current.contains(event.target as Node)) {
+        setPullMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -117,37 +128,75 @@ export function Toolbar({
           </button>
 
           {dropdownOpen && (
-            <div className="absolute left-0 mt-1 w-64 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg z-40 py-1 divide-y divide-[var(--color-border)]/40">
+            <div className="absolute left-0 mt-1 w-72 sm:w-80 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg z-40 py-1 divide-y divide-[var(--color-border)]/40">
               <button
                 type="button"
                 onClick={() => {
                   setDropdownOpen(false);
                   onOpenModalClick();
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] flex items-center gap-2 text-xs font-medium text-[var(--color-accent)]"
+                className="w-full text-left px-3 py-2 hover:bg-[var(--color-surface-raised)] flex items-center gap-2 text-xs font-medium text-[var(--color-accent)] cursor-pointer transition-colors"
               >
-                <FolderIcon width={13} height={13} />
+                <FolderIcon width={14} height={14} />
                 <span>打开其他目录...</span>
               </button>
 
               {recentRepos.length > 0 && (
                 <div className="py-1">
-                  <div className="px-3 py-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">
+                  <div className="px-3 py-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
                     最近打开
                   </div>
-                  {recentRepos.map((path) => (
-                    <button
-                      key={path}
-                      type="button"
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        onOpenRepo(path);
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] font-mono text-[11px] truncate block text-[var(--color-text)]"
-                    >
-                      {path}
-                    </button>
-                  ))}
+                  <div className="max-h-64 overflow-y-auto divide-y divide-[var(--color-border)]/30">
+                    {recentRepos.map((path) => {
+                      const name = path.split(/[\\/]/).filter(Boolean).pop() || path;
+                      const isCurrent = currentRepo?.root_path === path;
+                      return (
+                        <button
+                          key={path}
+                          type="button"
+                          title={path}
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            onOpenRepo(path);
+                          }}
+                          className={`w-full text-left px-3 py-2 hover:bg-[var(--color-surface-raised)] transition-colors cursor-pointer group flex items-start gap-2.5 ${
+                            isCurrent ? "bg-[var(--color-surface-raised)]/50" : ""
+                          }`}
+                        >
+                          <FolderIcon
+                            width={14}
+                            height={14}
+                            className={`shrink-0 mt-0.5 ${
+                              isCurrent
+                                ? "text-[var(--color-accent)]"
+                                : "text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)]"
+                            } transition-colors`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span
+                                className={`text-xs truncate ${
+                                  isCurrent
+                                    ? "font-semibold text-[var(--color-accent)]"
+                                    : "font-medium text-[var(--color-text)]"
+                                }`}
+                              >
+                                {name}
+                              </span>
+                              {isCurrent && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] shrink-0 font-medium leading-none">
+                                  当前
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-mono text-[10px] text-[var(--color-text-muted)] truncate leading-tight mt-0.5">
+                              {path}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -216,21 +265,17 @@ export function Toolbar({
           <span>打开文件夹</span>
         </button>
 
-        {/* Pull Button */}
-        {currentRepo && onPullClick && (
+        {/* Fetch Button */}
+        {currentRepo && onFetchClick && (
           <button
             type="button"
-            title={`拉取远程更新 (Ctrl+T)${behind > 0 ? ` · ${behind} 个远程提交待拉取` : ""}`}
-            onClick={onPullClick}
-            disabled={isPulling}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-medium text-xs transition-colors disabled:opacity-50 cursor-pointer ${
-              behind > 0
-                ? "border-[var(--ty-honey)]/60 bg-[var(--ty-honey-tint)]/40 text-[var(--ty-honey)] hover:bg-[var(--ty-honey-tint)]/60 font-semibold"
-                : "border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
-            }`}
+            title="获取所有远程分支更新 (Fetch All: git fetch --all --prune)"
+            onClick={onFetchClick}
+            disabled={isFetching || isPulling}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-raised)] font-medium text-xs text-[var(--color-text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
             <svg
-              className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-[var(--color-accent)]" : ""}`}
+              className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-[var(--color-accent)]" : ""}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -239,16 +284,112 @@ export function Toolbar({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
-            <span>{isPulling ? "正在拉取" : "拉取"}</span>
-            {behind > 0 && (
-              <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[var(--ty-honey)] text-white">
-                ↓{behind}
-              </span>
-            )}
+            <span>{isFetching ? "获取中..." : "获取"}</span>
           </button>
+        )}
+
+        {/* Pull / Pull All Button Group */}
+        {currentRepo && (onPullClick || onPullAllClick) && (
+          <div className="relative inline-flex items-center rounded border border-[var(--color-border)] bg-[var(--color-bg)]" ref={pullMenuRef}>
+            <button
+              type="button"
+              title={`一键拉取所有最新代码 (Ctrl+T: 抓取全部远程分支并更新当前分支)${behind > 0 ? ` · ${behind} 个远程提交待拉取` : ""}`}
+              onClick={onPullAllClick || onPullClick}
+              disabled={isPulling || isFetching}
+              className={`flex items-center gap-1.5 px-2.5 py-1 font-medium text-xs transition-colors disabled:opacity-50 cursor-pointer rounded-l ${
+                behind > 0
+                  ? "bg-[var(--ty-honey-tint)]/60 text-[var(--ty-honey)] hover:bg-[var(--ty-honey-tint)] font-semibold"
+                  : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
+              }`}
+            >
+              <svg
+                className={`w-3.5 h-3.5 ${isPulling ? "animate-bounce text-[var(--color-accent)]" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                />
+              </svg>
+              <span>{isPulling ? "正在拉取" : "一键拉取"}</span>
+              {behind > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[var(--ty-honey)] text-white">
+                  ↓{behind}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              title="拉取与获取选项"
+              onClick={() => setPullMenuOpen(!pullMenuOpen)}
+              disabled={isPulling || isFetching}
+              className="px-1.5 py-1 border-l border-[var(--color-border)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer rounded-r"
+            >
+              <ChevronDownIcon width={10} height={10} />
+            </button>
+
+            {pullMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-60 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg z-50 py-1 text-xs divide-y divide-[var(--color-border)]/40">
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPullMenuOpen(false);
+                      (onPullAllClick || onPullClick)?.();
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] flex items-start gap-2 text-[var(--color-text)] cursor-pointer"
+                  >
+                    <span className="text-[var(--color-accent)] font-bold text-sm leading-none mt-0.5">⚡</span>
+                    <div>
+                      <div className="font-semibold">一键拉取全部最新代码</div>
+                      <div className="text-[10px] text-[var(--color-text-muted)]">抓取全部远程分支并合并当前分支 (Ctrl+T)</div>
+                    </div>
+                  </button>
+                </div>
+                <div className="py-1">
+                  {onPullClick && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPullMenuOpen(false);
+                        onPullClick();
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] flex items-start gap-2 text-[var(--color-text)] cursor-pointer"
+                    >
+                      <span className="text-[var(--color-text-muted)] leading-none mt-0.5">📥</span>
+                      <div>
+                        <div className="font-medium">仅拉取当前分支</div>
+                        <div className="text-[10px] text-[var(--color-text-muted)]">仅同步当前跟踪分支 (git pull)</div>
+                      </div>
+                    </button>
+                  )}
+                  {onFetchClick && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPullMenuOpen(false);
+                        onFetchClick();
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-surface-raised)] flex items-start gap-2 text-[var(--color-text)] cursor-pointer"
+                    >
+                      <span className="text-[var(--color-text-muted)] leading-none mt-0.5">🌐</span>
+                      <div>
+                        <div className="font-medium">获取所有远程更新 (Fetch All)</div>
+                        <div className="text-[10px] text-[var(--color-text-muted)]">更新所有远程引用，不改动本地文件</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Push Button */}
