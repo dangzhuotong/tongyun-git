@@ -243,7 +243,6 @@ impl DiscardService {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

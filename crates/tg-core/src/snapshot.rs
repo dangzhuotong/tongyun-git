@@ -615,7 +615,6 @@ pub fn discard_lines(
     Ok(snapshot)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -645,7 +644,8 @@ mod tests {
             can_restore: true,
         };
         let c_json = serde_json::to_string(&change).expect("serialize SnapshotChange");
-        let c_de: SnapshotChange = serde_json::from_str(&c_json).expect("deserialize SnapshotChange");
+        let c_de: SnapshotChange =
+            serde_json::from_str(&c_json).expect("deserialize SnapshotChange");
         assert_eq!(c_de.path, change.path);
         assert_eq!(c_de.saved, change.saved);
         assert_eq!(c_de.current, change.current);

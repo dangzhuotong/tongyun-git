@@ -1235,8 +1235,14 @@ mod tests {
     fn test_normalize_process_name() {
         assert_eq!(normalize_process_name("claude"), "claude");
         assert_eq!(normalize_process_name("Claude.EXE"), "claude");
-        assert_eq!(normalize_process_name("C:\\Program Files\\Codex.exe"), "codex");
-        assert_eq!(normalize_process_name("/usr/local/bin/tongyun-cli"), "tongyun-cli");
+        assert_eq!(
+            normalize_process_name("C:\\Program Files\\Codex.exe"),
+            "codex"
+        );
+        assert_eq!(
+            normalize_process_name("/usr/local/bin/tongyun-cli"),
+            "tongyun-cli"
+        );
         assert_eq!(normalize_process_name("  cursor.exe  "), "cursor");
         assert_eq!(normalize_process_name(""), "");
     }
@@ -1395,10 +1401,19 @@ mod tests {
         // Process check with claude triggers StartSession
         let action = sm.handle_process_check(&["claude".to_string()], 1000);
         match action {
-            AutoSessionAction::StartSession { label, trigger, agent } => {
+            AutoSessionAction::StartSession {
+                label,
+                trigger,
+                agent,
+            } => {
                 assert!(label.contains("claude"));
                 assert_eq!(agent, Some("claude".to_string()));
-                assert_eq!(trigger, AutoTrigger::Process { agent: "claude".to_string() });
+                assert_eq!(
+                    trigger,
+                    AutoTrigger::Process {
+                        agent: "claude".to_string()
+                    }
+                );
             }
             other => panic!("expected StartSession, got {other:?}"),
         }
@@ -1407,7 +1422,9 @@ mod tests {
         sm.set_active(
             "refs/tongyun/snapshots/snap-1".to_string(),
             "Session".to_string(),
-            AutoTrigger::Process { agent: "claude".to_string() },
+            AutoTrigger::Process {
+                agent: "claude".to_string(),
+            },
             1000,
             Some("claude".to_string()),
         );
@@ -1501,7 +1518,9 @@ mod tests {
         sm.set_active(
             "refs/tongyun/snapshots/active".to_string(),
             "Active".to_string(),
-            AutoTrigger::Process { agent: "claude".to_string() },
+            AutoTrigger::Process {
+                agent: "claude".to_string(),
+            },
             1000,
             Some("claude".to_string()),
         );
