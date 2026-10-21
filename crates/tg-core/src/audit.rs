@@ -191,6 +191,42 @@ mod tests {
         assert!(events.iter().all(|e| e.schema_version == 1));
     }
     #[test]
+    fn test_audit_constants_and_event_serde_camel_case() {
+        assert_eq!(OUTCOME_SUCCEEDED, "succeeded");
+        assert_eq!(OUTCOME_FAILED_OR_UNKNOWN, "failed_or_unknown");
+
+        let event = Event {
+            schema_version: 1,
+            operation_id: "123-456-0".to_string(),
+            task_id: "task-001".to_string(),
+            actor: "agent:claude".to_string(),
+            tool: "git".to_string(),
+            action: "commit".to_string(),
+            target: "/path/to/repo".to_string(),
+            phase: "started".to_string(),
+            timestamp_ms: 1700000000000,
+            outcome: None,
+        };
+        let json = serde_json::to_string(&event).expect("serialize event");
+        assert!(json.contains("\"schemaVersion\":1"));
+        assert!(json.contains("\"operationId\":\"123-456-0\""));
+        assert!(json.contains("\"taskId\":\"task-001\""));
+        assert!(json.contains("\"timestampMs\":1700000000000"));
+
+        let de: Event = serde_json::from_str(&json).expect("deserialize event");
+        assert_eq!(de.schema_version, event.schema_version);
+        assert_eq!(de.operation_id, event.operation_id);
+        assert_eq!(de.task_id, event.task_id);
+        assert_eq!(de.actor, event.actor);
+        assert_eq!(de.tool, event.tool);
+        assert_eq!(de.action, event.action);
+        assert_eq!(de.target, event.target);
+        assert_eq!(de.phase, event.phase);
+        assert_eq!(de.timestamp_ms, event.timestamp_ms);
+        assert_eq!(de.outcome, event.outcome);
+    }
+
+    #[test]
     fn unavailable_journal_refuses_begin() {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("file");

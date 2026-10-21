@@ -614,3 +614,77 @@ pub fn discard_lines(
     write_version(&repo, root, &expected.path, Some(&result))?;
     Ok(snapshot)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_snapshot_constants() {
+        assert_eq!(LIMIT, 50 * 1024 * 1024);
+        assert_eq!(TOTAL, 200 * 1024 * 1024);
+        assert_eq!(PREFIX, "refs/tongyun/snapshots/");
+    }
+
+    #[test]
+    fn test_snapshot_types_serde_roundtrip() {
+        let v = Version {
+            oid: "1234567890abcdef1234567890abcdef12345678".to_string(),
+            mode: 0o100644,
+        };
+        let v_json = serde_json::to_string(&v).expect("serialize Version");
+        let v_de: Version = serde_json::from_str(&v_json).expect("deserialize Version");
+        assert_eq!(v, v_de);
+
+        let change = SnapshotChange {
+            path: "src/main.rs".to_string(),
+            saved: Some(v.clone()),
+            current: None,
+            current_index: Some(v.clone()),
+            can_restore: true,
+        };
+        let c_json = serde_json::to_string(&change).expect("serialize SnapshotChange");
+        let c_de: SnapshotChange =
+            serde_json::from_str(&c_json).expect("deserialize SnapshotChange");
+        assert_eq!(c_de.path, change.path);
+        assert_eq!(c_de.saved, change.saved);
+        assert_eq!(c_de.current, change.current);
+        assert_eq!(c_de.current_index, change.current_index);
+        assert_eq!(c_de.can_restore, change.can_restore);
+
+        let restore = RestoreResult {
+            restored: 3,
+            skipped: vec!["skipped.rs".to_string()],
+            undo_ref: "refs/tongyun/snapshots/undo-1".to_string(),
+        };
+        let r_json = serde_json::to_string(&restore).expect("serialize RestoreResult");
+        let r_de: RestoreResult = serde_json::from_str(&r_json).expect("deserialize RestoreResult");
+        assert_eq!(r_de.restored, restore.restored);
+        assert_eq!(r_de.skipped, restore.skipped);
+        assert_eq!(r_de.undo_ref, restore.undo_ref);
+
+        let mut files = BTreeMap::new();
+        files.insert("file.txt".to_string(), Some(v));
+        let snap = Snapshot {
+            reference: "refs/tongyun/snapshots/test".to_string(),
+            label: "test snapshot".to_string(),
+            kind: "manual".to_string(),
+            root: "/path/to/repo".to_string(),
+            head: Some("abc".to_string()),
+            created_ms: 123456789,
+            files,
+            index: BTreeMap::new(),
+            baseline: BTreeMap::new(),
+            expected_index: BTreeMap::new(),
+        };
+        let s_json = serde_json::to_string(&snap).expect("serialize Snapshot");
+        let s_de: Snapshot = serde_json::from_str(&s_json).expect("deserialize Snapshot");
+        assert_eq!(s_de.reference, snap.reference);
+        assert_eq!(s_de.label, snap.label);
+        assert_eq!(s_de.kind, snap.kind);
+        assert_eq!(s_de.root, snap.root);
+        assert_eq!(s_de.head, snap.head);
+        assert_eq!(s_de.created_ms, snap.created_ms);
+        assert_eq!(s_de.files, snap.files);
+    }
+}

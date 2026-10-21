@@ -488,6 +488,44 @@ mod tests {
     }
 
     #[test]
+    fn test_commit_structs_serde_roundtrip() {
+        let identity = GitIdentity {
+            name: "Alice Developer".to_string(),
+            email: "alice@example.com".to_string(),
+        };
+        let id_json = serde_json::to_string(&identity).unwrap();
+        let id_de: GitIdentity = serde_json::from_str(&id_json).unwrap();
+        assert_eq!(id_de.name, identity.name);
+        assert_eq!(id_de.email, identity.email);
+
+        let commit_res = CommitResult {
+            oid: "a".repeat(40),
+            short_oid: "aaaaaaa".to_string(),
+            summary: "feat: commit summary".to_string(),
+        };
+        let cr_json = serde_json::to_string(&commit_res).unwrap();
+        let cr_de: CommitResult = serde_json::from_str(&cr_json).unwrap();
+        assert_eq!(cr_de.oid, commit_res.oid);
+        assert_eq!(cr_de.short_oid, commit_res.short_oid);
+        assert_eq!(cr_de.summary, commit_res.summary);
+
+        let amend = AmendStatus {
+            can_amend: true,
+            disabled_reason: None,
+            head_message: Some("previous commit message".to_string()),
+            is_pushed: false,
+            pushed_remote_branches: vec![],
+        };
+        let am_json = serde_json::to_string(&amend).unwrap();
+        let am_de: AmendStatus = serde_json::from_str(&am_json).unwrap();
+        assert_eq!(am_de.can_amend, amend.can_amend);
+        assert_eq!(am_de.disabled_reason, amend.disabled_reason);
+        assert_eq!(am_de.head_message, amend.head_message);
+        assert_eq!(am_de.is_pushed, amend.is_pushed);
+        assert_eq!(am_de.pushed_remote_branches, amend.pushed_remote_branches);
+    }
+
+    #[test]
     fn test_reset_to_commit_rejects_hard_and_unknown_modes() {
         let runner = CliRunner::new("git");
         let dir = tempfile::tempdir().unwrap();
