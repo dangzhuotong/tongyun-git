@@ -58,7 +58,7 @@ describe("SettingsModal component", () => {
     fireEvent.click(aiTab);
 
     expect(screen.getByText("AI 服务提供方")).toBeDefined();
-    expect(screen.getByText("API 密钥 (安全存入系统钥匙串)")).toBeDefined();
+    expect(screen.getByText("API 密钥 (加密保存在本机)")).toBeDefined();
   });
 
   it("AT-13c & AT-13d & AT-13e: computes endpoint URLs correctly for KIE, OpenAI, and Ollama", async () => {
@@ -179,7 +179,7 @@ describe("SettingsModal component", () => {
     );
 
     expect(
-      await screen.findByText(/系统钥匙串服务不可用（如 Linux 未运行 Secret Service）/)
+      await screen.findByText(/本机加密存储不可用/)
     ).toBeDefined();
     expect(screen.queryByPlaceholderText(/输入 API Key/)).toBeNull();
   });
@@ -222,7 +222,7 @@ describe("SettingsModal component", () => {
     );
 
     const keyInput = (await screen.findByPlaceholderText(
-      /输入 API Key 并存入钥匙串/
+      /输入 API Key 并加密保存/
     )) as HTMLInputElement;
 
     fireEvent.change(keyInput, { target: { value: "secret-key-12345" } });

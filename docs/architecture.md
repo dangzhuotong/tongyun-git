@@ -15,7 +15,7 @@ Tauri 命令层（src-tauri/src/commands/）  参数校验、错误转成界面�
    ├──► CliRunner        ──► 系统 git 子进程（commit、commit --amend、fetch、pull、push、abort）
    ├──► DiscardService   ──► 丢弃前快照（refs/tongyun/discard/*）+ 恢复 + 撤销
    ├──► AiClient         ──► chat completions，三种提供方：KIE / OpenAI 兼容 / Ollama（reqwest + rustls）
-   └──► SecretStore      ──► 系统钥匙串（keyring crate），按提供方一个条目；不读环境变量
+   └──► SecretStore      ──► 本机加密文件（secret_store），按提供方一个条目；旧钥匙串只在迁移时读一次；不读环境变量
 ```
 
 规则：
@@ -112,7 +112,7 @@ tongyun-git/
 ## 设置与本地数据
 
 - 应用设置：Tauri 应用配置目录下的 JSON（主题、diff 视图、AI 的提供方 / 各提供方的地址和模型 / 超时 / 语言 / 排除规则、每个仓库的 pull 策略和提交草稿、最近仓库、窗口状态）。
-- key：只在系统钥匙串（macOS Keychain、Windows Credential Manager、Linux Secret Service），服务名取应用标识（`tauri.conf.json` 的 `identifier`），账户名 `ai-key:<提供方>`。钥匙串不可用时不能保存 key，设置页说明原因；不退回明文文件，也不读环境变量。
+- key：只在应用数据目录 `secrets/` 的加密文件里（XChaCha20-Poly1305，种子 `secret.key` mode `0600`，目录 mode `0700`）。账户名 `ai-key:<提供方>`。加密存储不可用时不能保存 key，设置页说明原因；不退回明文，也不读环境变量。旧系统钥匙串项只在迁移时读一次，详见 [决策 0004](decisions/0004-local-encrypted-ai-keys.md)。
 - 应用名和标识只在 `src-tauri/tauri.conf.json` 维护（`productName`、`identifier`），Rust 和前端运行时从 Tauri 配置读取，不在代码里写死（PRD D4）。
 - 应用不写用户的 git 配置，不在工作区放任何文件。MVP 唯一写进仓库 `.git` 的是丢弃快照 `refs/tongyun/discard/*`（最多 20 个）；v2 的 shelve 和 agent 快照届时放在 `.git/tongyun/` 和 `refs/tongyun/`。
 

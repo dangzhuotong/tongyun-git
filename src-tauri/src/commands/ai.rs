@@ -13,9 +13,20 @@ pub struct AiKeyStatus {
     pub keyring_available: bool,
 }
 
+fn open_ai_store() -> std::result::Result<SystemKeyring, String> {
+    let store = SystemKeyring::from_config().map_err(|e| e.to_string())?;
+    if store.is_available() {
+        // One-time import. After secrets.migrated exists this does not open the keychain.
+        store
+            .migrate_from_os_keychain()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(store)
+}
+
 #[tauri::command]
 pub fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
-    let keyring = SystemKeyring;
+    let keyring = open_ai_store()?;
     let available = keyring.is_available();
     let kie = if available {
         keyring.get_key("kie").map(|k| k.is_some()).unwrap_or(false)
@@ -50,9 +61,9 @@ pub fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
 #[tauri::command]
 pub fn save_ai_key(provider: String, key: String) -> std::result::Result<(), String> {
     crate::journal_cmd::run("save_ai_key", "application", || {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         if !keyring.is_available() {
-            return Err("系统钥匙串不可用，无法安全存储 Key".to_string());
+            return Err("本机加密存储不可用，无法安全存储 Key".to_string());
         }
         keyring.set_key(&provider, &key).map_err(|e| e.to_string())
     })
@@ -61,7 +72,7 @@ pub fn save_ai_key(provider: String, key: String) -> std::result::Result<(), Str
 #[tauri::command]
 pub fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
     crate::journal_cmd::run("delete_ai_key", "application", || {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         keyring.delete_key(&provider).map_err(|e| e.to_string())
     })
 }
@@ -69,7 +80,7 @@ pub fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
 #[tauri::command]
 pub async fn test_ai_connection(settings: AiSettings) -> std::result::Result<String, String> {
     crate::journal_cmd::run_async("test_ai_connection", "application", async move {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::test_connection(&settings, &keyring)
             .await
             .map_err(|e| e.to_string())
@@ -135,7 +146,7 @@ pub async fn generate_ai_commit_message(
         );
 
         // 5. Generate message via AI
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::generate_commit_message(
             &settings,
             &keyring,
@@ -182,7 +193,7 @@ pub async fn review_staged_diff(
             settings.max_diff_chars,
         );
 
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::review_diff(&settings, &keyring, &sanitized_diff)
             .await
             .map_err(|e| e.to_string())
@@ -218,7 +229,7 @@ pub async fn ai_search_log(
             _ => return Err("未能读取仓库历史提交记录".to_string()),
         };
 
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::query_log(&settings, &keyring, &query, &commits_summary)
             .await
             .map_err(|e| e.to_string())

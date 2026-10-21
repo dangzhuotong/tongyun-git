@@ -10,7 +10,16 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             bridge::start_bridge_server(app.handle().clone());
-            tg_core::journal::configure(&app.path().app_data_dir()?.join("audit"))?;
+            let data_dir = app.path().app_data_dir()?;
+            tg_core::configure_secret_dir(&data_dir.join("secrets"))?;
+            tg_core::journal::configure(&data_dir.join("audit"))?;
+            // Import existing keychain items once. A failure leaves the marker
+            // unwritten so the next save can retry, and does not block startup.
+            if let Ok(store) = tg_core::SystemKeyring::from_config() {
+                if let Err(err) = store.migrate_from_os_keychain() {
+                    eprintln!("AI key migration will retry on the next save: {err}");
+                }
+            }
             Ok(())
         })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
