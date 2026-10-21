@@ -1232,6 +1232,346 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_process_name() {
+        assert_eq!(normalize_process_name("claude"), "claude");
+        assert_eq!(normalize_process_name("Claude.EXE"), "claude");
+        assert_eq!(normalize_process_name("C:\\Program Files\\Codex.exe"), "codex");
+        assert_eq!(normalize_process_name("/usr/local/bin/tongyun-cli"), "tongyun-cli");
+        assert_eq!(normalize_process_name("  cursor.exe  "), "cursor");
+        assert_eq!(normalize_process_name(""), "");
+    }
+
+    #[test]
+    fn test_match_agent_process_and_ide_host() {
+        assert_eq!(match_agent_process("tongyun-cli"), Some("tongyun-cli"));
+        assert_eq!(match_agent_process("C:\\bin\\claude.exe"), Some("claude"));
+        assert_eq!(match_agent_process("/opt/codex"), Some("codex"));
+
+        // Cursor is intentionally an IDE host, not a known agent
+        assert_eq!(match_agent_process("cursor.exe"), None);
+        assert_eq!(match_agent_process("unknown-agent"), None);
+
+        assert!(is_known_agent_process("claude"));
+        assert!(is_known_agent_process("tongyun-cli.exe"));
+        assert!(!is_known_agent_process("cursor"));
+        assert!(!is_known_agent_process("git"));
+
+        assert!(is_ide_host_process("cursor"));
+        assert!(is_ide_host_process("C:\\Users\\bin\\Cursor.exe"));
+        assert!(!is_ide_host_process("claude"));
+        assert!(!is_ide_host_process("tongyun-cli"));
+    }
+
+    #[test]
+    fn test_agent_display_name() {
+        assert_eq!(agent_display_name("cursor"), "Cursor");
+        assert_eq!(agent_display_name("tongyun-cli"), "tongyun-cli");
+        assert_eq!(agent_display_name("claude"), "claude");
+        assert_eq!(agent_display_name("codex"), "codex");
+        assert_eq!(agent_display_name("custom-tool"), "custom-tool");
+    }
+
+    #[test]
+    fn test_burst_detector_and_evaluations() {
+        assert!(evaluate_burst(5, 5));
+        assert!(evaluate_burst(6, 5));
+        assert!(!evaluate_burst(4, 5));
+
+        let timestamps = vec![1000, 2000, 3000, 4000];
+        // window: 2s (2000ms), cutoff = 4000 - 2000 = 2000; timestamps in window: 2000, 3000, 4000 (3 items)
+        assert!(evaluate_timestamp_burst(&timestamps, 4000, 2, 3));
+        assert!(!evaluate_timestamp_burst(&timestamps, 4000, 2, 4));
+
+        let mut detector = BurstDetector::new();
+        detector.record_change(1000);
+        detector.record_changes(4, 2000);
+        assert_eq!(detector.recent_count(2500, 2), 5);
+        assert_eq!(detector.recent_count(5000, 2), 0);
+
+        let cfg = BurstConfig {
+            window_secs: 2,
+            threshold: 5,
+        };
+        assert!(detector.is_burst(2500, &cfg));
+
+        detector.reset();
+        assert_eq!(detector.recent_count(2500, 2), 0);
+        assert!(!detector.is_burst(2500, &cfg));
+    }
+
+    #[test]
+    fn test_auto_agent_config_and_serde() {
+        let default_cfg = AutoAgentConfig::default();
+        assert!(default_cfg.enabled);
+        assert_eq!(default_cfg.burst_threshold, 5);
+        assert_eq!(default_cfg.burst_window_secs, 5);
+        assert_eq!(default_cfg.silence_timeout_secs, 300);
+        assert_eq!(default_cfg.silence_minutes(), 5);
+
+        let modified = default_cfg.clone().with_silence_minutes(10);
+        assert_eq!(modified.silence_timeout_secs, 600);
+        assert_eq!(modified.silence_minutes(), 10);
+        assert_eq!(
+            modified.burst_config(),
+            BurstConfig {
+                window_secs: 5,
+                threshold: 5,
+            }
+        );
+
+        // Deserialization of empty JSON object defaults all fields
+        let parsed: AutoAgentConfig = serde_json::from_str("{}").expect("parse default JSON");
+        assert_eq!(parsed, default_cfg);
+
+        let roundtrip_json = serde_json::to_string(&modified).expect("serialize config");
+        let roundtrip_cfg: AutoAgentConfig =
+            serde_json::from_str(&roundtrip_json).expect("deserialize config");
+        assert_eq!(roundtrip_cfg, modified);
+    }
+
+    #[test]
+    fn test_auto_agent_triggers_and_states_serde() {
+        let trigger_proc = AutoTrigger::Process {
+            agent: "claude".to_string(),
+        };
+        let json_proc = serde_json::to_string(&trigger_proc).expect("serialize proc trigger");
+        assert_eq!(json_proc, "{\"type\":\"process\",\"agent\":\"claude\"}");
+        assert_eq!(
+            serde_json::from_str::<AutoTrigger>(&json_proc).unwrap(),
+            trigger_proc
+        );
+
+        let trigger_burst = AutoTrigger::Burst { change_count: 8 };
+        let json_burst = serde_json::to_string(&trigger_burst).expect("serialize burst trigger");
+        assert_eq!(json_burst, "{\"type\":\"burst\",\"change_count\":8}");
+        assert_eq!(
+            serde_json::from_str::<AutoTrigger>(&json_burst).unwrap(),
+            trigger_burst
+        );
+
+        let idle_state = AutoSessionState::Idle;
+        let json_idle = serde_json::to_string(&idle_state).expect("serialize idle state");
+        assert_eq!(json_idle, "{\"state\":\"idle\"}");
+        assert_eq!(
+            serde_json::from_str::<AutoSessionState>(&json_idle).unwrap(),
+            idle_state
+        );
+
+        let active_state = AutoSessionState::Active {
+            reference: "refs/tongyun/snapshots/agent-test".to_string(),
+            label: "Auto Session".to_string(),
+            trigger: trigger_proc.clone(),
+            started_ms: 1000,
+            last_activity_ms: 1000,
+            detected_agent: Some("claude".to_string()),
+        };
+        let json_active = serde_json::to_string(&active_state).expect("serialize active state");
+        let parsed_active: AutoSessionState =
+            serde_json::from_str(&json_active).expect("deserialize active state");
+        assert_eq!(parsed_active, active_state);
+
+        let action = AutoSessionAction::StartSession {
+            label: "test".to_string(),
+            trigger: trigger_burst,
+            agent: Some("codex".to_string()),
+        };
+        let json_action = serde_json::to_string(&action).expect("serialize action");
+        let parsed_action: AutoSessionAction =
+            serde_json::from_str(&json_action).expect("deserialize action");
+        assert_eq!(parsed_action, action);
+    }
+
+    #[test]
+    fn test_auto_agent_state_machine_process_flow() {
+        let config = AutoAgentConfig::default();
+        let mut sm = AutoAgentStateMachine::new(config);
+        assert!(!sm.is_active());
+
+        // Process check with IDE host Cursor does not start session
+        let action = sm.handle_process_check(&["cursor.exe".to_string()], 1000);
+        assert_eq!(action, AutoSessionAction::None);
+        assert!(!sm.is_active());
+
+        // Process check with claude triggers StartSession
+        let action = sm.handle_process_check(&["claude".to_string()], 1000);
+        match action {
+            AutoSessionAction::StartSession { label, trigger, agent } => {
+                assert!(label.contains("claude"));
+                assert_eq!(agent, Some("claude".to_string()));
+                assert_eq!(trigger, AutoTrigger::Process { agent: "claude".to_string() });
+            }
+            other => panic!("expected StartSession, got {other:?}"),
+        }
+
+        // Set state to active
+        sm.set_active(
+            "refs/tongyun/snapshots/snap-1".to_string(),
+            "Session".to_string(),
+            AutoTrigger::Process { agent: "claude".to_string() },
+            1000,
+            Some("claude".to_string()),
+        );
+        assert!(sm.is_active());
+
+        // Still running: action is None
+        let action = sm.handle_process_check(&["claude".to_string()], 2000);
+        assert_eq!(action, AutoSessionAction::None);
+        assert!(sm.is_active());
+
+        // Process exited: triggers FinishSession and resets to Idle
+        let action = sm.handle_process_check(&[], 3000);
+        match action {
+            AutoSessionAction::FinishSession { reference, reason } => {
+                assert_eq!(reference, "refs/tongyun/snapshots/snap-1");
+                assert!(reason.contains("已退出"));
+            }
+            other => panic!("expected FinishSession, got {other:?}"),
+        }
+        assert!(!sm.is_active());
+    }
+
+    #[test]
+    fn test_auto_agent_state_machine_burst_and_silence_tick() {
+        let config = AutoAgentConfig {
+            enabled: true,
+            burst_threshold: 3,
+            burst_window_secs: 5,
+            silence_timeout_secs: 60,
+        };
+        let mut sm = AutoAgentStateMachine::new(config);
+
+        // Changes below threshold do not start session
+        assert_eq!(sm.handle_file_changes(2, 1000), AutoSessionAction::None);
+        assert!(!sm.is_active());
+
+        // Reaching threshold triggers StartSession
+        let action = sm.handle_file_changes(1, 2000);
+        match action {
+            AutoSessionAction::StartSession { trigger, agent, .. } => {
+                assert_eq!(agent, None);
+                assert_eq!(trigger, AutoTrigger::Burst { change_count: 3 });
+            }
+            other => panic!("expected StartSession, got {other:?}"),
+        }
+
+        sm.set_active(
+            "refs/tongyun/snapshots/snap-burst".to_string(),
+            "Burst Session".to_string(),
+            AutoTrigger::Burst { change_count: 3 },
+            2000,
+            None,
+        );
+        assert!(sm.is_active());
+
+        // Tick before silence timeout (30s elapsed < 60s timeout)
+        let action = sm.handle_tick(&[], 32000);
+        assert_eq!(action, AutoSessionAction::None);
+
+        // Subsequent changes refresh last_activity_ms
+        assert_eq!(sm.handle_file_changes(1, 40000), AutoSessionAction::None);
+
+        // Tick at 80s (40s after last activity < 60s)
+        assert_eq!(sm.handle_tick(&[], 80000), AutoSessionAction::None);
+
+        // Tick at 110s (70s after last activity >= 60s) triggers silence finish
+        let action = sm.handle_tick(&[], 110000);
+        match action {
+            AutoSessionAction::FinishSession { reference, reason } => {
+                assert_eq!(reference, "refs/tongyun/snapshots/snap-burst");
+                assert!(reason.contains("静默超时"));
+            }
+            other => panic!("expected FinishSession, got {other:?}"),
+        }
+        assert!(!sm.is_active());
+    }
+
+    #[test]
+    fn test_auto_agent_state_machine_disabled_config() {
+        let mut config = AutoAgentConfig::default();
+        config.enabled = false;
+        let mut sm = AutoAgentStateMachine::new(config);
+
+        assert_eq!(
+            sm.handle_process_check(&["claude".to_string()], 1000),
+            AutoSessionAction::None
+        );
+        assert_eq!(sm.handle_file_changes(10, 1000), AutoSessionAction::None);
+
+        // If sm is active when disabled, tick immediately finishes it
+        sm.set_active(
+            "refs/tongyun/snapshots/active".to_string(),
+            "Active".to_string(),
+            AutoTrigger::Process { agent: "claude".to_string() },
+            1000,
+            Some("claude".to_string()),
+        );
+        let action = sm.handle_tick(&["claude".to_string()], 2000);
+        match action {
+            AutoSessionAction::FinishSession { reference, reason } => {
+                assert_eq!(reference, "refs/tongyun/snapshots/active");
+                assert!(reason.contains("设置中关闭"));
+            }
+            other => panic!("expected FinishSession, got {other:?}"),
+        }
+        assert!(!sm.is_active());
+    }
+
+    #[test]
+    fn test_fingerprint_delta() {
+        let mut prev = DirtyFingerprint::new();
+        let mut next = DirtyFingerprint::new();
+        assert_eq!(fingerprint_delta(&prev, &next), 0);
+
+        prev.insert("file1.txt".to_string(), Some("v1".to_string()));
+        next.insert("file1.txt".to_string(), Some("v1".to_string()));
+        assert_eq!(fingerprint_delta(&prev, &next), 0);
+
+        // Modified file
+        next.insert("file1.txt".to_string(), Some("v2".to_string()));
+        assert_eq!(fingerprint_delta(&prev, &next), 1);
+
+        // Added file
+        next.insert("file2.txt".to_string(), Some("v1".to_string()));
+        assert_eq!(fingerprint_delta(&prev, &next), 2);
+
+        // Deleted file
+        next.remove("file1.txt");
+        assert_eq!(fingerprint_delta(&prev, &next), 2);
+    }
+
+    #[test]
+    fn test_process_scan_cache_ttl() {
+        let mut cache = ProcessScanCache::new(Duration::from_millis(500));
+        let mut call_count = 0;
+        let t0 = Instant::now();
+
+        let r1 = cache.get_or_scan(t0, || {
+            call_count += 1;
+            vec!["claude".to_string()]
+        });
+        assert_eq!(r1, vec!["claude"]);
+        assert_eq!(call_count, 1);
+
+        // Within TTL (200ms < 500ms), returns cached result without calling scan
+        let t1 = t0 + Duration::from_millis(200);
+        let r2 = cache.get_or_scan(t1, || {
+            call_count += 1;
+            vec!["tongyun-cli".to_string()]
+        });
+        assert_eq!(r2, vec!["claude"]);
+        assert_eq!(call_count, 1);
+
+        // Past TTL (600ms >= 500ms), calls scan again
+        let t2 = t0 + Duration::from_millis(600);
+        let r3 = cache.get_or_scan(t2, || {
+            call_count += 1;
+            vec!["codex".to_string()]
+        });
+        assert_eq!(r3, vec!["codex"]);
+        assert_eq!(call_count, 2);
+    }
+
+    #[test]
     fn fingerprint_rehashes_when_size_changes() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();

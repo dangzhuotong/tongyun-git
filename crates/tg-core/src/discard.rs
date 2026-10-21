@@ -242,3 +242,52 @@ impl DiscardService {
         })
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_discard_constants() {
+        assert_eq!(MAX_SINGLE_FILE_SNAPSHOT, 52_428_800);
+        assert_eq!(MAX_TOTAL_SNAPSHOT, 209_715_200);
+        assert_eq!(MAX_SNAPSHOT_COUNT, 20);
+    }
+
+    #[test]
+    fn test_discard_structs_serde_roundtrip() {
+        let candidate = DiscardCandidate {
+            path: "test.txt".to_string(),
+            will_delete: true,
+            unrestorable: false,
+            size: 1024,
+        };
+        let c_json = serde_json::to_string(&candidate).expect("serialize candidate");
+        let c_de: DiscardCandidate = serde_json::from_str(&c_json).expect("deserialize candidate");
+        assert_eq!(c_de.path, candidate.path);
+        assert_eq!(c_de.will_delete, candidate.will_delete);
+        assert_eq!(c_de.unrestorable, candidate.unrestorable);
+        assert_eq!(c_de.size, candidate.size);
+
+        let result = DiscardResult {
+            snapshot_ref: Some("refs/tongyun/discard/1".to_string()),
+            discarded_count: 1,
+            unrestorable_files: vec!["huge.bin".to_string()],
+        };
+        let r_json = serde_json::to_string(&result).expect("serialize result");
+        let r_de: DiscardResult = serde_json::from_str(&r_json).expect("deserialize result");
+        assert_eq!(r_de.snapshot_ref, result.snapshot_ref);
+        assert_eq!(r_de.discarded_count, result.discarded_count);
+        assert_eq!(r_de.unrestorable_files, result.unrestorable_files);
+
+        let undo = UndoDiscardResult {
+            restored_count: 2,
+            skipped_files: vec!["conflicted.txt".to_string()],
+        };
+        let u_json = serde_json::to_string(&undo).expect("serialize undo");
+        let u_de: UndoDiscardResult = serde_json::from_str(&u_json).expect("deserialize undo");
+        assert_eq!(u_de.restored_count, undo.restored_count);
+        assert_eq!(u_de.skipped_files, undo.skipped_files);
+    }
+}
