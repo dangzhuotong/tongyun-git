@@ -1504,8 +1504,10 @@ mod tests {
 
     #[test]
     fn test_auto_agent_state_machine_disabled_config() {
-        let mut config = AutoAgentConfig::default();
-        config.enabled = false;
+        let config = AutoAgentConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let mut sm = AutoAgentStateMachine::new(config);
 
         assert_eq!(
