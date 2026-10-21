@@ -35,8 +35,8 @@ pub use auto_agent::{
 };
 
 pub use ai::{
-    AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings, DiffReviewResult,
-    KeyringStore, MemoryKeyring, ReviewIssue, SecretFilter, SystemKeyring,
+    configure_secret_dir, AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings,
+    DiffReviewResult, KeyringStore, MemoryKeyring, ReviewIssue, SecretFilter, SystemKeyring,
 };
 
 pub use backend::{

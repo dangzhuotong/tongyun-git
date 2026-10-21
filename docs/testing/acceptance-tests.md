@@ -13,7 +13,7 @@
 | L3 端到端 | 打包后的应用里走完整用户流程 | tauri-driver（WebDriver）+ WebdriverIO。tauri-driver 只支持 Windows 和 Linux，macOS 用 L4 手测补 | CI（ubuntu，Windows 只在发版前跑） |
 | L4 人工验收 | 安装包在真实机器上的体验、钥匙串、文件监听、外观 | 本清单「人工」列 + 截图 | 阿橦的电脑（至少 Windows 或 macOS 之一）+ box 上的 Linux |
 
-外部服务边界：AI 接口在 L1–L3 一律用本地测试替身（一个本地 HTTP 服务，记录收到的请求地址、请求头和请求体，可设置延迟和错误码，并能模拟 KIE、OpenAI 兼容、Ollama 三种路径，含 Ollama 的 `/api/tags`）；真实提供方只在 L4 用阿橦自己在设置里填的 key 跑 AT-07a，不在 CI 里调用。L1 里钥匙串用内存替身，真实钥匙串只在 L4（AT-13a）验。远程仓库用本机裸仓库（`file://`），不推真实 GitHub。
+外部服务边界：AI 接口在 L1–L3 一律用本地测试替身（一个本地 HTTP 服务，记录收到的请求地址、请求头和请求体，可设置延迟和错误码，并能模拟 KIE、OpenAI 兼容、Ollama 三种路径，含 Ollama 的 `/api/tags`）；真实提供方只在 L4 用阿橦自己在设置里填的 key 跑 AT-07a，不在 CI 里调用。L1 里密钥存储用内存替身和临时目录里的加密文件，不调用真实钥匙串。远程仓库用本机裸仓库（`file://`），不推真实 GitHub。
 
 ## 2. 夹具（M0 建立）
 
@@ -73,12 +73,12 @@
 | AT-06k | R-06 amend | 勾选后取消勾选 | 观察信息框 | 恢复为勾选前的草稿 | L2 | passed (L2 vitest) |
 | AT-07a | R-07 | 阿橦本机，在设置里填自己的 key（KIE 或其他 OpenAI 兼容服务至少一种；装了 Ollama 时再测一次） | AI 生成 | 30 秒内出现非空信息，可编辑并提交 | L4 | not_run |
 | AT-07b | R-07 | `secrets`，测试替身接口 | AI 生成 | 替身收到的请求体里有 `.env`、`id_rsa` 文件名，没有其内容 | L1 | not_run |
-| AT-07c | R-07 | 提供方为 KIE 或 OpenAI 兼容，钥匙串里没有 key | AI 生成 | 提示未配置；替身未收到任何请求 | L1+L3 | not_run |
+| AT-07c | R-07 | 提供方为 KIE 或 OpenAI 兼容，加密存储里没有 key | AI 生成 | 提示未配置；替身未收到任何请求 | L1+L3 | not_run |
 | AT-07d | R-07 | 替身延迟 40 秒 | AI 生成 | 30 秒提示超时；信息框原内容保留 | L1+L3 | not_run |
 | AT-07e | R-07 | 替身返回 401 / 500 | AI 生成 | 显示对应原因和设置入口 | L1 | not_run |
 | AT-07f | R-07 | 首次使用 | AI 生成 | 出现发送确认（S9）；取消则替身未收到请求 | L3 | not_run（L2 vitest 已覆盖：首次弹确认、取消不发请求；待 L3） |
 | AT-07g | R-07、N-02 | 用过 AI 后 | 在仓库、应用配置目录、日志目录里搜索 key 明文 | 搜不到 | L1+L4 | not_run |
-| AT-07h | R-07、D1 | 环境变量 `KIE_API_KEY=假值`，钥匙串里没有 key，提供方选 KIE | AI 生成 | 提示未配置；替身未收到任何请求（证明不读环境变量） | L1 | not_run |
+| AT-07h | R-07、D1 | 环境变量 `KIE_API_KEY=假值`，加密存储里没有 key，提供方选 KIE | AI 生成 | 提示未配置；替身未收到任何请求（证明不读环境变量） | L1 | not_run |
 | AT-08a | R-08 | `remote` 干净工作区 | 切到另一本地分支 | `git branch --show-current` 一致 | L1+L3 | not_run |
 | AT-08b | R-08 | 本地无 `feature-x` | 选 `origin/feature-x` | 本地新建并跟踪 `origin/feature-x` | L1 | not_run |
 | AT-08c | R-08 | 有会被覆盖的改动 | 切换 | 显示文件列表；分支不变；工作区文件哈希不变 | L1+L3 | not_run |
@@ -98,12 +98,12 @@
 | AT-12a | R-12 | 领先 1 个提交 | 推送 | 裸仓库包含该提交；领先数归零 | L1+L3 | not_run |
 | AT-12b | R-12 | 无上游的新分支 | 推送 | 远程出现同名分支；上游已设置 | L1 | not_run |
 | AT-12c | R-12 | 「别人」先推了新提交 | 推送 | 被拒提示 + 拉取按钮；本地不变 | L1+L3 | not_run |
-| AT-13a | R-13 | — | 设置里保存 key | 设置文件无 key；钥匙串有条目；AI 可用 | L4（三平台各一次） | not_run |
-| AT-13c | R-13、R-07 | 提供方 KIE，替身作为 KIE 地址，钥匙串替身里存假 key | AI 生成、测试连接 | 替身收到的路径是 `/<模型>/v1/chat/completions`，带 `Authorization: Bearer <假 key>`；测试连接显示成功 | L1 | not_run |
+| AT-13a | R-13 | — | 设置里连续保存 key 三次；另测一台已有旧钥匙串 key 的机器；迁移读失败后再保存 | 设置 JSON 无 key 明文；加密文件可解密出该 key；三次保存都不弹出登录钥匙串密码；旧 key 在启动时自动迁入，迁移失败时旧项仍在，保存、清除和状态查询仍可用且不再弹授权；AI 可用 | L1+L4 | not_run |
+| AT-13c | R-13、R-07 | 提供方 KIE，替身作为 KIE 地址，内存替身里存假 key | AI 生成、测试连接 | 替身收到的路径是 `/<模型>/v1/chat/completions`，带 `Authorization: Bearer <假 key>`；测试连接显示成功 | L1 | not_run |
 | AT-13d | R-13、R-07 | 提供方 OpenAI 兼容，base URL `http://127.0.0.1:<端口>/v1`，存假 key | AI 生成 | 替身收到 `/v1/chat/completions`，请求体 `model` 等于设置值，带 Bearer 头；设置页显示的最终请求地址与实际一致 | L1+L2 | not_run |
 | AT-13e | R-13、R-07 | 提供方 Ollama，替身模拟 `/api/tags`（2 个模型）和 `/v1/chat/completions`，不填 key | 打开模型下拉，AI 生成 | 下拉出现 2 个模型；请求不带 `Authorization` 头；生成成功 | L1+L2 | not_run |
-| AT-13f | R-13 | KIE 和 OpenAI 兼容各存一把不同的假 key | 来回切换提供方 | 两个钥匙串条目都在；切回后不用重填；「清除 key」只删当前提供方的条目 | L1 | not_run |
-| AT-13g | R-13、N-02 | 钥匙串替身设为不可用（模拟 Linux 无 Secret Service） | 打开设置、尝试保存 key | key 输入框不可用并显示原因；应用配置目录里没有 key | L1+L2 | not_run |
+| AT-13f | R-13 | KIE 和 OpenAI 兼容各存一把不同的假 key | 来回切换提供方 | 两个加密条目都在；切回后不用重填；「清除 key」只删当前提供方的条目 | L1 | not_run |
+| AT-13g | R-13、N-02 | 加密存储不可用（目录为符号链接，或内存替身设为不可用） | 打开设置、尝试保存 key | key 输入框不可用并显示原因；应用配置目录里没有 key 明文 | L1+L2 | not_run |
 | AT-13h | R-13、N-02 | 已保存 key | 前端读取设置 | 命令返回值只有「已保存」标记，没有 key 字符串 | L1+L2 | not_run |
 | AT-13i | R-13 | 提供方 Ollama，地址 `http://192.168.1.10:11434` | 打开设置 | 显示「内容会明文经过网络」提示；改成 localhost 后提示消失 | L2 | not_run |
 | AT-13j | R-13、R-07 | 替身返回 401 / 模型不存在 / 地址不通 | 测试连接 | 分别显示对应原因，不显示 key | L1+L2 | not_run |

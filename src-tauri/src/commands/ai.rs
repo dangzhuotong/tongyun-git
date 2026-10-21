@@ -13,9 +13,17 @@ pub struct AiKeyStatus {
     pub keyring_available: bool,
 }
 
+fn open_ai_store() -> std::result::Result<SystemKeyring, String> {
+    // The old keychain is imported once at startup. Calling it here would
+    // prompt on every AI command after the user denies access, and the
+    // failed import would reject the save. A missing marker is retried on
+    // the next launch, not on this call.
+    SystemKeyring::from_config().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
-    let keyring = SystemKeyring;
+    let keyring = open_ai_store()?;
     let available = keyring.is_available();
     let kie = if available {
         keyring.get_key("kie").map(|k| k.is_some()).unwrap_or(false)
@@ -50,9 +58,9 @@ pub fn get_ai_key_status() -> std::result::Result<AiKeyStatus, String> {
 #[tauri::command]
 pub fn save_ai_key(provider: String, key: String) -> std::result::Result<(), String> {
     crate::journal_cmd::run("save_ai_key", "application", || {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         if !keyring.is_available() {
-            return Err("系统钥匙串不可用，无法安全存储 Key".to_string());
+            return Err("本机加密存储不可用，无法安全存储 Key".to_string());
         }
         keyring.set_key(&provider, &key).map_err(|e| e.to_string())
     })
@@ -61,7 +69,7 @@ pub fn save_ai_key(provider: String, key: String) -> std::result::Result<(), Str
 #[tauri::command]
 pub fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
     crate::journal_cmd::run("delete_ai_key", "application", || {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         keyring.delete_key(&provider).map_err(|e| e.to_string())
     })
 }
@@ -69,7 +77,7 @@ pub fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
 #[tauri::command]
 pub async fn test_ai_connection(settings: AiSettings) -> std::result::Result<String, String> {
     crate::journal_cmd::run_async("test_ai_connection", "application", async move {
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::test_connection(&settings, &keyring)
             .await
             .map_err(|e| e.to_string())
@@ -135,7 +143,7 @@ pub async fn generate_ai_commit_message(
         );
 
         // 5. Generate message via AI
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::generate_commit_message(
             &settings,
             &keyring,
@@ -182,7 +190,7 @@ pub async fn review_staged_diff(
             settings.max_diff_chars,
         );
 
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::review_diff(&settings, &keyring, &sanitized_diff)
             .await
             .map_err(|e| e.to_string())
@@ -218,10 +226,94 @@ pub async fn ai_search_log(
             _ => return Err("未能读取仓库历史提交记录".to_string()),
         };
 
-        let keyring = SystemKeyring;
+        let keyring = open_ai_store()?;
         AiService::query_log(&settings, &keyring, &query, &commits_summary)
             .await
             .map_err(|e| e.to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{delete_ai_key, get_ai_key_status, save_ai_key};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tg_core::ai::secret_store::{LegacySecretSource, SecretStoreError};
+    use tg_core::{configure_secret_dir, SystemKeyring};
+
+    struct Tmp(PathBuf);
+
+    impl Tmp {
+        fn new() -> Self {
+            static N: AtomicU64 = AtomicU64::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!("tg-ai-cmd-{nanos}-{n}"));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct FailingRead;
+
+    impl LegacySecretSource for FailingRead {
+        fn read(&self, _: &str, _: &str) -> Result<Option<String>, SecretStoreError> {
+            Err(SecretStoreError::legacy("user canceled"))
+        }
+
+        fn delete(&self, _: &str, _: &str) -> Result<(), SecretStoreError> {
+            panic!("legacy delete must not run");
+        }
+    }
+
+    #[test]
+    fn save_delete_and_status_work_when_legacy_read_fails() {
+        let _guard = crate::lock_desktop_state();
+        let dir = Tmp::new();
+        let secrets = dir.0.join("secrets");
+        let audit = dir.0.join("audit");
+        configure_secret_dir(&secrets).unwrap();
+        tg_core::journal::configure(&audit).unwrap();
+
+        let store = SystemKeyring::from_config().unwrap();
+        assert!(store.migrate_with(&FailingRead).is_err());
+        assert!(!secrets.join("secrets.migrated").exists());
+
+        let before = get_ai_key_status().unwrap();
+        assert!(before.keyring_available);
+        assert!(!before.kie && !before.openai && !before.ollama);
+
+        save_ai_key("kie".to_string(), "fresh-fixture".to_string()).unwrap();
+        let saved = get_ai_key_status().unwrap();
+        assert!(saved.kie);
+        assert!(!saved.openai && !saved.ollama);
+
+        delete_ai_key("kie".to_string()).unwrap();
+        let cleared = get_ai_key_status().unwrap();
+        assert!(!cleared.kie);
+
+        // Commands must not finish the import. On Linux a command-path
+        // migration would treat a missing Secret Service as "no legacy key"
+        // and write this marker.
+        assert!(!secrets.join("secrets.migrated").exists());
+        assert!(store.migrate_with(&FailingRead).is_err());
+
+        let vault = fs::read(secrets.join("secrets.vault")).unwrap_or_default();
+        assert!(!vault
+            .windows(b"fresh-fixture".len())
+            .any(|window| window == b"fresh-fixture"));
+    }
 }

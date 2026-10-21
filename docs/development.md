@@ -48,18 +48,18 @@
 
 ## 应用名与标识
 
-显示名和标识只在 `src-tauri/tauri.conf.json` 维护：`productName`（窗口标题、安装包名）、`identifier`（应用配置目录、钥匙串服务名）。Rust 用 `app.config()`、前端用 `@tauri-apps/api/app` 的 `getName()` 在运行时读取，代码里不写死。
+显示名和标识只在 `src-tauri/tauri.conf.json` 维护：`productName`（窗口标题、安装包名）、`identifier`（应用配置目录）。Rust 用 `app.config()`、前端用 `@tauri-apps/api/app` 的 `getName()` 在运行时读取，代码里不写死。AI key 的旧钥匙串迁移固定认服务名 `com.tongyun.git`（见 [决策 0004](decisions/0004-local-encrypted-ai-keys.md)）。
 
 以后改名的清单：
 
 1. 改 `tauri.conf.json` 的 `productName`、`identifier`（必须）。
-2. 改 identifier 会换一个应用配置目录和钥匙串服务名：用户要重新填 AI key，最近仓库等设置不会自动迁移。公开发版前改名没有这个问题。
+2. 改 identifier 会换一个应用配置目录：用户要重新填 AI key，最近仓库等设置不会自动迁移。旧钥匙串迁移不跟着 identifier 走，仍读 `com.tongyun.git`。公开发版前改名没有这个问题。
 3. 次要位置（不影响运行）：`package.json` 的 `name`、`src-tauri/Cargo.toml` 的 package 名、README 标题、GitHub 仓库名。
 
 ## 密钥和隐私
 
 - 仓库里不出现任何 key、token、密码，也不放 `.env`（已在 `.gitignore`）。
-- AI key 由用户在设置里填写，只存系统钥匙串；应用不内置 key，不读取任何环境变量（包括 `KIE_API_KEY`）。Rust 侧使用，不传给前端，不写日志（PRD D1、[决策 0002](decisions/0002-ai-providers-and-keys.md)）。
+- AI key 由用户在设置里填写，只存本机加密文件；应用不内置 key，不读取任何环境变量（包括 `KIE_API_KEY`），也不在日常保存时写系统钥匙串。Rust 侧使用，不传给前端，不写日志（PRD D1、[决策 0002](decisions/0002-ai-providers-and-keys.md)、[决策 0004](decisions/0004-local-encrypted-ai-keys.md)）。新增依赖：`chacha20poly1305`、`hkdf`、`sha2`、`rand`、`zeroize`、`libc`（Unix），许可证均为 MIT OR Apache-2.0。`keyring` 只留在一次性迁移适配器里。
 - 测试和 CI 不调用真实 AI 接口，用本地测试替身。
 
 ## 许可证

@@ -190,7 +190,7 @@ export function SettingsModal({
     try {
       await saveAiKey(aiSettings.provider, newKey.trim());
       setNewKey("");
-      setKeySuccessMessage("密钥已安全加密保存到系统钥匙串");
+      setKeySuccessMessage("密钥已加密保存在本机");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -206,7 +206,7 @@ export function SettingsModal({
     setKeySuccessMessage(null);
     try {
       await deleteAiKey(aiSettings.provider);
-      setKeySuccessMessage("密钥已从系统钥匙串中清除");
+      setKeySuccessMessage("密钥已从本机加密存储中清除");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -244,7 +244,7 @@ export function SettingsModal({
         try {
           await saveAiKey(aiSettings.provider, newKey.trim());
           setNewKey("");
-          setKeySuccessMessage("已自动为您将密钥存入系统钥匙串");
+          setKeySuccessMessage("已自动将密钥加密保存在本机");
           await refreshKeyStatus();
         } catch {
           // ignore error here, proceed to test
@@ -663,7 +663,7 @@ export function SettingsModal({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-semibold text-xs text-[var(--color-text)]">
                     <KeyIcon width={14} height={14} className="text-[var(--color-accent)]" />
-                    <span>API 密钥 (安全存入系统钥匙串)</span>
+                    <span>API 密钥 (加密保存在本机)</span>
                   </div>
 
                   {/* Status Badge */}
@@ -686,7 +686,7 @@ export function SettingsModal({
                   <div className="p-2.5 rounded border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] text-[11px] flex gap-2">
                     <AlertCircleIcon width={14} height={14} className="shrink-0 mt-0.5" />
                     <div>
-                      系统钥匙串服务不可用（如 Linux 未运行 Secret Service）。为保护密钥安全，应用不会以明文保存密钥。请配置系统钥匙串服务，或改用无需密钥的本机 Ollama。
+                      本机加密存储不可用。为保护密钥安全，应用不会以明文保存密钥。请检查应用数据目录权限，或改用无需密钥的本机 Ollama。
                     </div>
                   </div>
                 ) : (
@@ -704,7 +704,7 @@ export function SettingsModal({
                         placeholder={
                           isCurrentProviderKeySaved
                             ? "输入新密钥以覆盖现有密钥..."
-                            : "输入 API Key 并存入钥匙串..."
+                            : "输入 API Key 并加密保存..."
                         }
                         className="flex-1 px-3 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)] select-text"
                       />
@@ -744,7 +744,7 @@ export function SettingsModal({
                   </div>
                 )}
                 <p className="text-[10px] text-[var(--color-text-muted)]">
-                  密钥完全由 Rust 本地调用操作系统钥匙串加密保存，不存入任何文件，不读取环境变量，界面不回显明文。
+                  密钥只在 Rust 侧写入本机加密文件，不进入系统钥匙串，不读取环境变量，界面不回显明文。
                 </p>
               </div>
 
