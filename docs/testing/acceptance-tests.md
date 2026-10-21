@@ -98,7 +98,7 @@
 | AT-12a | R-12 | 领先 1 个提交 | 推送 | 裸仓库包含该提交；领先数归零 | L1+L3 | not_run |
 | AT-12b | R-12 | 无上游的新分支 | 推送 | 远程出现同名分支；上游已设置 | L1 | not_run |
 | AT-12c | R-12 | 「别人」先推了新提交 | 推送 | 被拒提示 + 拉取按钮；本地不变 | L1+L3 | not_run |
-| AT-13a | R-13 | — | 设置里连续保存 key 三次；另测一台已有旧钥匙串 key 的机器 | 设置 JSON 无 key 明文；加密文件可解密出该 key；三次保存都不弹出登录钥匙串密码；旧 key 自动迁入且迁移失败时旧项仍在；AI 可用 | L1+L4 | not_run |
+| AT-13a | R-13 | — | 设置里连续保存 key 三次；另测一台已有旧钥匙串 key 的机器；迁移读失败后再保存 | 设置 JSON 无 key 明文；加密文件可解密出该 key；三次保存都不弹出登录钥匙串密码；旧 key 在启动时自动迁入，迁移失败时旧项仍在，保存、清除和状态查询仍可用且不再弹授权；AI 可用 | L1+L4 | not_run |
 | AT-13c | R-13、R-07 | 提供方 KIE，替身作为 KIE 地址，内存替身里存假 key | AI 生成、测试连接 | 替身收到的路径是 `/<模型>/v1/chat/completions`，带 `Authorization: Bearer <假 key>`；测试连接显示成功 | L1 | not_run |
 | AT-13d | R-13、R-07 | 提供方 OpenAI 兼容，base URL `http://127.0.0.1:<端口>/v1`，存假 key | AI 生成 | 替身收到 `/v1/chat/completions`，请求体 `model` 等于设置值，带 Bearer 头；设置页显示的最终请求地址与实际一致 | L1+L2 | not_run |
 | AT-13e | R-13、R-07 | 提供方 Ollama，替身模拟 `/api/tags`（2 个模型）和 `/v1/chat/completions`，不填 key | 打开模型下拉，AI 生成 | 下拉出现 2 个模型；请求不带 `Authorization` 头；生成成功 | L1+L2 | not_run |

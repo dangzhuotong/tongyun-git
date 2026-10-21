@@ -130,6 +130,29 @@ fn default_secret_dir() -> Result<PathBuf> {
     Ok(base.join("com.tongyun.git/secrets"))
 }
 
+/// Linux without Secret Service has nothing to import. macOS `errSecNotAvailable`
+/// and a damaged login keychain, and the Windows equivalent, also surface as
+/// `NoStorageAccess`. Those are not "no item": treating them as done would
+/// skip the old key forever. They stay errors so the next launch retries.
+fn legacy_no_storage_means_absent() -> bool {
+    cfg!(target_os = "linux")
+}
+
+fn map_legacy_read(
+    result: std::result::Result<String, keyring::Error>,
+    no_storage_means_absent: bool,
+) -> std::result::Result<Option<String>, SecretStoreError> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        // Nothing was stored.
+        Err(keyring::Error::NoEntry) => Ok(None),
+        // Only Linux may finish the account and write the marker. A cancelled
+        // macOS prompt is `PlatformFailure` and always fails the attempt.
+        Err(keyring::Error::NoStorageAccess(_)) if no_storage_means_absent => Ok(None),
+        Err(err) => Err(SecretStoreError::legacy(err)),
+    }
+}
+
 /// OS keychain adapter used only by [`SystemKeyring::migrate_from_os_keychain`].
 struct OsKeychain;
 
@@ -140,17 +163,7 @@ impl LegacySecretSource for OsKeychain {
         account: &str,
     ) -> std::result::Result<Option<String>, SecretStoreError> {
         let entry = keyring::Entry::new(service, account).map_err(SecretStoreError::legacy)?;
-        match entry.get_password() {
-            Ok(value) => Ok(Some(value)),
-            // NoEntry: nothing was stored. NoStorageAccess: the platform store
-            // cannot be opened (for example Linux without Secret Service).
-            // There is no item to import, so the marker can be written and
-            // later saves do not call the keychain. A cancelled macOS prompt
-            // is PlatformFailure and still fails the attempt, leaving the
-            // marker unwritten so the next launch can retry.
-            Err(keyring::Error::NoEntry) | Err(keyring::Error::NoStorageAccess(_)) => Ok(None),
-            Err(err) => Err(SecretStoreError::legacy(err)),
-        }
+        map_legacy_read(entry.get_password(), legacy_no_storage_means_absent())
     }
 
     fn delete(&self, service: &str, account: &str) -> std::result::Result<(), SecretStoreError> {
@@ -460,5 +473,73 @@ mod vault_tests {
         assert!(!keyring.is_available());
         assert!(keyring.set_key("kie", "fixture-value").is_err());
         assert!(fs::read_dir(&real).unwrap().next().is_none());
+    }
+
+    struct FailingRead;
+
+    impl LegacySecretSource for FailingRead {
+        fn read(&self, _: &str, _: &str) -> std::result::Result<Option<String>, SecretStoreError> {
+            Err(SecretStoreError::legacy("user canceled"))
+        }
+
+        fn delete(&self, _: &str, _: &str) -> std::result::Result<(), SecretStoreError> {
+            panic!("legacy delete must not run");
+        }
+    }
+
+    #[test]
+    fn save_and_status_work_when_legacy_read_fails() {
+        let dir = Tmp::new();
+        let keyring = SystemKeyring::at(&dir.0);
+        assert!(keyring.migrate_with(&FailingRead).is_err());
+        assert!(!dir.0.join("secrets.migrated").exists());
+
+        assert!(keyring.is_available());
+        assert_eq!(keyring.get_key("kie").unwrap(), None);
+        keyring.set_key("kie", "fresh-fixture").unwrap();
+        assert_eq!(
+            keyring.get_key("kie").unwrap().as_deref(),
+            Some("fresh-fixture")
+        );
+        keyring.delete_key("kie").unwrap();
+        assert_eq!(keyring.get_key("kie").unwrap(), None);
+        assert!(!dir.0.join("secrets.migrated").exists());
+        let vault = fs::read(dir.0.join("secrets.vault")).unwrap_or_default();
+        assert!(!vault
+            .windows(b"fresh-fixture".len())
+            .any(|window| window == b"fresh-fixture"));
+    }
+
+    fn no_storage(detail: &str) -> keyring::Error {
+        keyring::Error::NoStorageAccess(Box::new(std::io::Error::other(detail)))
+    }
+
+    #[test]
+    fn no_storage_access_is_absent_only_on_linux() {
+        let absent = super::map_legacy_read(Err(no_storage("no secret service")), true).unwrap();
+        assert_eq!(absent, None);
+
+        // macOS and Windows pass false. errSecNotAvailable and a damaged
+        // keychain must not be recorded as "no legacy key".
+        let retry = super::map_legacy_read(Err(no_storage("errSecNotAvailable")), false);
+        assert!(retry.is_err());
+        let message = retry.unwrap_err().to_string();
+        assert!(message.contains("errSecNotAvailable"));
+        assert!(!message.contains("fixture-key"));
+
+        let missing = super::map_legacy_read(Err(keyring::Error::NoEntry), false).unwrap();
+        assert_eq!(missing, None);
+
+        let canceled = super::map_legacy_read(
+            Err(keyring::Error::PlatformFailure(Box::new(
+                std::io::Error::other("user canceled"),
+            ))),
+            true,
+        );
+        assert!(canceled.is_err());
+        assert_eq!(
+            super::legacy_no_storage_means_absent(),
+            cfg!(target_os = "linux")
+        );
     }
 }

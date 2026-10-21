@@ -6,6 +6,25 @@ mod workspace;
 pub use commands::{AiKeyStatus, AppInfo, GitCheckResult, RepoInfo, RepoStatusResult};
 use tauri::Manager;
 
+/// Record a failed startup import. The journal stores the error text and no
+/// secret; `eprintln` is invisible in a packaged app. The marker stays
+/// unwritten, so the next launch retries.
+fn log_ai_key_migration_failure(detail: &str) {
+    let _ = tg_core::journal::run(
+        "migrate_ai_keys",
+        detail,
+        "desktop:local",
+        "startup",
+        || Err::<(), String>("migrate_ai_keys failed".to_string()),
+    );
+}
+
+#[cfg(test)]
+pub(crate) fn lock_desktop_state() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|err| err.into_inner())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
@@ -14,10 +33,11 @@ pub fn run() {
             tg_core::configure_secret_dir(&data_dir.join("secrets"))?;
             tg_core::journal::configure(&data_dir.join("audit"))?;
             // Import existing keychain items once. A failure leaves the marker
-            // unwritten so the next save can retry, and does not block startup.
+            // unwritten so the next launch can retry. It does not block startup,
+            // and later saves do not open the keychain.
             if let Ok(store) = tg_core::SystemKeyring::from_config() {
                 if let Err(err) = store.migrate_from_os_keychain() {
-                    eprintln!("AI key migration will retry on the next save: {err}");
+                    log_ai_key_migration_failure(&err.to_string());
                 }
             }
             Ok(())
@@ -115,4 +135,51 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct Tmp(PathBuf);
+
+    impl Tmp {
+        fn new() -> Self {
+            static N: AtomicU64 = AtomicU64::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!("tg-journal-{nanos}-{n}"));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn migration_failure_is_written_to_the_journal() {
+        let _guard = super::lock_desktop_state();
+        let dir = Tmp::new();
+        tg_core::journal::configure(&dir.0).unwrap();
+        super::log_ai_key_migration_failure("Platform secure storage failure: user canceled");
+        let events = tg_core::journal::history().unwrap();
+        assert!(events.iter().any(|event| {
+            event.action == "migrate_ai_keys"
+                && event.phase == "finished"
+                && event.outcome.as_deref() == Some(tg_core::audit::OUTCOME_FAILED_OR_UNKNOWN)
+                && event.target.contains("user canceled")
+                && !event.target.contains("fixture-key")
+        }));
+    }
 }

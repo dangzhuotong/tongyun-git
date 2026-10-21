@@ -14,14 +14,11 @@ pub struct AiKeyStatus {
 }
 
 fn open_ai_store() -> std::result::Result<SystemKeyring, String> {
-    let store = SystemKeyring::from_config().map_err(|e| e.to_string())?;
-    if store.is_available() {
-        // One-time import. After secrets.migrated exists this does not open the keychain.
-        store
-            .migrate_from_os_keychain()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(store)
+    // The old keychain is imported once at startup. Calling it here would
+    // prompt on every AI command after the user denies access, and the
+    // failed import would reject the save. A missing marker is retried on
+    // the next launch, not on this call.
+    SystemKeyring::from_config().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -235,4 +232,88 @@ pub async fn ai_search_log(
             .map_err(|e| e.to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{delete_ai_key, get_ai_key_status, save_ai_key};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tg_core::ai::secret_store::{LegacySecretSource, SecretStoreError};
+    use tg_core::{configure_secret_dir, SystemKeyring};
+
+    struct Tmp(PathBuf);
+
+    impl Tmp {
+        fn new() -> Self {
+            static N: AtomicU64 = AtomicU64::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!("tg-ai-cmd-{nanos}-{n}"));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct FailingRead;
+
+    impl LegacySecretSource for FailingRead {
+        fn read(&self, _: &str, _: &str) -> Result<Option<String>, SecretStoreError> {
+            Err(SecretStoreError::legacy("user canceled"))
+        }
+
+        fn delete(&self, _: &str, _: &str) -> Result<(), SecretStoreError> {
+            panic!("legacy delete must not run");
+        }
+    }
+
+    #[test]
+    fn save_delete_and_status_work_when_legacy_read_fails() {
+        let _guard = crate::lock_desktop_state();
+        let dir = Tmp::new();
+        let secrets = dir.0.join("secrets");
+        let audit = dir.0.join("audit");
+        configure_secret_dir(&secrets).unwrap();
+        tg_core::journal::configure(&audit).unwrap();
+
+        let store = SystemKeyring::from_config().unwrap();
+        assert!(store.migrate_with(&FailingRead).is_err());
+        assert!(!secrets.join("secrets.migrated").exists());
+
+        let before = get_ai_key_status().unwrap();
+        assert!(before.keyring_available);
+        assert!(!before.kie && !before.openai && !before.ollama);
+
+        save_ai_key("kie".to_string(), "fresh-fixture".to_string()).unwrap();
+        let saved = get_ai_key_status().unwrap();
+        assert!(saved.kie);
+        assert!(!saved.openai && !saved.ollama);
+
+        delete_ai_key("kie".to_string()).unwrap();
+        let cleared = get_ai_key_status().unwrap();
+        assert!(!cleared.kie);
+
+        // Commands must not finish the import. On Linux a command-path
+        // migration would treat a missing Secret Service as "no legacy key"
+        // and write this marker.
+        assert!(!secrets.join("secrets.migrated").exists());
+        assert!(store.migrate_with(&FailingRead).is_err());
+
+        let vault = fs::read(secrets.join("secrets.vault")).unwrap_or_default();
+        assert!(!vault
+            .windows(b"fresh-fixture".len())
+            .any(|window| window == b"fresh-fixture"));
+    }
 }

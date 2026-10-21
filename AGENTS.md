@@ -73,7 +73,7 @@
 
 ## 已知坑
 
-- **不要用系统钥匙串存 AI key。** macOS 上未签名或更新后签名变了的包，`keyring` 的 `set_password` 会在每次保存时弹出登录钥匙串密码，「始终允许」留不住。key 只走 `crates/tg-core/src/ai/secret_store.rs`。旧钥匙串项只在 `migrate_from_os_keychain` 里读一次；`secrets.migrated` 写上之后，保存和读取都不得再调用钥匙串。`lock_store` 不可重入，同一线程嵌套加锁会卡死。vault 目录的父目录不做符号链接检查。
+- **不要用系统钥匙串存 AI key。** macOS 上未签名或更新后签名变了的包，`keyring` 的 `set_password` 会在每次保存时弹出登录钥匙串密码，「始终允许」留不住。key 只走 `crates/tg-core/src/ai/secret_store.rs`。旧钥匙串项只在启动时的 `migrate_from_os_keychain` 里读一次；命令路径（保存、清除、状态、AI 调用）不得再调用它。用户拒绝授权时标记写不上，下次启动再试，但当次保存必须仍然成功。`NoStorageAccess` 只在 Linux 上当成没有旧项；macOS 和 Windows 当错误，下次启动再试。迁移失败写入 journal，不要只用 `eprintln`。`secrets.migrated` 写上之后，启动也不再调用钥匙串。`lock_store` 不可重入，同一线程嵌套加锁会卡死。vault 目录的父目录不做符号链接检查。
 
 ## 代码审查规矩
 
