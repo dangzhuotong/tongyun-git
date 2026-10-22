@@ -76,6 +76,7 @@ pub fn run() {
             commands::get_ai_key_status,
             commands::save_ai_key,
             commands::delete_ai_key,
+            commands::skip_ai_key_migration,
             commands::test_ai_connection,
             commands::fetch_ollama_models,
             commands::generate_ai_commit_message,

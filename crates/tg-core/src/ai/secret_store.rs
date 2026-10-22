@@ -82,7 +82,15 @@ const DEFAULT_KEY_NAME: &str = "secret.key";
 const DEFAULT_VAULT_NAME: &str = "secrets.vault";
 const DEFAULT_JOURNAL_NAME: &str = "secrets.migration.json";
 const DEFAULT_MARKER_NAME: &str = "secrets.migrated";
+#[cfg_attr(not(unix), allow(dead_code))]
 const LOCK_NAME: &str = ".secrets.lock";
+
+/// Default number of consecutive migration failures for an account before
+/// abandoning migration for that account to avoid prompting the user on every startup.
+pub const DEFAULT_MAX_MIGRATION_FAILURES: u32 = 3;
+
+/// Environment variable that, when set, skips legacy keychain migration.
+pub const ENV_SKIP_MIGRATION: &str = "TONGYUN_SKIP_KEYCHAIN_MIGRATION";
 
 /// Where the seed, vault, migration journal, and done-marker live.
 #[derive(Debug, Clone)]
@@ -184,7 +192,7 @@ pub struct MigrationReport {
 }
 
 impl MigrationReport {
-    fn fresh() -> Self {
+    pub(crate) fn fresh() -> Self {
         Self {
             already_migrated: false,
             legacy_reads: 0,
@@ -267,6 +275,8 @@ struct VaultFile {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct JournalFile {
     done: BTreeSet<String>,
+    #[serde(default)]
+    failures: BTreeMap<String, u32>,
 }
 
 /// Encrypted secret map in [`StorePaths`].
@@ -317,7 +327,16 @@ impl FileSecretStore {
         let _lock = lock_store(&self.paths.dir)?;
         let mut entries = self.read_entries()?;
         entries.remove(account);
-        self.write_entries(&entries)
+        self.write_entries(&entries)?;
+        let mut journal = self.read_journal()?;
+        journal.done.insert(account.to_string());
+        self.write_journal(&journal)
+    }
+
+    /// Skip legacy migration and write the completion marker so startup no longer accesses legacy secrets.
+    pub fn skip_migration(&mut self) -> Result<(), SecretStoreError> {
+        let _lock = lock_store(&self.paths.dir)?;
+        self.write_marker()
     }
 
     /// Import `items` from `legacy`, then never call it again for those accounts.
@@ -356,7 +375,26 @@ impl FileSecretStore {
                 continue;
             }
 
-            let value = legacy.read(&item.service, &item.account)?;
+            let value = match legacy.read(&item.service, &item.account) {
+                Ok(v) => v,
+                Err(err) => {
+                    let count = journal
+                        .failures
+                        .entry(item.store_key.clone())
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                    if *count >= DEFAULT_MAX_MIGRATION_FAILURES {
+                        journal.done.insert(item.store_key.clone());
+                        let _ = self.write_journal(&journal);
+                        if items.iter().all(|it| journal.done.contains(&it.store_key)) {
+                            let _ = self.write_marker();
+                        }
+                    } else {
+                        let _ = self.write_journal(&journal);
+                    }
+                    return Err(err);
+                }
+            };
             report.legacy_reads += 1;
             match value {
                 Some(secret) => {
@@ -638,6 +676,7 @@ fn ensure_private_dir(dir: &Path) -> Result<(), SecretStoreError> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err.into()),
     }
+    #[allow(unused_mut)]
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
@@ -1335,7 +1374,7 @@ mod tests {
     fn refuses_symlink_vault() {
         let dir = TempDir::new();
         let paths = dir.paths();
-        let mut store = FileSecretStore::open(paths.clone()).unwrap();
+        let store = FileSecretStore::open(paths.clone()).unwrap();
         let outside = dir.0.join("outside.txt");
         fs::write(&outside, b"keep").unwrap();
         #[cfg(unix)]
@@ -1536,5 +1575,72 @@ mod tests {
             store.get("demo-account").unwrap().as_deref(),
             Some("fixture-value")
         );
+    }
+
+    #[test]
+    fn delete_records_journal_done_and_prevents_backfill_from_legacy() {
+        let dir = TempDir::new();
+        let paths = dir.paths();
+        let mut store = FileSecretStore::open(paths.clone()).unwrap();
+        store.set("alpha", "fixture-local").unwrap();
+        store.delete("alpha").unwrap();
+        assert_eq!(store.get("alpha").unwrap(), None);
+        drop(store);
+
+        let legacy = MemLegacy::with(vec![("com.example.app", "alpha", "from-keychain")]);
+        let items = vec![LegacyItem::new("com.example.app", "alpha")];
+        let report = migrate_in_dir(&paths, &legacy, &items).unwrap();
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.kept_existing, 0);
+        assert_eq!(legacy.read_count(), 0);
+
+        let store = FileSecretStore::open(paths).unwrap();
+        assert_eq!(store.get("alpha").unwrap(), None);
+    }
+
+    #[test]
+    fn repeated_failures_stop_retrying_after_n_attempts() {
+        let dir = TempDir::new();
+        let paths = dir.paths();
+        let legacy = MemLegacy::with(vec![("com.example.app", "alpha", "val")]);
+        *legacy.fail_on.lock().unwrap() = Some("alpha".to_string());
+        let items = vec![LegacyItem::new("com.example.app", "alpha")];
+
+        // Attempt 1: fails
+        let err1 = migrate_in_dir(&paths, &legacy, &items).unwrap_err();
+        assert!(err1.to_string().contains("legacy read failed"));
+        assert!(!paths.marker_path().exists());
+        assert_eq!(legacy.read_count(), 1);
+
+        // Attempt 2: fails
+        let err2 = migrate_in_dir(&paths, &legacy, &items).unwrap_err();
+        assert!(err2.to_string().contains("legacy read failed"));
+        assert!(!paths.marker_path().exists());
+        assert_eq!(legacy.read_count(), 2);
+
+        // Attempt 3: fails and reaches DEFAULT_MAX_MIGRATION_FAILURES (3)
+        let err3 = migrate_in_dir(&paths, &legacy, &items).unwrap_err();
+        assert!(err3.to_string().contains("legacy read failed"));
+        assert_eq!(legacy.read_count(), 3);
+        assert!(paths.marker_path().exists());
+
+        // Attempt 4: marker exists, no longer retries or touches legacy source
+        let report = migrate_in_dir(&paths, &PanicLegacy, &items).unwrap();
+        assert!(report.already_migrated);
+        assert_eq!(legacy.read_count(), 3);
+    }
+
+    #[test]
+    fn skip_migration_writes_marker_and_skips_legacy() {
+        let dir = TempDir::new();
+        let paths = dir.paths();
+        let mut store = FileSecretStore::open(paths.clone()).unwrap();
+        store.skip_migration().unwrap();
+        drop(store);
+
+        assert!(paths.marker_path().exists());
+        let items = vec![LegacyItem::new("com.example.app", "alpha")];
+        let report = migrate_in_dir(&paths, &PanicLegacy, &items).unwrap();
+        assert!(report.already_migrated);
     }
 }

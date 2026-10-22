@@ -16,7 +16,7 @@
 2. 文件放在应用数据目录的 `secrets/`。该目录 mode `0700`，目录本身是符号链接则拒绝。**父目录不做符号链接检查**（`create_dir_all` 会跟随，macOS 的 `/tmp` 这类祖先链接仍可用）。
 3. 种子创建和读-改-写共用 `lock_store`。这把锁**不可重入**：同一线程在守卫还活着时再调用会因 `flock` 死锁。
 4. 已有 vault 但种子丢失时报 `MissingSeed`，**不重新生成种子**。错误信息要写明恢复办法：把 `secret.key` 从备份放回该目录，或删掉 `secrets.vault` 后重新保存 key（旧密文无法解密）。
-5. 迁移只在应用启动时跑一次，对 `com.tongyun.git` 下的 `ai-key:kie`、`ai-key:openai`、`ai-key:ollama` 各读一次钥匙串。写入加密文件、fsync、读回校验成功之后才删除旧项。读失败或校验失败不删除、不写完成标记，下次启动再试。删除失败仍记下该账户已完成，之后不再碰它。`NoStorageAccess` 只在 Linux 上视为没有旧项（没有 Secret Service 时仍写完成标记，避免以后每次启动都去碰钥匙串）。macOS 和 Windows 上它是错误（登录钥匙串损坏或暂时不可用），不写标记，下次启动再试。用户取消 macOS 密码框是 `PlatformFailure`，同样不写标记。失败记入操作日志，不挡住启动。保存、清除、状态查询不跑迁移，迁移失败时这三件事仍然可用，也不会再弹授权。全部完成后写 `secrets.migrated`。之后的启动不再调用钥匙串。
+5. 迁移只在应用启动时跑一次，对 `com.tongyun.git` 下的 `ai-key:kie`、`ai-key:openai`、`ai-key:ollama` 各读一次钥匙串。写入加密文件、fsync、读回校验成功之后才删除旧项。读失败或校验失败不删除、不写完成标记，下次启动再试。删除失败仍记下该账户已完成，之后不再碰它。`NoStorageAccess` 只在 Linux 上视为没有旧项（没有 Secret Service 时仍写完成标记，避免以后每次启动都去碰钥匙串）。macOS 和 Windows 上它是错误（登录钥匙串损坏或暂时不可用），不写标记，下次启动再试。用户取消 macOS 密码框是 `PlatformFailure`，同样不写标记。失败记入操作日志，不挡住启动。保存、清除、状态查询不跑迁移，迁移失败时这三件事仍然可用，也不会再弹授权。删除 key 时记入 `journal.done`，防止旧 key 从钥匙串回灌；启动迁移在单个账号连续失败 3 次后放弃重试并记入 `journal.done`（全量完成时写 `secrets.migrated`），亦可通过 `TONGYUN_SKIP_KEYCHAIN_MIGRATION` 环境变量或 `skip_ai_key_migration` 命令跳过导入，避免 macOS 每次启动反复弹授权窗。全部完成后写 `secrets.migrated`。之后的启动不再调用钥匙串。
 6. `get_key` / `set_key` / `delete_key` 不链接到钥匙串调用。`keyring` crate 只留在 `OsKeychain`，供 `migrate_from_os_keychain` 使用。
 7. 不读环境变量，不把 key 返回前端，不把明文写入设置 JSON、日志或仓库。加密存储打不开（目录是符号链接、属主不是当前用户、无法创建）时不能保存，界面说明原因，不退回明文。
 
