@@ -75,6 +75,14 @@ pub fn delete_ai_key(provider: String) -> std::result::Result<(), String> {
 }
 
 #[tauri::command]
+pub fn skip_ai_key_migration() -> std::result::Result<(), String> {
+    crate::journal_cmd::run("skip_ai_key_migration", "application", || {
+        let keyring = open_ai_store()?;
+        keyring.skip_migration().map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 pub async fn test_ai_connection(settings: AiSettings) -> std::result::Result<String, String> {
     crate::journal_cmd::run_async("test_ai_connection", "application", async move {
         let keyring = open_ai_store()?;
@@ -236,7 +244,7 @@ pub async fn ai_search_log(
 
 #[cfg(test)]
 mod tests {
-    use super::{delete_ai_key, get_ai_key_status, save_ai_key};
+    use super::{delete_ai_key, get_ai_key_status, save_ai_key, skip_ai_key_migration};
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -315,5 +323,22 @@ mod tests {
         assert!(!vault
             .windows(b"fresh-fixture".len())
             .any(|window| window == b"fresh-fixture"));
+    }
+
+    #[test]
+    fn skip_ai_key_migration_command_marks_done_and_skips_legacy() {
+        let _guard = crate::lock_desktop_state();
+        let dir = Tmp::new();
+        let secrets = dir.0.join("secrets");
+        let audit = dir.0.join("audit");
+        configure_secret_dir(&secrets).unwrap();
+        tg_core::journal::configure(&audit).unwrap();
+
+        skip_ai_key_migration().unwrap();
+        assert!(secrets.join("secrets.migrated").exists());
+
+        let store = SystemKeyring::from_config().unwrap();
+        let report = store.migrate_with(&FailingRead).unwrap();
+        assert!(report.already_migrated);
     }
 }

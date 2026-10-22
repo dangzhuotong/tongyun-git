@@ -60,12 +60,25 @@ impl SystemKeyring {
 
     /// Read each legacy `ai-key:<provider>` once, then skip the keychain.
     pub fn migrate_from_os_keychain(&self) -> Result<MigrationReport> {
+        if std::env::var_os("TONGYUN_SKIP_KEYCHAIN_MIGRATION").is_some()
+            || std::env::var_os("TONGYUN_SKIP_SECRET_MIGRATION").is_some()
+        {
+            self.skip_migration()?;
+            let mut report = MigrationReport::fresh();
+            report.already_migrated = true;
+            return Ok(report);
+        }
         self.migrate_with(&OsKeychain)
     }
 
     pub fn migrate_with(&self, legacy: &dyn LegacySecretSource) -> Result<MigrationReport> {
         super::secret_store::migrate_in_dir(&self.paths(), legacy, &legacy_items())
             .map_err(store_err)
+    }
+
+    pub fn skip_migration(&self) -> Result<()> {
+        let mut store = self.open_store()?;
+        store.skip_migration().map_err(store_err)
     }
 
     fn paths(&self) -> StorePaths {

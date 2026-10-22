@@ -449,9 +449,9 @@ pub fn find_running_agent_processes() -> Vec<String> {
                 let text = String::from_utf8_lossy(&output.stdout);
                 for line in text.lines() {
                     let line = line.trim();
-                    if line.starts_with('"') {
-                        if let Some(first_quote_end) = line[1..].find('"') {
-                            let name = &line[1..=first_quote_end];
+                    if let Some(stripped) = line.strip_prefix('"') {
+                        if let Some(first_quote_end) = stripped.find('"') {
+                            let name = &stripped[..first_quote_end];
                             if let Some(agent) = match_agent_process(name) {
                                 if !detected.contains(&agent.to_string()) {
                                     detected.push(agent.to_string());
