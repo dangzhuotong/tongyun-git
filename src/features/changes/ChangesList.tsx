@@ -140,18 +140,18 @@ export function ChangesList({
   return (
     <div className="flex flex-col h-full bg-[var(--color-surface)] select-none">
       {/* List Header / View Mode Switcher */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] text-xs font-medium text-[var(--color-text-muted)]">
+      <div className="h-[36px] flex items-center justify-between px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] ty-panel-header text-xs font-medium text-[var(--color-text-muted)]">
         <span className="font-semibold text-[var(--color-text)]">
           改动 ({files.length})
         </span>
-        <div className="flex items-center gap-1 bg-[var(--color-bg)] p-0.5 rounded border border-[var(--color-border)]">
+        <div className="flex items-center gap-0.5 bg-[var(--ty-surface-sunken)] p-0.5 rounded-lg border border-[var(--color-border)] shadow-2xs">
           <button
             type="button"
             title="平铺视图"
             onClick={() => setAndSaveViewMode("flat")}
-            className={`p-1 rounded ${
+            className={`p-1 rounded-md transition-all ${
               viewMode === "flat"
-                ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] font-semibold shadow-xs"
+                ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-xs border border-white/60 dark:border-white/5"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
           >
@@ -161,9 +161,9 @@ export function ChangesList({
             type="button"
             title="目录树视图"
             onClick={() => setAndSaveViewMode("tree")}
-            className={`p-1 rounded ${
+            className={`p-1 rounded-md transition-all ${
               viewMode === "tree"
-                ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] font-semibold shadow-xs"
+                ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-xs border border-white/60 dark:border-white/5"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             }`}
           >
@@ -218,7 +218,7 @@ export function ChangesList({
         {conflictedFiles.length > 0 && (
           <GroupSection
             title="冲突"
-            badgeColor="bg-[var(--color-status-conflict)]/15 text-[var(--color-status-conflict)]"
+            badgeColor="bg-[var(--ty-peach-tint)] text-[var(--color-status-conflict)] border-[var(--color-status-conflict)]/30"
             count={conflictedFiles.length}
             expanded={expandedGroups.conflicted}
             onToggle={() => toggleGroup("conflicted")}
@@ -249,7 +249,7 @@ export function ChangesList({
         {/* Staged */}
         <GroupSection
           title="已暂存"
-          badgeColor="bg-[var(--color-status-added)]/15 text-[var(--color-status-added)]"
+          badgeColor="bg-[var(--ty-matcha-tint)] text-[var(--color-status-added)] border-[var(--color-status-added)]/30"
           count={stagedFiles.length}
           expanded={expandedGroups.staged}
           onToggle={() => toggleGroup("staged")}
@@ -274,7 +274,7 @@ export function ChangesList({
         {/* Unstaged */}
         <GroupSection
           title="未暂存"
-          badgeColor="bg-[var(--color-status-modified)]/15 text-[var(--color-status-modified)]"
+          badgeColor="bg-[var(--ty-sky-tint)] text-[var(--color-status-modified)] border-[var(--color-status-modified)]/30"
           count={unstagedFiles.length}
           expanded={expandedGroups.unstaged}
           onToggle={() => toggleGroup("unstaged")}
@@ -299,7 +299,7 @@ export function ChangesList({
         {/* Untracked */}
         <GroupSection
           title="未跟踪"
-          badgeColor="bg-[var(--color-status-untracked)]/15 text-[var(--color-status-untracked)]"
+          badgeColor="bg-[var(--ty-peach-tint)] text-[var(--color-status-untracked)] border-[var(--color-status-untracked)]/30"
           count={untrackedFiles.length}
           expanded={expandedGroups.untracked}
           onToggle={() => toggleGroup("untracked")}
@@ -346,21 +346,21 @@ function GroupSection({
 }) {
   return (
     <div>
-      <div className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface-raised)] transition-colors font-medium text-[var(--color-text-muted)] group">
+      <div className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface-raised)]/70 transition-colors font-medium text-[var(--color-text-muted)] group select-none">
         <button
           type="button"
           onClick={onToggle}
-          className="flex-1 flex items-center gap-1.5 text-left"
+          className="flex-1 flex items-center gap-1.5 text-left cursor-pointer"
         >
           {expanded ? (
-            <ChevronDownIcon width={12} height={12} />
+            <ChevronDownIcon width={12} height={12} className="text-[var(--color-text-muted)]" />
           ) : (
-            <ChevronRightIcon width={12} height={12} />
+            <ChevronRightIcon width={12} height={12} className="text-[var(--color-text-muted)]" />
           )}
           <span className="text-[12px] font-semibold text-[var(--color-text)]">
             {title}
           </span>
-          <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${badgeColor}`}>
+          <span className={`text-[10px] px-2 py-0.2 rounded-full font-mono font-bold tracking-tight shadow-2xs border ${badgeColor}`}>
             {count}
           </span>
         </button>
@@ -372,7 +372,7 @@ function GroupSection({
               e.stopPropagation();
               onAction();
             }}
-            className="text-[10px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 hover:underline px-1 py-0.5 font-medium transition-opacity"
+            className="text-[11px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 hover:bg-[var(--color-selection)] px-2 py-0.5 rounded-md font-medium transition-all ty-btn-tactile cursor-pointer"
           >
             {actionLabel}
           </button>
@@ -509,9 +509,9 @@ function FileRowItem({
     <div
       onClick={onSelect}
       style={{ paddingLeft: `${8 + indent * 14}px` }}
-      className={`h-[24px] pr-2 flex items-center justify-between cursor-pointer group transition-colors text-[12px] ${
+      className={`h-[26px] mx-1 my-0.5 rounded-lg pr-2 flex items-center justify-between cursor-pointer group transition-all text-[12px] ${
         isSelected
-          ? "bg-[var(--color-selection)] text-[var(--color-text)] font-medium"
+          ? "bg-[var(--color-selection)] text-[var(--color-text)] font-medium shadow-2xs"
           : "hover:bg-[var(--color-surface-raised)] text-[var(--color-text)]"
       }`}
     >
@@ -522,7 +522,7 @@ function FileRowItem({
           checked={isChecked}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onToggleCheck(e as any)}
-          className="rounded border-[var(--color-border)] accent-[var(--color-accent)] w-3.5 h-3.5"
+          className="rounded border-[var(--color-border)] accent-[var(--color-accent)] w-3.5 h-3.5 cursor-pointer"
         />
 
         <FileIcon width={13} height={13} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -551,7 +551,7 @@ function FileRowItem({
               e.stopPropagation();
               onResolveConflict(file.path);
             }}
-            className="px-1.5 py-0.5 rounded bg-[var(--color-status-conflict)]/15 hover:bg-[var(--color-status-conflict)]/25 text-[var(--color-status-conflict)] flex items-center gap-1 font-semibold text-[10px] cursor-pointer transition-colors"
+            className="px-1.5 py-0.5 rounded-md bg-[var(--color-status-conflict)]/15 hover:bg-[var(--color-status-conflict)]/25 text-[var(--color-status-conflict)] flex items-center gap-1 font-semibold text-[10px] cursor-pointer transition-all ty-btn-tactile shadow-2xs"
           >
             <GitMergeIcon width={11} height={11} />
             <span>解决</span>
@@ -568,7 +568,7 @@ function FileRowItem({
                 e.stopPropagation();
                 onResolveConflict(file.path);
               }}
-              className="p-0.5 px-1 rounded hover:bg-[var(--color-surface)] text-[var(--color-status-conflict)] cursor-pointer"
+              className="p-0.5 px-1 rounded-md hover:bg-[var(--color-surface)] text-[var(--color-status-conflict)] cursor-pointer transition-all ty-btn-tactile hover:shadow-2xs"
             >
               <GitMergeIcon width={12} height={12} />
             </button>
@@ -581,7 +581,7 @@ function FileRowItem({
                 e.stopPropagation();
                 onOpenFileHistory(file.path);
               }}
-              className="p-0.5 px-1 rounded hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] cursor-pointer"
+              className="p-0.5 px-1 rounded-md hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] cursor-pointer transition-all ty-btn-tactile hover:shadow-2xs"
             >
               <HistoryIcon width={12} height={12} />
             </button>
@@ -594,7 +594,7 @@ function FileRowItem({
                 e.stopPropagation();
                 onUnstage();
               }}
-              className="p-0.5 px-1 rounded hover:bg-[var(--color-border)] text-[var(--color-text-muted)] font-mono text-[11px]"
+              className="p-0.5 px-1.5 rounded-md hover:bg-[var(--color-surface)] border border-transparent hover:border-[var(--color-border)] text-[var(--color-text-muted)] font-mono text-[11px] transition-all ty-btn-tactile hover:shadow-2xs"
             >
               -
             </button>
@@ -607,7 +607,7 @@ function FileRowItem({
                   e.stopPropagation();
                   onStage();
                 }}
-                className="p-0.5 px-1 rounded hover:bg-[var(--color-accent)] hover:text-white text-[var(--color-accent)] font-mono text-[11px] font-bold"
+                className="p-0.5 px-1.5 rounded-md hover:bg-[var(--color-accent)] hover:text-white text-[var(--color-accent)] font-mono text-[11px] font-bold transition-all ty-btn-tactile hover:shadow-2xs"
               >
                 +
               </button>
@@ -618,7 +618,7 @@ function FileRowItem({
                   e.stopPropagation();
                   onDiscard();
                 }}
-                className="p-0.5 px-1 rounded hover:bg-[var(--color-danger)]/20 text-[var(--color-danger)] font-mono text-[10px]"
+                className="p-0.5 px-1.5 rounded-md hover:bg-[var(--color-danger)]/20 text-[var(--color-danger)] font-mono text-[10px] transition-all ty-btn-tactile hover:shadow-2xs"
               >
                 ×
               </button>
@@ -628,7 +628,7 @@ function FileRowItem({
 
         {/* Status Badge */}
         <span
-          className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold leading-none ${badge.className}`}
+          className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold leading-none shadow-2xs border ${badge.className}`}
           title={badge.title}
         >
           {badge.label}
@@ -643,7 +643,7 @@ function getStatusBadge(kind: ChangeKind, conflicted: boolean) {
     return {
       label: "!",
       title: "冲突",
-      className: "bg-[var(--color-status-conflict)]/12 text-[var(--color-status-conflict)]",
+      className: "bg-[var(--ty-peach-tint)] text-[var(--color-status-conflict)] border-[var(--color-status-conflict)]/30",
     };
   }
   switch (kind) {
@@ -651,43 +651,43 @@ function getStatusBadge(kind: ChangeKind, conflicted: boolean) {
       return {
         label: "A",
         title: "新增",
-        className: "bg-[var(--color-status-added)]/12 text-[var(--color-status-added)]",
+        className: "bg-[var(--ty-matcha-tint)] text-[var(--color-status-added)] border-[var(--color-status-added)]/30",
       };
     case "Modified":
       return {
         label: "M",
         title: "修改",
-        className: "bg-[var(--color-status-modified)]/12 text-[var(--color-status-modified)]",
+        className: "bg-[var(--ty-sky-tint)] text-[var(--color-status-modified)] border-[var(--color-status-modified)]/30",
       };
     case "Deleted":
       return {
         label: "D",
         title: "删除",
-        className: "bg-[var(--color-status-deleted)]/12 text-[var(--color-status-deleted)]",
+        className: "bg-[var(--ty-peach-tint)] text-[var(--color-status-deleted)] border-[var(--color-border)]",
       };
     case "Renamed":
       return {
         label: "R",
         title: "重命名",
-        className: "bg-[var(--color-status-renamed)]/12 text-[var(--color-status-renamed)]",
+        className: "bg-[var(--ty-honey-tint)] text-[var(--color-status-renamed)] border-[var(--color-status-renamed)]/30",
       };
     case "TypeChange":
       return {
         label: "T",
         title: "类型改变",
-        className: "bg-[var(--color-accent)]/12 text-[var(--color-accent)]",
+        className: "bg-[var(--color-selection)] text-[var(--color-accent)] border-[var(--color-accent)]/30",
       };
     case "Untracked":
       return {
         label: "U",
         title: "未跟踪",
-        className: "bg-[var(--color-status-untracked)]/12 text-[var(--color-status-untracked)]",
+        className: "bg-[var(--ty-peach-tint)] text-[var(--color-status-untracked)] border-[var(--color-status-untracked)]/30",
       };
     default:
       return {
         label: "?",
         title: "未知",
-        className: "bg-[var(--color-text-muted)]/12 text-[var(--color-text-muted)]",
+        className: "bg-[var(--ty-surface-sunken)] text-[var(--color-text-muted)] border-[var(--color-border)]",
       };
   }
 }

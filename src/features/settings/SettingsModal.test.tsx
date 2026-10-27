@@ -15,7 +15,7 @@ vi.mock("../../lib/host", () => ({
 describe("SettingsModal component", () => {
   const defaultAppInfo = {
     name: "tongyun-git",
-    version: "0.1.0",
+    version: "0.1.1",
     identifier: "test-id",
     git_version: "2.47.0",
     libgit2_version: "1.9.0",
@@ -58,7 +58,7 @@ describe("SettingsModal component", () => {
     fireEvent.click(aiTab);
 
     expect(screen.getByText("AI 服务提供方")).toBeDefined();
-    expect(screen.getByText("API 密钥 (安全存入系统钥匙串)")).toBeDefined();
+    expect(screen.getByText("API 密钥 (加密保存在本机)")).toBeDefined();
   });
 
   it("AT-13c & AT-13d & AT-13e: computes endpoint URLs correctly for KIE, OpenAI, and Ollama", async () => {
@@ -179,7 +179,7 @@ describe("SettingsModal component", () => {
     );
 
     expect(
-      await screen.findByText(/系统钥匙串服务不可用（如 Linux 未运行 Secret Service）/)
+      await screen.findByText(/本机加密存储不可用/)
     ).toBeDefined();
     expect(screen.queryByPlaceholderText(/输入 API Key/)).toBeNull();
   });
@@ -222,7 +222,7 @@ describe("SettingsModal component", () => {
     );
 
     const keyInput = (await screen.findByPlaceholderText(
-      /输入 API Key 并存入钥匙串/
+      /输入 API Key 并加密保存/
     )) as HTMLInputElement;
 
     fireEvent.change(keyInput, { target: { value: "secret-key-12345" } });
@@ -352,5 +352,79 @@ describe("SettingsModal component", () => {
     fireEvent.click(openaiBtn);
     expect(screen.getByPlaceholderText(/输入 API Key/)).toBeDefined();
     expect(screen.getByText(/未配置 Key/)).toBeDefined();
+  });
+
+  it("checks for updates from the general tab", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: false,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+    const onCheckUpdate = vi.fn();
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        appInfo={defaultAppInfo}
+        theme="system"
+        onThemeChange={vi.fn()}
+        gitPath=""
+        onGitPathChange={vi.fn()}
+        onCheckUpdate={onCheckUpdate}
+      />
+    );
+
+    await waitFor(() => {
+      expect(host.getAiKeyStatus).toHaveBeenCalled();
+    });
+    expect(screen.getByText("v0.1.1")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+    expect(onCheckUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("V2-07: toggles auto agent detection on and off and persists settings", async () => {
+    vi.mocked(host.getAiKeyStatus).mockResolvedValue({
+      kie: false,
+      openai: false,
+      ollama: false,
+      keyring_available: true,
+    });
+
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        appInfo={defaultAppInfo}
+        theme="system"
+        onThemeChange={vi.fn()}
+        gitPath=""
+        onGitPathChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(host.getAiKeyStatus).toHaveBeenCalled();
+    });
+
+    // Toggle checkbox should be present and checked by default
+    const toggle = screen.getByRole("checkbox", {
+      name: /Agent 会话自动检测与快照/,
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    // Uncheck toggle to disable auto detection
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+
+    // Check localStorage
+    const saved = JSON.parse(localStorage.getItem("tongyun_auto_agent_settings") || "{}");
+    expect(saved.enabled).toBe(false);
+
+    // Re-enable toggle
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    const reSaved = JSON.parse(localStorage.getItem("tongyun_auto_agent_settings") || "{}");
+    expect(reSaved.enabled).toBe(true);
   });
 });

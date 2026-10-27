@@ -241,3 +241,129 @@ impl TagService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_commit(repo: &git2::Repository, message: &str, secs: i64) -> git2::Oid {
+        let time = git2::Time::new(secs, 0);
+        let sig = git2::Signature::new("Tester", "tester@example.com", &time).unwrap();
+        let mut index = repo.index().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parents: Vec<git2::Commit> = match repo.head() {
+            Ok(head) => vec![head.peel_to_commit().unwrap()],
+            Err(_) => Vec::new(),
+        };
+        let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_tag_item_serde_roundtrip() {
+        let item = TagItem {
+            name: "v1.0.0".to_string(),
+            target_oid: "b".repeat(40),
+            short_oid: "bbbbbbb".to_string(),
+            message: Some("release\nnotes".to_string()),
+            tagger_name: Some("Tester".to_string()),
+            tagger_email: Some("tester@example.com".to_string()),
+            timestamp: Some(1_700_000_000),
+            is_annotated: true,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let de: TagItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, de);
+    }
+
+    #[test]
+    fn test_tag_item_serde_lightweight_nulls() {
+        let item = TagItem {
+            name: "v0.1.0".to_string(),
+            target_oid: "c".repeat(40),
+            short_oid: "ccccccc".to_string(),
+            message: None,
+            tagger_name: None,
+            tagger_email: None,
+            timestamp: None,
+            is_annotated: false,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let de: TagItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, de);
+        assert!(!de.is_annotated);
+        assert!(de.message.is_none());
+    }
+
+    #[test]
+    fn test_create_tag_rejects_blank_name() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        let err = TagService::create_tag(&runner, dir.path(), "   \n", None, None);
+        assert!(matches!(err, Err(CoreError::TagError(_))));
+    }
+
+    #[test]
+    fn test_delete_tag_rejects_blank_name() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        let err = TagService::delete_tag(&runner, dir.path(), "  ");
+        assert!(matches!(err, Err(CoreError::TagError(_))));
+    }
+
+    #[test]
+    fn test_list_tags_lightweight_and_annotated_formatting() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        let old_oid = make_commit(&repo, "first", 1_000_000);
+        let new_oid = make_commit(&repo, "second", 2_000_000);
+
+        repo.tag_lightweight("v-old", &repo.find_object(old_oid, None).unwrap(), false)
+            .unwrap();
+
+        let tagger = git2::Signature::new(
+            "Tagger",
+            "tagger@example.com",
+            &git2::Time::new(3_000_000, 0),
+        )
+        .unwrap();
+        repo.tag(
+            "v-new",
+            &repo.find_object(new_oid, None).unwrap(),
+            &tagger,
+            "  release notes  \n",
+            false,
+        )
+        .unwrap();
+
+        let tags = TagService::list_tags(dir.path()).unwrap();
+        assert_eq!(tags.len(), 2);
+
+        // Newest timestamp first.
+        assert_eq!(tags[0].name, "v-new");
+        assert_eq!(tags[1].name, "v-old");
+
+        // Annotated tag records target commit, tagger and trimmed message.
+        assert!(tags[0].is_annotated);
+        assert_eq!(tags[0].target_oid, new_oid.to_string());
+        assert_eq!(tags[0].short_oid, &new_oid.to_string()[..7]);
+        assert_eq!(tags[0].short_oid.len(), 7);
+        assert_eq!(tags[0].message.as_deref(), Some("release notes"));
+        assert_eq!(tags[0].tagger_name.as_deref(), Some("Tagger"));
+        assert_eq!(tags[0].tagger_email.as_deref(), Some("tagger@example.com"));
+        assert_eq!(tags[0].timestamp, Some(3_000_000));
+
+        // Lightweight tag points directly at the commit and has no tagger/message.
+        assert!(!tags[1].is_annotated);
+        assert_eq!(tags[1].target_oid, old_oid.to_string());
+        assert_eq!(tags[1].short_oid, &old_oid.to_string()[..7]);
+        assert_eq!(tags[1].short_oid.len(), 7);
+        assert!(tags[1].message.is_none());
+        assert!(tags[1].tagger_name.is_none());
+        assert!(tags[1].tagger_email.is_none());
+        assert_eq!(tags[1].timestamp, Some(1_000_000));
+    }
+}

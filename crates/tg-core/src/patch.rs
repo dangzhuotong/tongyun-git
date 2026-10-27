@@ -216,7 +216,9 @@ fn repo_relative_path_ok(path: &str) -> bool {
         return false;
     }
     for component in path.split(['/', '\\']) {
-        if component == ".." {
+        // `.git` is the repository itself. A patch that stages it can write hooks
+        // or config on checkout, including the case-insensitive `.GIT` on Windows/macOS.
+        if component == ".." || component.eq_ignore_ascii_case(".git") {
             return false;
         }
     }
@@ -363,6 +365,18 @@ diff --git a/multi_hunk.txt b/multi_hunk.txt
         assert!(
             validate_index_patch("diff --git \"a/\\056\\056/x\" \"b/\\056\\056/x\"\n").is_err()
         );
+        assert!(validate_index_patch("diff --git a/.git/config b/.git/config\n").is_err());
+        assert!(validate_index_patch(
+            "diff --git a/.GIT/hooks/pre-commit b/.GIT/hooks/pre-commit\n"
+        )
+        .is_err());
+        assert!(validate_index_patch("rename to .git/hooks/pre-commit\n").is_err());
+        assert!(
+            validate_index_patch("diff --git \"a/\\056git/config\" \"b/\\056git/config\"\n")
+                .is_err()
+        );
+        validate_index_patch("diff --git a/.gitignore b/.gitignore\n").unwrap();
+        validate_index_patch("diff --git a/.gitmodules b/.gitmodules\n").unwrap();
     }
 
     #[test]
@@ -491,5 +505,151 @@ diff --git a/f.txt b/f.txt
         assert!(patch.contains("@@ -0,0 +1,2 @@\n"));
         assert!(patch.contains("+first line\n+second line\n"));
         assert!(!patch.contains("third line"));
+    }
+
+    #[test]
+    fn test_decode_c_quoted_valid_and_invalid() {
+        assert_eq!(decode_c_quoted("plain").unwrap(), "plain");
+        assert_eq!(decode_c_quoted(r#"\"escaped\""#).unwrap(), r#""escaped""#);
+        assert_eq!(decode_c_quoted(r#"tab\tchar"#).unwrap(), "tab\tchar");
+        assert_eq!(decode_c_quoted(r#"backslash\\"#).unwrap(), "backslash\\");
+        assert_eq!(decode_c_quoted(r#"\056\056"#).unwrap(), "..");
+        assert_eq!(decode_c_quoted(r#"\101"#).unwrap(), "A");
+
+        // Disallowed or invalid escapes
+        assert!(decode_c_quoted(r#"invalid\n"#).is_none());
+        assert!(decode_c_quoted(r#"trailing\"#).is_none());
+        assert!(decode_c_quoted(r#"bad\x"#).is_none());
+    }
+
+    #[test]
+    fn test_unquote_path() {
+        assert_eq!(unquote_path("src/lib.rs").unwrap(), "src/lib.rs");
+        assert_eq!(unquote_path(r#""src/lib.rs""#).unwrap(), "src/lib.rs");
+        assert_eq!(unquote_path(r#""a/b\tc""#).unwrap(), "a/b\tc");
+        assert!(unquote_path(r#""unclosed"#).is_none());
+        assert!(unquote_path(r#"""#).is_none());
+    }
+
+    #[test]
+    fn test_split_diff_tokens() {
+        let tokens = split_diff_tokens("a/foo.txt b/bar.txt").unwrap();
+        assert_eq!(tokens, vec!["a/foo.txt", "b/bar.txt"]);
+
+        let tokens_quoted = split_diff_tokens(r#""a/my file.txt" "b/my file.txt""#).unwrap();
+        assert_eq!(
+            tokens_quoted,
+            vec![r#""a/my file.txt""#, r#""b/my file.txt""#]
+        );
+
+        let extra_spaces = split_diff_tokens("   a/x     b/y   ").unwrap();
+        assert_eq!(extra_spaces, vec!["a/x", "b/y"]);
+    }
+
+    #[test]
+    fn test_is_drive_path() {
+        assert!(is_drive_path("C:/folder/file.txt"));
+        assert!(is_drive_path("d:\\folder\\file.txt"));
+        assert!(is_drive_path("Z:/"));
+        assert!(!is_drive_path("/usr/local/bin"));
+        assert!(!is_drive_path("relative/path"));
+        assert!(!is_drive_path("C:relative"));
+    }
+
+    #[test]
+    fn test_repo_relative_path_ok() {
+        assert!(repo_relative_path_ok("src/main.rs"));
+        assert!(repo_relative_path_ok("a.txt"));
+        assert!(repo_relative_path_ok("sub/dir/nested.ext"));
+
+        assert!(!repo_relative_path_ok(""));
+        assert!(!repo_relative_path_ok("/etc/passwd"));
+        assert!(!repo_relative_path_ok("\\Windows\\System32"));
+        assert!(!repo_relative_path_ok("C:/drive"));
+        assert!(!repo_relative_path_ok("../outside"));
+        assert!(!repo_relative_path_ok("foo/../../bar"));
+        assert!(!repo_relative_path_ok(".git/config"));
+        assert!(!repo_relative_path_ok("dir/.GIT/hooks/pre-commit"));
+        assert!(repo_relative_path_ok(".gitignore"));
+        assert!(repo_relative_path_ok(".gitmodules"));
+        assert!(!repo_relative_path_ok("has\0null"));
+        assert!(!repo_relative_path_ok("has\nnewline"));
+        assert!(!repo_relative_path_ok("has\rcarriage"));
+    }
+
+    #[test]
+    fn test_header_has_disallowed_mode() {
+        assert!(header_has_disallowed_mode("new file mode 120000"));
+        assert!(header_has_disallowed_mode("new file mode 160000"));
+        assert!(header_has_disallowed_mode("deleted file mode 120000"));
+        assert!(header_has_disallowed_mode("old mode 120000"));
+        assert!(header_has_disallowed_mode("new mode 160000"));
+        assert!(header_has_disallowed_mode("index 0000000..1111111 120000"));
+        assert!(header_has_disallowed_mode("index 0000000..1111111 160000"));
+
+        assert!(!header_has_disallowed_mode("new file mode 100644"));
+        assert!(!header_has_disallowed_mode("new file mode 100755"));
+        assert!(!header_has_disallowed_mode("index 0000000..1111111 100644"));
+        assert!(!header_has_disallowed_mode("random header"));
+    }
+
+    #[test]
+    fn test_validate_index_patch_renames_and_dev_null() {
+        let valid_rename = "\
+diff --git a/old.txt b/new.txt
+rename from old.txt
+rename to new.txt
+";
+        assert!(validate_index_patch(valid_rename).is_ok());
+
+        let invalid_rename = "\
+diff --git a/old.txt b/new.txt
+rename from old.txt
+rename to ../escaped.txt
+";
+        assert!(validate_index_patch(invalid_rename).is_err());
+
+        let dev_null_patch = "\
+diff --git a/deleted.txt b/deleted.txt
+--- a/deleted.txt
++++ /dev/null
+@@ -1,1 +0,0 @@
+-bye
+";
+        assert!(validate_index_patch(dev_null_patch).is_ok());
+    }
+
+    #[test]
+    fn test_build_selected_patch_all_selected_and_crlf_normalization() {
+        let hunk = DiffHunk {
+            old_start: 1,
+            old_lines: 2,
+            new_start: 1,
+            new_lines: 2,
+            header: "@@ -1,2 +1,2 @@".to_string(),
+            lines: vec![
+                crate::backend::DiffLine {
+                    origin: '-',
+                    old_lineno: Some(1),
+                    new_lineno: None,
+                    content: "line 1\r\n".to_string(),
+                },
+                crate::backend::DiffLine {
+                    origin: '+',
+                    old_lineno: None,
+                    new_lineno: Some(1),
+                    content: "line 1 mod\r\n".to_string(),
+                },
+            ],
+        };
+
+        // When selected_line_indices is empty, it means ALL lines selected
+        let patch =
+            build_selected_patch("src\\folder\\file.txt", &hunk, &[], false, false).unwrap();
+        // Path backslash converted to forward slash
+        assert!(patch.contains("--- a/src/folder/file.txt\n+++ b/src/folder/file.txt\n"));
+        // CRLF stripped before appending \n
+        assert!(patch.contains("-line 1\n+line 1 mod\n"));
+        assert!(!patch.contains("\r"));
     }
 }

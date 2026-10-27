@@ -6,6 +6,9 @@ import {
   UnifiedIcon,
   AlertCircleIcon,
 } from "../../components/icons";
+import { useDiffHighlighter, type HighlightToken } from "./highlighter";
+import { computeIntraLineDiff, type TextRange } from "./intraLineDiff";
+import { DiffLineContent } from "./DiffLineContent";
 
 interface DiffViewerProps {
   diff: FileDiff | null;
@@ -38,6 +41,8 @@ export function DiffViewer({
   const [activeHunkIndex, setActiveHunkIndex] = useState<number | null>(null);
   const [selectedLineIndices, setSelectedLineIndices] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+
+  const tokensByHunk = useDiffHighlighter(diff);
 
   const setAndSaveLayout = (newLayout: DiffLayout) => {
     setLayout(newLayout);
@@ -124,7 +129,9 @@ export function DiffViewer({
     );
   }
 
-  const scopeLabel = diff.staged
+  const scopeLabel = readOnly
+    ? null
+    : diff.staged
     ? "已暂存改动 (Index 对比 HEAD)"
     : "未暂存改动 (工作区 对比 Index)";
 
@@ -173,14 +180,16 @@ export function DiffViewer({
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--color-bg)] overflow-hidden select-text">
       {/* Diff Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-xs select-none">
+      <div className="h-[38px] flex items-center justify-between px-3.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] ty-panel-header text-xs select-none">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-mono font-medium text-[var(--color-text)] truncate">
             {diff.old_path ? `${diff.old_path} → ${diff.path}` : diff.path}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] shrink-0">
-            {scopeLabel}
-          </span>
+          {scopeLabel && (
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[var(--ty-surface-sunken)] border border-[var(--color-border)]/70 text-[var(--color-text-muted)] shrink-0 shadow-2xs">
+              {scopeLabel}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -189,37 +198,45 @@ export function DiffViewer({
             <button
               type="button"
               onClick={handleStageSelection}
-              className="px-2.5 py-1 rounded bg-[var(--color-accent)] text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-1 shadow-xs text-xs"
+              className="px-3 py-1 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] text-white font-semibold transition-all flex items-center gap-1.5 shadow-xs hover:shadow-sm active:scale-[0.98] ty-btn-tactile text-xs cursor-pointer"
             >
               <span>{diff.staged ? "取消暂存所选" : "暂存所选"}</span>
-              <span className="bg-white/20 px-1 py-0.2 rounded font-mono text-[10px]">
+              <span className="bg-white/20 px-1.5 py-0.2 rounded font-mono text-[10px]">
                 {selectedLineIndices.size} 行
               </span>
-              <span className="opacity-75 text-[10px] ml-1">(空格)</span>
             </button>
           )}
 
-          {!readOnly && !diff.staged && !diff.is_binary && !diff.is_crlf_change && !diff.old_path && activeHunkIndex != null && selectedLineIndices.size > 0 && onDiscardHunkLines && <button type="button" className="text-[var(--color-danger)]" onClick={() => onDiscardHunkLines(activeHunkIndex, Array.from(selectedLineIndices).filter(i => ["+", "-"].includes(diff.hunks[activeHunkIndex].lines[i]?.origin)))}>丢弃所选行 (D)</button>}
+          {!readOnly && !diff.staged && !diff.is_binary && !diff.is_crlf_change && !diff.old_path && activeHunkIndex != null && selectedLineIndices.size > 0 && onDiscardHunkLines && (
+            <button
+              type="button"
+              className="text-[var(--color-danger)] text-xs hover:underline cursor-pointer"
+              onClick={() => onDiscardHunkLines(activeHunkIndex, Array.from(selectedLineIndices).filter(i => ["+", "-"].includes(diff.hunks[activeHunkIndex].lines[i]?.origin)))}
+            >
+              丢弃所选行
+            </button>
+          )}
+
           {/* Ignore Whitespace Toggle */}
-          <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+          <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer select-none">
             <input
               type="checkbox"
               checked={ignoreWhitespace}
               onChange={(e) => setIgnoreWhitespace(e.target.checked)}
-              className="rounded border-[var(--color-border)] accent-[var(--color-accent)]"
+              className="rounded border-[var(--color-border)] accent-[var(--color-accent)] cursor-pointer"
             />
             <span>忽略空白</span>
           </label>
 
           {/* Layout Toggle */}
-          <div className="flex items-center bg-[var(--color-bg)] p-0.5 rounded border border-[var(--color-border)]">
+          <div className="flex items-center bg-[var(--ty-surface-sunken)] p-0.5 rounded-lg border border-[var(--color-border)] shadow-2xs">
             <button
               type="button"
               title="统一视图 (Unified)"
               onClick={() => setAndSaveLayout("unified")}
-              className={`p-1 rounded ${
+              className={`p-1 rounded-md transition-all ${
                 layout === "unified"
-                  ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] font-semibold shadow-xs"
+                  ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-xs border border-white/60 dark:border-white/5"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}
             >
@@ -229,9 +246,9 @@ export function DiffViewer({
               type="button"
               title="左右分栏对比视图 (Split)"
               onClick={() => setAndSaveLayout("split")}
-              className={`p-1 rounded ${
+              className={`p-1 rounded-md transition-all ${
                 layout === "split"
-                  ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] font-semibold shadow-xs"
+                  ? "bg-[var(--color-surface)] text-[var(--color-text)] font-semibold shadow-xs border border-white/60 dark:border-white/5"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}
             >
@@ -251,7 +268,7 @@ export function DiffViewer({
 
       {/* Main Diff Content Area */}
       <div
-        className={`flex-1 font-mono text-[12px] leading-[20px] ${
+        className={`flex-1 font-mono [tab-size:4] text-[12px] leading-[20px] ${
           layout === "unified" ||
           diff.is_binary ||
           (diff.is_large && !forceLoadLarge) ||
@@ -289,6 +306,7 @@ export function DiffViewer({
         ) : layout === "unified" ? (
           <UnifiedDiffView
             hunks={diff.hunks}
+            tokensByHunk={tokensByHunk}
             ignoreWhitespace={ignoreWhitespace}
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
@@ -307,6 +325,7 @@ export function DiffViewer({
         ) : (
           <SplitDiffView
             hunks={diff.hunks}
+            tokensByHunk={tokensByHunk}
             ignoreWhitespace={ignoreWhitespace}
             activeHunkIndex={activeHunkIndex}
             selectedLineIndices={selectedLineIndices}
@@ -330,6 +349,7 @@ export function DiffViewer({
 
 function UnifiedDiffView({
   hunks,
+  tokensByHunk,
   ignoreWhitespace,
   activeHunkIndex,
   selectedLineIndices,
@@ -338,6 +358,7 @@ function UnifiedDiffView({
   staged,
 }: {
   hunks: DiffHunk[];
+  tokensByHunk: Record<number, HighlightToken[][]>;
   ignoreWhitespace: boolean;
   activeHunkIndex: number | null;
   selectedLineIndices: Set<number>;
@@ -348,92 +369,167 @@ function UnifiedDiffView({
   return (
     <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
       {hunks.map((hunk, hunkIdx) => (
-        <div key={hunkIdx} className="w-full">
-          {/* Hunk Header with Quick Hunk Stage Button */}
-          <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
-            <span>{hunk.header}</span>
-            {onStageHunk && (
-              <button
-                type="button"
-                onClick={() => onStageHunk(hunkIdx)}
-                className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
-              >
-                {staged ? "取消暂存此块" : "暂存此块 (a)"}
-              </button>
-            )}
-          </div>
+        <UnifiedHunkView
+          key={hunkIdx}
+          hunk={hunk}
+          hunkIdx={hunkIdx}
+          tokens={tokensByHunk[hunkIdx]}
+          ignoreWhitespace={ignoreWhitespace}
+          activeHunkIndex={activeHunkIndex}
+          selectedLineIndices={selectedLineIndices}
+          onLineClick={onLineClick}
+          onStageHunk={onStageHunk}
+          staged={staged}
+        />
+      ))}
+    </div>
+  );
+}
 
-          {/* Hunk Lines */}
-          <div className="w-full">
-            {hunk.lines.map((line, lineIdx) => {
-              if (ignoreWhitespace && line.content.trim().length === 0) {
-                return null;
-              }
+function UnifiedHunkView({
+  hunk,
+  hunkIdx,
+  tokens,
+  ignoreWhitespace,
+  activeHunkIndex,
+  selectedLineIndices,
+  onLineClick,
+  onStageHunk,
+  staged,
+}: {
+  hunk: DiffHunk;
+  hunkIdx: number;
+  tokens?: HighlightToken[][];
+  ignoreWhitespace: boolean;
+  activeHunkIndex: number | null;
+  selectedLineIndices: Set<number>;
+  onLineClick: (hunkIdx: number, lineIdx: number, e: React.MouseEvent) => void;
+  onStageHunk?: (hunkIdx: number) => void;
+  staged: boolean;
+}) {
+  const intraLineMap = useMemo(() => {
+    const map = new Map<number, TextRange[]>();
+    let i = 0;
+    while (i < hunk.lines.length) {
+      if (hunk.lines[i].origin === "-") {
+        const dels: number[] = [];
+        while (i < hunk.lines.length && hunk.lines[i].origin === "-") {
+          dels.push(i);
+          i++;
+        }
+        const adds: number[] = [];
+        while (i < hunk.lines.length && hunk.lines[i].origin === "+") {
+          adds.push(i);
+          i++;
+        }
+        const pairCount = Math.min(dels.length, adds.length);
+        for (let p = 0; p < pairCount; p++) {
+          const dIdx = dels[p];
+          const aIdx = adds[p];
+          const res = computeIntraLineDiff(
+            hunk.lines[dIdx].content,
+            hunk.lines[aIdx].content
+          );
+          if (res.oldRanges.length > 0) map.set(dIdx, res.oldRanges);
+          if (res.newRanges.length > 0) map.set(aIdx, res.newRanges);
+        }
+      } else {
+        i++;
+      }
+    }
+    return map;
+  }, [hunk.lines]);
 
-              const isAdd = line.origin === "+";
-              const isDel = line.origin === "-";
-              const isChangeLine = isAdd || isDel;
-              const isSelected =
-                activeHunkIndex === hunkIdx && selectedLineIndices.has(lineIdx);
+  return (
+    <div className="w-full">
+      {/* Hunk Header with Quick Hunk Stage Button */}
+      <div className="h-[26px] w-full px-3.5 bg-[var(--ty-surface-sunken)]/60 text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
+        <span>{hunk.header}</span>
+        {onStageHunk && (
+          <button
+            type="button"
+            onClick={() => onStageHunk(hunkIdx)}
+            className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]/70 hover:border-[var(--color-border)] text-[var(--color-text)] transition-all text-[10px] ty-btn-tactile shadow-2xs cursor-pointer"
+          >
+            {staged ? "取消暂存此块" : "暂存此块"}
+          </button>
+        )}
+      </div>
 
-              return (
-                <div
-                  key={lineIdx}
-                  onClick={(e) => {
-                    if (isChangeLine) {
-                      onLineClick(hunkIdx, lineIdx, e);
-                    }
-                  }}
-                  className={`flex h-[20px] items-center transition-colors cursor-pointer select-none w-full ${
-                    isSelected
-                      ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
-                      : isAdd
-                      ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
-                      : isDel
-                      ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
-                      : "bg-[var(--color-bg)] text-[var(--color-text)]"
+      {/* Hunk Lines */}
+      <div className="w-full">
+        {hunk.lines.map((line, lineIdx) => {
+          if (ignoreWhitespace && line.content.trim().length === 0) {
+            return null;
+          }
+
+          const isAdd = line.origin === "+";
+          const isDel = line.origin === "-";
+          const isChangeLine = isAdd || isDel;
+          const isSelected =
+            activeHunkIndex === hunkIdx && selectedLineIndices.has(lineIdx);
+
+          return (
+            <div
+              key={lineIdx}
+              onClick={(e) => {
+                if (isChangeLine) {
+                  onLineClick(hunkIdx, lineIdx, e);
+                }
+              }}
+              className={`flex h-[20px] items-center transition-colors cursor-pointer select-none w-full ${
+                isSelected
+                  ? "bg-[var(--color-selection)] ring-1 ring-inset ring-[var(--color-accent)]"
+                  : isAdd
+                  ? "bg-[var(--color-diff-add-bg)] text-[var(--color-text)]"
+                  : isDel
+                  ? "bg-[var(--color-diff-del-bg)] text-[var(--color-text)]"
+                  : "bg-[var(--color-bg)] text-[var(--color-text)]"
+              }`}
+            >
+              {/* Sticky Line Number / Gutter */}
+              <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
+                {/* Selection Indicator */}
+                <span
+                  className={`w-3 shrink-0 text-center text-[10px] ${
+                    isSelected ? "text-[var(--color-accent)] font-bold" : "opacity-0"
                   }`}
                 >
-                  {/* Sticky Line Number / Gutter */}
-                  <div className="sticky left-0 flex items-center shrink-0 bg-inherit z-1 select-none">
-                    {/* Selection Indicator */}
-                    <span
-                      className={`w-3 shrink-0 text-center text-[10px] ${
-                        isSelected ? "text-[var(--color-accent)] font-bold" : "opacity-0"
-                      }`}
-                    >
-                      ●
-                    </span>
-                    {/* Old Line Number */}
-                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                      {line.old_lineno ?? ""}
-                    </span>
-                    {/* New Line Number */}
-                    <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
-                      {line.new_lineno ?? ""}
-                    </span>
-                    {/* Origin */}
-                    <span className="w-4 shrink-0 text-center font-bold select-none text-[var(--color-text-muted)]">
-                      {line.origin}
-                    </span>
-                  </div>
+                  ●
+                </span>
+                {/* Old Line Number */}
+                <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                  {line.old_lineno ?? ""}
+                </span>
+                {/* New Line Number */}
+                <span className="w-10 shrink-0 text-right pr-2 text-[var(--color-text-muted)] text-[11px] select-none opacity-60">
+                  {line.new_lineno ?? ""}
+                </span>
+                {/* Origin */}
+                <span className="w-4 shrink-0 text-center font-bold select-none text-[var(--color-text-muted)]">
+                  {line.origin}
+                </span>
+              </div>
 
-                  {/* Line Content */}
-                  <span className="whitespace-pre pl-1 pr-4">
-                    {line.content}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+              {/* Line Content */}
+              <DiffLineContent
+                tokens={tokens?.[lineIdx]}
+                content={line.content}
+                intraLineRanges={intraLineMap.get(lineIdx)}
+                isAdd={isAdd}
+                isDel={isDel}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function SplitDiffView({
   hunks,
+  tokensByHunk,
   ignoreWhitespace,
   activeHunkIndex,
   selectedLineIndices,
@@ -442,6 +538,7 @@ function SplitDiffView({
   staged,
 }: {
   hunks: DiffHunk[];
+  tokensByHunk: Record<number, HighlightToken[][]>;
   ignoreWhitespace: boolean;
   activeHunkIndex: number | null;
   selectedLineIndices: Set<number>;
@@ -500,6 +597,22 @@ function SplitDiffView({
     [hunks, ignoreWhitespace]
   );
 
+  const hunkRowDiffsList = useMemo(() => {
+    return hunkRowsList.map((rows) => {
+      return rows.map((row) => {
+        if (
+          row.left?.origin === "-" &&
+          row.right?.origin === "+" &&
+          row.left.content &&
+          row.right.content
+        ) {
+          return computeIntraLineDiff(row.left.content, row.right.content);
+        }
+        return null;
+      });
+    });
+  }, [hunkRowsList]);
+
   return (
     <div className="flex-1 min-h-0 h-full flex divide-x divide-[var(--color-border)]/60">
       {/* Left Column (Old / Base) */}
@@ -517,18 +630,19 @@ function SplitDiffView({
         <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
           {hunks.map((hunk, hunkIdx) => {
             const rows = hunkRowsList[hunkIdx];
+            const rowDiffs = hunkRowDiffsList[hunkIdx];
             return (
               <div key={hunkIdx} className="w-full">
                 {/* Hunk Header (Left) */}
-                <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
+                <div className="h-[26px] w-full px-3.5 bg-[var(--ty-surface-sunken)]/60 text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center justify-between group">
                   <span>{hunk.header}</span>
                   {onStageHunk && (
                     <button
                       type="button"
                       onClick={() => onStageHunk(hunkIdx)}
-                      className="opacity-0 group-hover:opacity-100 px-2 py-0.2 rounded hover:bg-[var(--color-border)] text-[var(--color-text)] transition-opacity text-[10px]"
+                      className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]/70 hover:border-[var(--color-border)] text-[var(--color-text)] transition-all text-[10px] ty-btn-tactile shadow-2xs cursor-pointer"
                     >
-                      {staged ? "取消暂存此块" : "暂存此块 (a)"}
+                      {staged ? "取消暂存此块" : "暂存此块"}
                     </button>
                   )}
                 </div>
@@ -571,9 +685,16 @@ function SplitDiffView({
                         </div>
 
                         {/* Content */}
-                        <span className="whitespace-pre pl-1 pr-4">
-                          {row.left?.content ?? ""}
-                        </span>
+                        <DiffLineContent
+                          tokens={
+                            row.leftIdx != null
+                              ? tokensByHunk[hunkIdx]?.[row.leftIdx]
+                              : undefined
+                          }
+                          content={row.left?.content ?? ""}
+                          intraLineRanges={rowDiffs?.[rowIdx]?.oldRanges}
+                          isDel={isDel}
+                        />
                       </div>
                     );
                   })}
@@ -599,10 +720,11 @@ function SplitDiffView({
         <div className="min-w-full w-max divide-y divide-[var(--color-border)]/40">
           {hunks.map((hunk, hunkIdx) => {
             const rows = hunkRowsList[hunkIdx];
+            const rowDiffs = hunkRowDiffsList[hunkIdx];
             return (
               <div key={hunkIdx} className="w-full">
                 {/* Hunk Header (Right) */}
-                <div className="h-[26px] w-full px-3 bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center">
+                <div className="h-[26px] w-full px-3.5 bg-[var(--ty-surface-sunken)]/60 text-[var(--color-text-muted)] text-[11px] font-mono border-y border-[var(--color-border)]/60 select-none flex items-center">
                   <span>{hunk.header}</span>
                 </div>
 
@@ -644,9 +766,16 @@ function SplitDiffView({
                         </div>
 
                         {/* Content */}
-                        <span className="whitespace-pre pl-1 pr-4">
-                          {row.right?.content ?? ""}
-                        </span>
+                        <DiffLineContent
+                          tokens={
+                            row.rightIdx != null
+                              ? tokensByHunk[hunkIdx]?.[row.rightIdx]
+                              : undefined
+                          }
+                          content={row.right?.content ?? ""}
+                          intraLineRanges={rowDiffs?.[rowIdx]?.newRanges}
+                          isAdd={isAdd}
+                        />
                       </div>
                     );
                   })}

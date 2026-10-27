@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{CliOutput, CliRunner, RunOptions};
 use crate::error::{CoreError, Result};
+use crate::workspace::safe_path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConflictFileSummary {
@@ -34,6 +35,17 @@ pub struct ConflictFileDetails {
     pub worktree_content: String,
     pub hunks: Vec<ConflictHunk>,
     pub is_binary: bool,
+}
+
+/// Git's default conflict marker is exactly seven characters. A label may follow
+/// a space (`<<<<<<< HEAD`). Eight or more of the same character is file content.
+fn is_conflict_marker(line: &str, token: &str) -> bool {
+    // `str::lines` drops `\n` / `\r\n`, but a raw line can still end in `\r`.
+    let line = line.trim_end_matches('\r');
+    match line.strip_prefix(token) {
+        Some(rest) => rest.is_empty() || rest.starts_with([' ', '\t']),
+        None => false,
+    }
 }
 
 pub struct ConflictService;
@@ -80,6 +92,9 @@ impl ConflictService {
     /// Retrieve full Base (Ancestor), Ours (Local), Theirs (Remote), and Worktree contents for a conflicted file.
     pub fn get_conflict_details(repo_path: &Path, file_path: &str) -> Result<ConflictFileDetails> {
         let repo = Repository::open(repo_path)?;
+        let worktree_dir = repo.workdir().ok_or(CoreError::BareRepository)?;
+        // Reject `..`, absolute paths, `.git`, and symlink escapes before reading.
+        let worktree_file_path = safe_path(worktree_dir, file_path)?;
         let index = repo.index()?;
 
         let mut base_content = None;
@@ -130,11 +145,6 @@ impl ConflictService {
             }
         }
 
-        let worktree_file_path = repo
-            .workdir()
-            .ok_or(CoreError::BareRepository)?
-            .join(file_path);
-
         let worktree_content = if worktree_file_path.exists() {
             fs::read_to_string(&worktree_file_path).unwrap_or_default()
         } else {
@@ -170,7 +180,10 @@ impl ConflictService {
         let mut normal_line_count = 0;
 
         for line in content.lines() {
-            if line.starts_with("<<<<<<<") {
+            // An opening marker only starts a hunk. Inside a hunk, a longer
+            // lookalike (`<<<<<<<<`, `========`) is file content, and a real
+            // `<<<<<<<` line is content too — Git does not nest conflicts.
+            if !in_conflict && is_conflict_marker(line, "<<<<<<<") {
                 in_conflict = true;
                 in_base = false;
                 in_their = false;
@@ -179,13 +192,13 @@ impl ConflictService {
                 base_lines.clear();
                 current_our_start = normal_line_count + 1;
                 current_their_start = normal_line_count + 1;
-            } else if in_conflict && line.starts_with("|||||||") {
+            } else if in_conflict && is_conflict_marker(line, "|||||||") {
                 in_base = true;
                 in_their = false;
-            } else if in_conflict && line.starts_with("=======") {
+            } else if in_conflict && is_conflict_marker(line, "=======") {
                 in_base = false;
                 in_their = true;
-            } else if in_conflict && line.starts_with(">>>>>>>") {
+            } else if in_conflict && is_conflict_marker(line, ">>>>>>>") {
                 hunks.push(ConflictHunk {
                     hunk_index: hunks.len(),
                     our_start_line: current_our_start,
@@ -222,7 +235,7 @@ impl ConflictService {
     ) -> Result<()> {
         let repo = Repository::open(repo_path)?;
         let worktree_dir = repo.workdir().ok_or(CoreError::BareRepository)?;
-        let full_path = worktree_dir.join(file_path);
+        let full_path = safe_path(worktree_dir, file_path)?;
 
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)?;
@@ -372,5 +385,293 @@ footer";
         assert_eq!(hunks[1].our_start_line, 4);
         assert_eq!(hunks[1].our_lines, vec!["second our"]);
         assert_eq!(hunks[1].their_lines, vec!["second their"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_deletion_only() {
+        let content = "\
+<<<<<<< HEAD
+=======
+incoming added line
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, Vec::<String>::new());
+        assert_eq!(hunks[0].their_lines, vec!["incoming added line"]);
+        assert!(hunks[0].base_lines.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_addition_only() {
+        let content = "\
+<<<<<<< HEAD
+local added line
+=======
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["local added line"]);
+        assert_eq!(hunks[0].their_lines, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_both_empty() {
+        let content = "\
+<<<<<<< HEAD
+=======
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert!(hunks[0].our_lines.is_empty());
+        assert!(hunks[0].their_lines.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_diff3_empty_base() {
+        let content = "\
+<<<<<<< HEAD
+local line
+|||||||
+=======
+remote line
+>>>>>>> branch";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["local line"]);
+        assert!(hunks[0].base_lines.is_empty());
+        assert_eq!(hunks[0].their_lines, vec!["remote line"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_marker_labels_and_hashes() {
+        let content = "\
+<<<<<<< HEAD (Current Change)
+ours
+||||||| 1234abc (Base Ancestor)
+base
+=======
+theirs
+>>>>>>> feature-xyz (Incoming Change)";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_unclosed_marker_yields_no_hunk() {
+        let content = "\
+<<<<<<< HEAD
+unclosed conflict text
+=======
+partial text without closing marker";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_partial_markers_treated_as_content() {
+        let content = "\
+<<<< shorter marker
+==== shorter equal
+>>>> shorter closing
+line 4";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn longer_equals_and_angle_lines_stay_inside_the_side() {
+        let content = "\
+<<<<<<< HEAD
+title
+========
+<<<<<<<< still ours
+=======
+theirs
+>>>>>>>> not a closer
+>>>>>>> branch
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(
+            hunks.len(),
+            1,
+            "a longer equals line must not split the hunk"
+        );
+        assert_eq!(
+            hunks[0].our_lines,
+            vec!["title", "========", "<<<<<<<< still ours"]
+        );
+        assert_eq!(
+            hunks[0].their_lines,
+            vec!["theirs", ">>>>>>>> not a closer"]
+        );
+    }
+
+    #[test]
+    fn test_parse_conflict_hunks_consecutive_no_intervening_lines() {
+        let content = "\
+<<<<<<< HEAD
+block 1 ours
+=======
+block 1 theirs
+>>>>>>> branch1
+<<<<<<< HEAD
+block 2 ours
+=======
+block 2 theirs
+>>>>>>> branch2";
+
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(hunks[0].hunk_index, 0);
+        assert_eq!(hunks[0].our_lines, vec!["block 1 ours"]);
+        assert_eq!(hunks[0].their_lines, vec!["block 1 theirs"]);
+        assert_eq!(hunks[1].hunk_index, 1);
+        assert_eq!(hunks[1].our_lines, vec!["block 2 ours"]);
+        assert_eq!(hunks[1].their_lines, vec!["block 2 theirs"]);
+    }
+
+    #[test]
+    fn rust8_crlf_markers_and_trailing_cr_match() {
+        let content =
+            "<<<<<<< HEAD\r\nours\r\n|||||||\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> branch\r\n";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+        assert!(is_conflict_marker("<<<<<<<\r", "<<<<<<<"));
+        assert!(is_conflict_marker("||||||| base\r", "|||||||"));
+        assert!(is_conflict_marker("=======\r", "======="));
+        assert!(is_conflict_marker(">>>>>>> branch\r", ">>>>>>>"));
+        assert!(!is_conflict_marker("========\r", "======="));
+    }
+
+    #[test]
+    fn rust8_inner_opening_marker_does_not_start_another_hunk() {
+        let content = "\
+<<<<<<< HEAD
+ours-a
+<<<<<<< inner
+still-a
+=======
+theirs-a
+>>>>>>> a
+<<<<<<< HEAD
+ours-b
+=======
+theirs-b
+>>>>>>> b
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(
+            hunks[0].our_lines,
+            vec!["ours-a", "<<<<<<< inner", "still-a"]
+        );
+        assert_eq!(hunks[0].their_lines, vec!["theirs-a"]);
+        assert_eq!(hunks[1].hunk_index, 1);
+        assert_eq!(hunks[1].our_lines, vec!["ours-b"]);
+        assert_eq!(hunks[1].their_lines, vec!["theirs-b"]);
+    }
+
+    #[test]
+    fn rust8_bare_seven_character_markers_without_labels() {
+        let content = "\
+<<<<<<<
+only ours
+=======
+only theirs
+>>>>>>>
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["only ours"]);
+        assert_eq!(hunks[0].their_lines, vec!["only theirs"]);
+        assert!(hunks[0].base_lines.is_empty());
+    }
+
+    #[test]
+    fn rust8_tab_and_labeled_separator_still_split_sides() {
+        let content = "\
+<<<<<<<\tHEAD
+ours
+|||||||\tancestor
+base
+======= incoming
+theirs
+>>>>>>>\tfeature
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+    }
+
+    #[test]
+    fn rust8_diff3_base_keeps_every_line() {
+        let content = "\
+<<<<<<< HEAD
+ours
+||||||| merged common
+base 1
+base 2
+=======
+theirs
+>>>>>>> incoming
+";
+        let hunks = ConflictService::parse_conflict_hunks(content);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].our_lines, vec!["ours"]);
+        assert_eq!(hunks[0].base_lines, vec!["base 1", "base 2"]);
+        assert_eq!(hunks[0].their_lines, vec!["theirs"]);
+    }
+
+    #[test]
+    fn test_conflict_structs_serde_roundtrip() {
+        let summary = ConflictFileSummary {
+            path: "src/lib.rs".to_string(),
+            has_ancestor: true,
+            has_our: true,
+            has_their: false,
+        };
+        let s_json = serde_json::to_string(&summary).expect("serialize summary");
+        let s_de: ConflictFileSummary = serde_json::from_str(&s_json).expect("deserialize summary");
+        assert_eq!(summary, s_de);
+
+        let hunk = ConflictHunk {
+            hunk_index: 0,
+            our_start_line: 10,
+            our_lines: vec!["a".to_string()],
+            their_start_line: 12,
+            their_lines: vec!["b".to_string()],
+            base_lines: vec!["c".to_string()],
+        };
+        let h_json = serde_json::to_string(&hunk).expect("serialize hunk");
+        let h_de: ConflictHunk = serde_json::from_str(&h_json).expect("deserialize hunk");
+        assert_eq!(hunk, h_de);
+
+        let details = ConflictFileDetails {
+            path: "src/lib.rs".to_string(),
+            base_content: Some("base".to_string()),
+            our_content: Some("ours".to_string()),
+            their_content: None,
+            worktree_content: "worktree".to_string(),
+            hunks: vec![hunk],
+            is_binary: false,
+        };
+        let d_json = serde_json::to_string(&details).expect("serialize details");
+        let d_de: ConflictFileDetails = serde_json::from_str(&d_json).expect("deserialize details");
+        assert_eq!(details, d_de);
     }
 }

@@ -127,7 +127,7 @@ describe("DiffViewer", () => {
       />
     );
 
-    const longLineSpan = screen.getByText(longContent);
+    const longLineSpan = screen.getByText((_, el) => el?.textContent?.trim() === longContent.trim());
     expect(longLineSpan).toBeDefined();
     expect(longLineSpan.className).not.toContain("truncate");
     expect(longLineSpan.className).not.toContain("overflow-x-hidden");
@@ -158,7 +158,7 @@ describe("DiffViewer", () => {
     expect(leftRows.length).toBe(rightRows.length);
 
     // Verify long line in split view does not have truncate class
-    const longLineSpan = screen.getByText(longContent);
+    const longLineSpan = screen.getByText((_, el) => el?.textContent?.trim() === longContent.trim());
     expect(longLineSpan.className).not.toContain("truncate");
     expect(longLineSpan.className).not.toContain("overflow-x-hidden");
   });
@@ -271,7 +271,7 @@ describe("DiffViewer", () => {
     );
 
     // Click addition line on right side
-    const addLine = screen.getByText(longContent);
+    const addLine = screen.getByText((_, el) => el?.textContent?.trim() === longContent.trim());
     fireEvent.click(addLine);
 
     // Space key to stage selected line

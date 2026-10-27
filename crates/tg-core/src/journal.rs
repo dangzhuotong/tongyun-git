@@ -48,9 +48,9 @@ pub fn run<T>(
     let result = body();
     if let Some(op) = op {
         op.finish(if result.is_ok() {
-            "succeeded"
+            audit::OUTCOME_SUCCEEDED
         } else {
-            "failed_or_unknown"
+            audit::OUTCOME_FAILED_OR_UNKNOWN
         })
         .map_err(|_| {
             "AUDIT_COMPLETION_FAILED: inspect started operation; do not retry automatically"
@@ -69,9 +69,9 @@ pub async fn run_async<T, F: std::future::Future<Output = Result<T, String>>>(
     let result = body.await;
     if let Some(op) = op {
         op.finish(if result.is_ok() {
-            "succeeded"
+            audit::OUTCOME_SUCCEEDED
         } else {
-            "failed_or_unknown"
+            audit::OUTCOME_FAILED_OR_UNKNOWN
         })
         .map_err(|_| {
             "AUDIT_COMPLETION_FAILED: inspect started operation; do not retry automatically"

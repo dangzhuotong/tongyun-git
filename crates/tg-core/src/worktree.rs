@@ -245,3 +245,97 @@ impl WorktreeService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_worktree_porcelain_empty_input() {
+        assert!(WorktreeService::parse_worktree_porcelain("").is_empty());
+        assert!(WorktreeService::parse_worktree_porcelain("\n\n   \n").is_empty());
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_single_main_worktree() {
+        let output = "worktree /repo/main\nHEAD abc123\nbranch refs/heads/main\n";
+        let items = WorktreeService::parse_worktree_porcelain(output);
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0],
+            WorktreeItem {
+                name: "main".to_string(),
+                path: "/repo/main".to_string(),
+                head_oid: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                is_main: true,
+                is_locked: false,
+                lock_reason: None,
+                is_bare: false,
+                is_detached: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_multiple_with_flags() {
+        let output = "\
+worktree /repo/one
+HEAD 111
+branch refs/heads/main
+
+worktree /repo/two
+HEAD 222
+detached
+locked because in use
+
+worktree /repo/three
+HEAD 333
+bare
+locked
+";
+        let items = WorktreeService::parse_worktree_porcelain(output);
+        assert_eq!(items.len(), 3);
+
+        assert_eq!(items[0].name, "one");
+        assert!(items[0].is_main);
+        assert_eq!(items[0].branch.as_deref(), Some("main"));
+        assert!(!items[0].is_detached);
+
+        assert_eq!(items[1].name, "two");
+        assert!(!items[1].is_main);
+        assert_eq!(items[1].head_oid.as_deref(), Some("222"));
+        assert_eq!(items[1].branch, None);
+        assert!(items[1].is_detached);
+        assert!(items[1].is_locked);
+        assert_eq!(items[1].lock_reason.as_deref(), Some("because in use"));
+        assert!(!items[1].is_bare);
+
+        assert_eq!(items[2].name, "three");
+        assert!(!items[2].is_main);
+        assert!(items[2].is_bare);
+        assert!(items[2].is_locked);
+        assert_eq!(items[2].lock_reason, None);
+        assert!(!items[2].is_detached);
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_branch_prefix_only_heads_stripped() {
+        let output = "\
+worktree /repo/main
+HEAD aaa
+branch refs/remotes/origin/main
+";
+        let items = WorktreeService::parse_worktree_porcelain(output);
+        assert_eq!(items[0].branch.as_deref(), Some("refs/remotes/origin/main"));
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_name_falls_back_to_full_path() {
+        let output = "worktree /\nHEAD aaa\nbranch refs/heads/main\n";
+        let items = WorktreeService::parse_worktree_porcelain(output);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "/");
+        assert_eq!(items[0].path, "/");
+    }
+}

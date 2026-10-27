@@ -7,6 +7,10 @@ vi.mock("../../lib/host", () => ({
   checkCommitIdentity: vi.fn(),
   inspectAmend: vi.fn(),
   createCommit: vi.fn(),
+  getExternalCommitDraft: vi.fn(),
+  clearExternalCommitDraft: vi.fn(),
+  getAgentIntent: vi.fn(),
+  clearAgentIntent: vi.fn(),
   getAiKeyStatus: vi.fn(),
   generateAiCommitMessage: vi.fn(),
 }));
@@ -19,6 +23,10 @@ describe("CommitPanel component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(host.getExternalCommitDraft).mockResolvedValue(null);
+    vi.mocked(host.clearExternalCommitDraft).mockResolvedValue(undefined);
+    vi.mocked(host.getAgentIntent).mockResolvedValue(null);
+    vi.mocked(host.clearAgentIntent).mockResolvedValue(undefined);
   });
 
   it("AT-06a: handles commit with staged files and saves draft until commit succeeds", async () => {
@@ -520,6 +528,86 @@ describe("CommitPanel component", () => {
 
     // Textarea draft remains untouched
     expect(textarea.value).toBe("my previous draft");
+  });
+
+  it("automatically loads external AI commit draft from .git/TONGYUN_COMMIT_MSG and clears it upon commit", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: init",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.checkCommitIdentity).mockResolvedValue({
+      name: "Bob",
+      email: "bob@example.com",
+    });
+    vi.mocked(host.createCommit).mockResolvedValue({
+      oid: "12345678",
+      short_oid: "1234567",
+      summary: "feat: external ai draft",
+    });
+    vi.mocked(host.getExternalCommitDraft).mockResolvedValue("feat: external ai draft");
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    // Textarea should be populated with external AI draft
+    const textarea = await screen.findByDisplayValue("feat: external ai draft");
+    expect(textarea).toBeDefined();
+
+    // Badge showing sync status
+    expect(await screen.findByText(/已同步 AI 预拟信息/)).toBeDefined();
+
+    // Commit should call clearExternalCommitDraft
+    const commitBtn = screen.getByRole("button", { name: "提交 (1)" });
+    fireEvent.click(commitBtn);
+
+    await waitFor(() => {
+      expect(host.createCommit).toHaveBeenCalledWith(rootPath, "feat: external ai draft", false);
+      expect(host.clearExternalCommitDraft).toHaveBeenCalledWith(rootPath);
+    });
+  });
+
+  it("renders AI Bridge intent card and accepts suggested commit message", async () => {
+    vi.mocked(host.inspectAmend).mockResolvedValue({
+      can_amend: true,
+      disabled_reason: null,
+      head_message: "chore: init",
+      is_pushed: false,
+      pushed_remote_branches: [],
+    });
+    vi.mocked(host.getAgentIntent).mockResolvedValue({
+      agent_name: "Claude Code",
+      task: "实现鉴权与拦截器",
+      commit_message: "feat(auth): 实现 JWT 鉴权中间件",
+      suggested_stage: ["src/auth.rs"],
+      review_notes: [],
+      timestamp: 12345678,
+    });
+
+    render(
+      <CommitPanel
+        rootPath={rootPath}
+        stagedCount={1}
+        onCommitSuccess={defaultOnCommitSuccess}
+        onOpenSettings={defaultOnOpenSettings}
+      />
+    );
+
+    expect(await screen.findByText(/AI Agent 协同注入: Claude Code/)).toBeDefined();
+    expect(screen.getByText(/任务: 实现鉴权与拦截器/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "采纳建议提交信息" })).toBeDefined();
+
+    const closeBtn = screen.getByTitle("关闭便签");
+    fireEvent.click(closeBtn);
+    expect(host.clearAgentIntent).toHaveBeenCalled();
   });
 
   it("AT-15c: disables commit button and textarea when disabled prop is true (e.g., during push)", async () => {

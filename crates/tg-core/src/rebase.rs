@@ -221,3 +221,64 @@ impl RebaseService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rebase_action_serde_is_lowercase() {
+        let variants = [
+            (RebaseAction::Pick, "\"pick\""),
+            (RebaseAction::Reword, "\"reword\""),
+            (RebaseAction::Squash, "\"squash\""),
+            (RebaseAction::Fixup, "\"fixup\""),
+            (RebaseAction::Drop, "\"drop\""),
+        ];
+        for (action, expected) in variants {
+            let json = serde_json::to_string(&action).unwrap();
+            assert_eq!(json, expected);
+            let parsed: RebaseAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, action);
+        }
+    }
+
+    #[test]
+    fn test_rebase_plan_serde_roundtrip() {
+        let plan = RebasePlan {
+            base_oid: "a".repeat(40),
+            items: vec![
+                RebaseItem {
+                    oid: "b".repeat(40),
+                    short_oid: "bbbbbbb".to_string(),
+                    summary: "feat: first".to_string(),
+                    author_name: "Alice".to_string(),
+                    action: RebaseAction::Reword,
+                    new_message: Some("feat: reworded".to_string()),
+                },
+                RebaseItem {
+                    oid: "c".repeat(40),
+                    short_oid: "ccccccc".to_string(),
+                    summary: "fix: second".to_string(),
+                    author_name: "Bob".to_string(),
+                    action: RebaseAction::Fixup,
+                    new_message: None,
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&plan).unwrap();
+        let parsed: RebasePlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.base_oid, plan.base_oid);
+        assert_eq!(parsed.items.len(), 2);
+        assert_eq!(parsed.items[0].action, RebaseAction::Reword);
+        assert_eq!(
+            parsed.items[0].new_message.as_deref(),
+            Some("feat: reworded")
+        );
+        assert_eq!(parsed.items[0].summary, "feat: first");
+        assert_eq!(parsed.items[1].action, RebaseAction::Fixup);
+        assert_eq!(parsed.items[1].new_message, None);
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), json);
+    }
+}

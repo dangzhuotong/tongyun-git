@@ -64,7 +64,9 @@ jobs:
       - name: Build Application
         uses: tauri-apps/tauri-action@v0
         with:
-          args: ${{ matrix.args || '' }}
+          # Unsigned artifact build: do not create updater signatures or a Release.
+          # Signed latest.json is published only by release.yml on tags v*.
+          args: ${{ matrix.args || '' }} --config src-tauri/tauri.unsigned.json
 
       - name: Collect installer artifacts
         shell: bash

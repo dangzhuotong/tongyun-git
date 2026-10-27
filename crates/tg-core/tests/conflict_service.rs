@@ -1,5 +1,5 @@
 use std::fs;
-use tg_core::{CliRunner, ConflictService, RunOptions};
+use tg_core::{CliRunner, ConflictService, CoreError, RunOptions};
 
 mod common;
 
@@ -116,4 +116,43 @@ fn test_conflict_accept_ours_and_theirs() {
 
     let conflicts = ConflictService::list_conflicts(repo.path()).unwrap();
     assert!(conflicts.is_empty());
+}
+
+#[test]
+fn conflict_paths_cannot_escape_the_worktree() {
+    let repo = common::basic();
+    let outside = repo.path().parent().unwrap().join("outside.txt");
+    let leaked = repo.path().parent().unwrap().join("secret.txt");
+    fs::write(&leaked, "LEAKED-SECRET\n").unwrap();
+
+    let write_err =
+        ConflictService::resolve_conflict_file(repo.path(), "../outside.txt", "pwned").unwrap_err();
+    assert!(matches!(write_err, CoreError::PathError(_)), "{write_err}");
+    assert!(!outside.exists(), "wrote outside the worktree");
+
+    let git_hook = repo.path().join(".git").join("hooks").join("pre-commit");
+    let hook_err =
+        ConflictService::resolve_conflict_file(repo.path(), ".git/hooks/pre-commit", "#!/bin/sh\n")
+            .unwrap_err();
+    assert!(matches!(hook_err, CoreError::PathError(_)), "{hook_err}");
+    assert!(!git_hook.exists(), "wrote inside .git");
+
+    let read_err = ConflictService::get_conflict_details(repo.path(), "../secret.txt").unwrap_err();
+    assert!(matches!(read_err, CoreError::PathError(_)), "{read_err}");
+    assert!(
+        !read_err.to_string().contains("LEAKED-SECRET"),
+        "{read_err}"
+    );
+
+    #[cfg(unix)]
+    {
+        let target = repo.path().parent().unwrap().join("link-target");
+        fs::create_dir_all(&target).unwrap();
+        std::os::unix::fs::symlink(&target, repo.path().join("escape")).unwrap();
+        let link_err =
+            ConflictService::resolve_conflict_file(repo.path(), "escape/pwn.txt", "pwned")
+                .unwrap_err();
+        assert!(matches!(link_err, CoreError::PathError(_)), "{link_err}");
+        assert!(!target.join("pwn.txt").exists(), "followed a symlink");
+    }
 }

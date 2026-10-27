@@ -1,7 +1,7 @@
 mod common;
 
 use std::fs;
-use tg_core::{CliRunner, CommitService, Git2Backend, GitBackend};
+use tg_core::{CliRunner, CommitService, Git2Backend, GitBackend, RunOptions};
 
 #[test]
 fn test_commit_identity_and_empty_repo() {
@@ -114,4 +114,45 @@ fn test_amend_pushed_remote_warning_detection() {
         "must flag as pushed for remote warning dialog"
     );
     assert!(!inspect.pushed_remote_branches.is_empty());
+}
+
+#[test]
+fn test_external_commit_draft_lifecycle() {
+    let fixture = common::basic();
+    let runner = CliRunner::new("git");
+
+    // Initially, no external draft exists
+    let draft = CommitService::get_external_draft(&fixture.path)
+        .expect("get_external_draft should succeed");
+    assert_eq!(draft, None);
+
+    // Write external AI commit draft to .git/TONGYUN_COMMIT_MSG
+    let dot_git = fixture.path.join(".git");
+    let ai_file = dot_git.join("TONGYUN_COMMIT_MSG");
+    std::fs::write(&ai_file, "feat(ui): 外部 AI 预拟提交信息\n\n详细说明").expect("write ai draft");
+
+    // get_external_draft should read it
+    let draft = CommitService::get_external_draft(&fixture.path)
+        .expect("get_external_draft should succeed");
+    assert_eq!(
+        draft,
+        Some("feat(ui): 外部 AI 预拟提交信息\n\n详细说明".to_string())
+    );
+
+    // When commit succeeds, .git/TONGYUN_COMMIT_MSG is automatically cleared
+    let test_file = fixture.path.join("file1.txt");
+    std::fs::write(&test_file, "updated content").expect("modify file");
+    runner
+        .run(&fixture.path, &["add", "file1.txt"], RunOptions::default())
+        .expect("git add");
+
+    let res = CommitService::commit(&runner, &fixture.path, &draft.unwrap(), false)
+        .expect("commit should succeed");
+    assert_eq!(res.summary, "feat(ui): 外部 AI 预拟提交信息");
+
+    // External draft should now be cleared
+    assert!(!ai_file.exists());
+    let draft_after = CommitService::get_external_draft(&fixture.path)
+        .expect("get_external_draft should succeed");
+    assert_eq!(draft_after, None);
 }

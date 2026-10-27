@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   getAppInfo,
@@ -22,9 +23,17 @@ import {
   type RepoInfo,
   type FileStatus,
   type FileDiff,
-  type DiscardCandidate,
+  type AutoCheckReport,
 } from "./lib/host";
-import { WorkspaceTools, type WorkspaceTab } from "./features/workspace/WorkspaceTools";
+import {
+  AUTO_AGENT_SETTINGS_EVENT,
+  AUTO_AGENT_SETTINGS_KEY,
+  autoCheckRequest,
+  createAutoNoticeGate,
+  formatHostError,
+  loadAutoAgentConfig,
+} from "./lib/autoAgentConfig";
+import { WorkspaceTools } from "./features/workspace/WorkspaceTools";
 import { Toolbar } from "./features/toolbar/Toolbar";
 import { ChangesList } from "./features/changes/ChangesList";
 import { DiffViewer } from "./features/changes/DiffViewer";
@@ -46,6 +55,8 @@ import { CreateTagModal } from "./features/tag/CreateTagModal";
 import { FileHistoryModal } from "./features/history/FileHistoryModal";
 import { ShortcutsHelpModal } from "./features/help/ShortcutsHelpModal";
 import { AboutModal } from "./features/help/AboutModal";
+import { UpdateModal } from "./UpdateModal";
+import { checkForAppUpdate } from "./updater";
 import { MergeConflictModal } from "./features/conflict/MergeConflictModal";
 import { InteractiveRebaseModal } from "./features/rebase/InteractiveRebaseModal";
 import { WorktreeModal } from "./features/worktree/WorktreeModal";
@@ -54,10 +65,19 @@ import { FileTreePanel } from "./features/tree/FileTreePanel";
 import type { FileTreeNode } from "./features/tree/buildTree";
 import { FileHistoryPanel } from "./features/history/FileHistoryPanel";
 import type { SelectedFileTarget } from "./features/changes/types";
-import { AlertCircleIcon, FolderIcon, CloseIcon } from "./components/icons";
+import { AlertCircleIcon, FolderIcon, CloseIcon, SparklesIcon } from "./components/icons";
+import { useLayoutSplit } from "./hooks/useLayoutSplit";
+import { useAppModals } from "./hooks/useAppModals";
 
 export default function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
+  const [updateToast, setUpdateToast] = useState<{ text: string; tone: "ok" | "danger" } | null>(
+    null,
+  );
+  const checkingUpdateRef = useRef(false);
+  const autoNoticeGate = useMemo(() => createAutoNoticeGate(), []);
   const [gitAvailable, setGitAvailable] = useState(true);
   const [gitError, setGitError] = useState<string | null>(null);
 
@@ -74,7 +94,6 @@ export default function App() {
     }
   });
 
-  const [workspaceTools, setWorkspaceTools] = useState<{ tab: WorkspaceTab; target?: string } | null>(null);
   const [logSelectedOid, setLogSelectedOid] = useState<string | null>(null);
   const [favoriteRepos, setFavoriteRepos] = useState<string[]>(() => {
     try { const value: unknown = JSON.parse(localStorage.getItem("tongyun_favorite_repos") || "[]"); return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []; } catch { return []; }
@@ -91,110 +110,106 @@ export default function App() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
-  // Panel sizing
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const saved = localStorage.getItem("tongyun_sidebar_width");
-    return saved ? Math.max(220, Math.min(600, parseInt(saved, 10))) : 320;
-  });
-  const isResizingRef = useRef(false);
+  // Panel layout and split resizing
+  const {
+    sidebarWidth,
+    treeWidth,
+    treeCollapsed,
+    setTreeCollapsed,
+    handleMouseDownTreeResize,
+    handleMouseDownResize,
+  } = useLayoutSplit();
 
-  // Project tree state
-  const [treeWidth, setTreeWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("tongyun_tree_width");
-      return saved ? Math.max(180, Math.min(420, parseInt(saved, 10))) : 240;
-    } catch {
-      return 240;
-    }
-  });
-  const [treeCollapsed, setTreeCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("tongyun_tree_collapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
+  // Project tree selection & diff view tab
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [treeSelectedPath, setTreeSelectedPath] = useState<string | null>(null);
   const [diffTab, setDiffTab] = useState<"changes" | "history">("changes");
-  const isTreeResizingRef = useRef(false);
 
-  // Modals
-  const [openModalVisible, setOpenModalVisible] = useState(false);
-  const [openModalTab, setOpenModalTab] = useState<"open" | "clone">("open");
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "ai">("general");
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [openLoading, setOpenLoading] = useState(false);
-  const [openAttemptPath, setOpenAttemptPath] = useState("");
+  // Modals management
+  const {
+    openModalVisible,
+    setOpenModalVisible,
+    openModalTab,
+    setOpenModalTab,
+    openError,
+    setOpenError,
+    openLoading,
+    setOpenLoading,
+    openAttemptPath,
+    setOpenAttemptPath,
+    settingsModalVisible,
+    setSettingsModalVisible,
+    settingsTab,
+    setSettingsTab,
+    branchModalOpen,
+    setBranchModalOpen,
+    createBranchModalOpen,
+    setCreateBranchModalOpen,
+    createBranchStartPoint,
+    setCreateBranchStartPoint,
+    pushModalOpen,
+    setPushModalOpen,
+    logModalOpen,
+    setLogModalOpen,
+    stashModalOpen,
+    setStashModalOpen,
+    createStashModalOpen,
+    setCreateStashModalOpen,
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    tagModalOpen,
+    setTagModalOpen,
+    createTagModalOpen,
+    setCreateTagModalOpen,
+    createTagTargetOid,
+    setCreateTagTargetOid,
+    fileHistoryModalOpen,
+    setFileHistoryModalOpen,
+    historyFilePath,
+    setHistoryFilePath,
+    shortcutsModalOpen,
+    setShortcutsModalOpen,
+    aboutModalOpen,
+    setAboutModalOpen,
+    discardModalVisible,
+    setDiscardModalVisible,
+    discardCandidates,
+    setDiscardCandidates,
+    discardLoading,
+    setDiscardLoading,
+    conflictModalOpen,
+    setConflictModalOpen,
+    conflictModalTargetFile,
+    setConflictModalTargetFile,
+    handleOpenConflictModal,
+    rebaseModalOpen,
+    setRebaseModalOpen,
+    rebaseBaseOid,
+    setRebaseBaseOid,
+    rebaseBaseSummary,
+    setRebaseBaseSummary,
+    handleOpenInteractiveRebase,
+    worktreeModalOpen,
+    setWorktreeModalOpen,
+    workspaceTools,
+    setWorkspaceTools,
+  } = useAppModals();
 
   // Active view: changes vs commit log (M4)
   const [activeView, setActiveView] = useState<"changes" | "log">("changes");
 
-  // Branch management modals (R-08, R-09)
-  const [branchModalOpen, setBranchModalOpen] = useState(false);
-  const [createBranchModalOpen, setCreateBranchModalOpen] = useState(false);
-  const [createBranchStartPoint, setCreateBranchStartPoint] = useState<string | null>(null);
-
-  // Remote & Sync state (R-11, R-12, R-15, R-16)
-  const [pushModalOpen, setPushModalOpen] = useState(false);
-  const [logModalOpen, setLogModalOpen] = useState(false);
-  const [stashModalOpen, setStashModalOpen] = useState(false);
-  const [createStashModalOpen, setCreateStashModalOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Remote sync feedback
   const [isPulling, setIsPulling] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
 
-  // Tag Management
-  const [tagModalOpen, setTagModalOpen] = useState(false);
-  const [createTagModalOpen, setCreateTagModalOpen] = useState(false);
-  const [createTagTargetOid, setCreateTagTargetOid] = useState<string | null>(null);
-
-  // File History
-  const [fileHistoryModalOpen, setFileHistoryModalOpen] = useState(false);
-  const [historyFilePath, setHistoryFilePath] = useState("");
-
-  // Shortcuts & About
-  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
-  const [aboutModalOpen, setAboutModalOpen] = useState(false);
-
   // Discard & Undo state (R-17)
   const [lineDiscard, setLineDiscard] = useState<{ expected: FileDiff; hunkIndex: number; indices: number[] } | null>(null);
-  const [discardModalVisible, setDiscardModalVisible] = useState(false);
-  const [discardCandidates, setDiscardCandidates] = useState<DiscardCandidate[]>([]);
-  const [discardLoading, setDiscardLoading] = useState(false);
   const [undoToast, setUndoToast] = useState<{
     count: number;
     secondsLeft: number;
     snapshotRef: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // 3-Way Conflict Resolver (v2 Phase 1)
-  const [conflictModalOpen, setConflictModalOpen] = useState(false);
-  const [conflictModalTargetFile, setConflictModalTargetFile] = useState<string | null>(null);
-
-  const handleOpenConflictModal = useCallback((filePath?: string) => {
-    setConflictModalTargetFile(filePath || null);
-    setConflictModalOpen(true);
-  }, []);
-
-  // Interactive Rebase (v2 Phase 2)
-  const [rebaseModalOpen, setRebaseModalOpen] = useState(false);
-  const [rebaseBaseOid, setRebaseBaseOid] = useState<string>("");
-  const [rebaseBaseSummary, setRebaseBaseSummary] = useState<string | undefined>(undefined);
-
-  const handleOpenInteractiveRebase = useCallback(
-    (baseOid: string, baseSummary?: string) => {
-      setRebaseBaseOid(baseOid);
-      setRebaseBaseSummary(baseSummary);
-      setRebaseModalOpen(true);
-    },
-    []
-  );
-
-  // Git Worktree Management (v2 Phase 3)
-  const [worktreeModalOpen, setWorktreeModalOpen] = useState(false);
 
 
   // 10-second undo countdown timer (R-17)
@@ -255,7 +270,7 @@ export default function App() {
         // Fallback for browser preview
         setAppInfo({
           name: "tongyun-git",
-          version: "0.0.0",
+          version: "0.1.1",
           identifier: "com.tongyun.git",
           git_version: "2.47.3",
           libgit2_version: "1.9.7",
@@ -295,6 +310,28 @@ export default function App() {
     });
   }, []);
 
+  const reportAutoCheck = useCallback((repoRoot: string) => {
+    const config = loadAutoAgentConfig(localStorage.getItem(AUTO_AGENT_SETTINGS_KEY));
+    return Promise.resolve()
+      .then(() => workspaceTask<AutoCheckReport>(repoRoot, autoCheckRequest(config)))
+      .then((report) => {
+        const notice = report?.warning ?? report?.action_taken ?? null;
+        if (notice) {
+          if (autoNoticeGate.shouldReport(notice)) {
+            setSyncToast({ message: notice, isError: Boolean(report?.warning) });
+          }
+        } else {
+          autoNoticeGate.reset();
+        }
+      })
+      .catch((error: unknown) => {
+        const message = formatHostError(error);
+        if (autoNoticeGate.shouldReport(message)) {
+          setSyncToast({ message, isError: true });
+        }
+      });
+  }, [autoNoticeGate]);
+
   // Fetch repository status
   const refreshStatus = useCallback(
     async (repoRoot: string) => {
@@ -304,13 +341,14 @@ export default function App() {
         setFiles(statusRes.files);
         setCurrentRepo((prev) => (prev ? { ...prev, head: statusRes.head } : null));
         setTreeRefreshKey((k) => k + 1);
+        void reportAutoCheck(repoRoot);
       } catch {
         // Refresh error handled silently or in status
       } finally {
         setIsRefreshing(false);
       }
     },
-    []
+    [reportAutoCheck]
   );
 
   // Pull remote action (R-11)
@@ -460,7 +498,7 @@ export default function App() {
         if (mounted) {
           setAppInfo({
             name: "tongyun-git",
-            version: "0.0.0",
+            version: "0.1.1",
             identifier: "com.tongyun.git",
             git_version: "2.47.3",
             libgit2_version: "1.9.7",
@@ -518,6 +556,23 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [currentRepo, refreshStatus]);
+
+  // Periodic background check for Auto Agent session (V2-07).
+  // Disabled detection still checks so an active auto session can end.
+  useEffect(() => {
+    if (!currentRepo) return;
+    const repoPath = currentRepo.root_path;
+    const tick = () => {
+      void reportAutoCheck(repoPath);
+    };
+    tick();
+    const timer = setInterval(tick, 5000);
+    window.addEventListener(AUTO_AGENT_SETTINGS_EVENT, tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(AUTO_AGENT_SETTINGS_EVENT, tick);
+    };
+  }, [currentRepo, reportAutoCheck]);
 
   // Global shortcuts (R-08, R-11, R-12, R-16)
   useEffect(() => {
@@ -607,6 +662,44 @@ export default function App() {
       unlisten?.();
     };
   }, [handleOpenRepo]);
+
+  const handleCheckUpdate = useCallback(async (manual: boolean) => {
+    if (checkingUpdateRef.current) return;
+    checkingUpdateRef.current = true;
+    setCheckingUpdate(true);
+    try {
+      const update = await checkForAppUpdate();
+      if (update) {
+        setActiveUpdate((prev) => {
+          prev?.close().catch(() => {});
+          return update;
+        });
+      } else if (manual) {
+        setUpdateToast({ text: "已是最新版本", tone: "ok" });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (manual) {
+        setUpdateToast({ text: `检查更新失败：${message}`, tone: "danger" });
+      }
+    } finally {
+      checkingUpdateRef.current = false;
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void handleCheckUpdate(false);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [handleCheckUpdate]);
+
+  useEffect(() => {
+    if (!updateToast) return;
+    const timer = window.setTimeout(() => setUpdateToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [updateToast]);
 
   // Command list for CommandPalette (R-16)
   const commandList: CommandItem[] = useMemo(() => {
@@ -823,60 +916,7 @@ export default function App() {
     };
   }, [currentRepo, selectedTarget]);
 
-  // Resizing project tree column
-  const handleMouseDownTreeResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isTreeResizingRef.current = true;
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!isTreeResizingRef.current) return;
-      const newWidth = Math.max(180, Math.min(420, moveEvent.clientX));
-      setTreeWidth(newWidth);
-    };
-
-    const handleMouseUp = (upEvent: MouseEvent) => {
-      isTreeResizingRef.current = false;
-      const finalWidth = Math.max(180, Math.min(420, upEvent.clientX));
-      try {
-        localStorage.setItem("tongyun_tree_width", finalWidth.toString());
-      } catch {
-        // Storage failure ignored
-      }
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
-
-  // Resizing left sidebar (changes list & commit area)
-  const handleMouseDownResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    const treeOffset = treeCollapsed ? 28 : treeWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const newWidth = Math.max(220, Math.min(600, moveEvent.clientX - treeOffset));
-      setSidebarWidth(newWidth);
-    };
-
-    const handleMouseUp = (upEvent: MouseEvent) => {
-      isResizingRef.current = false;
-      const finalWidth = Math.max(220, Math.min(600, upEvent.clientX - treeOffset));
-      try {
-        localStorage.setItem("tongyun_sidebar_width", finalWidth.toString());
-      } catch {
-        // Storage failure ignored
-      }
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
 
   // Stage & Unstage handlers (R-04)
   const handleStageFiles = useCallback(
@@ -1242,18 +1282,18 @@ export default function App() {
 
               {/* Right Column: Diff View or File History */}
               <div className="flex-1 h-full overflow-hidden flex flex-col bg-[var(--color-bg)]">
-                {/* 34px Tab Bar */}
-                <div className="h-[34px] px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between shrink-0 select-none">
-                  <div className="flex items-center gap-4 h-full" role="tablist" aria-label="文件视图">
+                {/* 36px Tab Bar */}
+                <div className="h-[36px] px-3.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] ty-panel-header flex items-center justify-between shrink-0 select-none">
+                  <div className="flex items-center gap-1 bg-[var(--ty-surface-sunken)] p-0.5 rounded-lg border border-[var(--color-border)]/70 shadow-2xs" role="tablist" aria-label="文件视图">
                     <button
                       type="button"
                       role="tab"
                       aria-selected={diffTab === "changes"}
                       onClick={() => setDiffTab("changes")}
-                      className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                      className={`flex items-center px-3 py-1 text-xs cursor-pointer rounded-md font-semibold transition-all ${
                         diffTab === "changes"
-                          ? "border-[var(--color-accent)] text-[var(--color-text)]"
-                          : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                          ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs border border-white/60 dark:border-white/5"
+                          : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
                     >
                       改动
@@ -1264,10 +1304,10 @@ export default function App() {
                         role="tab"
                         aria-selected={diffTab === "history"}
                         onClick={() => setDiffTab("history")}
-                        className={`h-full flex items-center px-1 text-xs cursor-pointer border-b-2 font-medium transition-colors ${
+                        className={`flex items-center px-3 py-1 text-xs cursor-pointer rounded-md font-semibold transition-all ${
                           diffTab === "history"
-                            ? "border-[var(--color-accent)] text-[var(--color-text)]"
-                            : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                            ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs border border-white/60 dark:border-white/5"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                         }`}
                       >
                         历史
@@ -1276,7 +1316,7 @@ export default function App() {
                   </div>
                   {treeSelectedPath && (
                     <span
-                      className="font-mono text-xs text-[var(--color-text-muted)] truncate max-w-[50%]"
+                      className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[var(--ty-surface-sunken)] text-[var(--color-text-muted)] border border-[var(--color-border)]/70 truncate max-w-[50%]"
                       title={treeSelectedPath}
                     >
                       {treeSelectedPath}
@@ -1352,16 +1392,16 @@ export default function App() {
         ) : (
           /* Empty Workspace State */
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[var(--color-bg)] overflow-y-auto">
-            <div className="max-w-xl w-full p-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-md space-y-6">
+            <div className="max-w-xl w-full p-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ty-card shadow-card-premium space-y-6 relative overflow-hidden">
               <div className="space-y-2">
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20 flex items-center justify-center shadow-xs">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-[var(--ty-matcha-tint)] text-[var(--color-accent)] border border-[var(--color-accent)]/20 flex items-center justify-center shadow-2xs">
                   <FolderIcon width={28} height={28} />
                 </div>
                 <h2 className="text-lg font-bold text-[var(--color-text)]">
                   欢迎使用 橦云 Git
                 </h2>
                 <span className="sr-only">没有打开的仓库</span>
-                <p className="text-xs text-[var(--color-text-muted)] max-w-md mx-auto">
+                <p className="text-xs text-[var(--color-text-muted)] max-w-md mx-auto leading-relaxed">
                   对标 IntelliJ IDEA 的独立桌面 Git 客户端 · 深度键盘流与本地 AI 助手
                 </p>
               </div>
@@ -1375,7 +1415,7 @@ export default function App() {
                     setOpenModalTab("open");
                     setOpenModalVisible(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-[var(--color-accent)] hover:bg-[var(--ty-matcha-hover)] text-white text-xs font-semibold disabled:opacity-50 transition-all shadow-xs hover:shadow-sm active:scale-[0.98] ty-btn-tactile cursor-pointer flex items-center gap-2"
                 >
                   <FolderIcon width={14} height={14} />
                   <span>打开本地仓库</span>
@@ -1387,9 +1427,9 @@ export default function App() {
                     setOpenModalTab("clone");
                     setOpenModalVisible(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium disabled:opacity-50 transition-all shadow-2xs hover:shadow-xs active:scale-[0.98] ty-btn-tactile cursor-pointer flex items-center gap-2"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-[var(--ty-sky)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   <span>从 Git 克隆仓库</span>
@@ -1403,7 +1443,7 @@ export default function App() {
                       handleOpenRepo(selected);
                     }
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium hover:bg-[var(--color-bg)] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[var(--color-text)] text-xs font-medium disabled:opacity-50 transition-all shadow-2xs hover:shadow-xs active:scale-[0.98] ty-btn-tactile cursor-pointer"
                 >
                   浏览文件夹...
                 </button>
@@ -1456,16 +1496,19 @@ export default function App() {
                 </div>
               )}
 
-              {/* Keyboard shortcuts hints footer */}
-              <div className="pt-2 text-[11px] text-[var(--color-text-muted)] flex items-center justify-center gap-3">
-                <span>💡 提示：按 <kbd className="px-1.5 py-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono text-[10px]">Ctrl+Shift+P</kbd> 打开命令面板</span>
+              {/* AI-first friendly guidance footer */}
+              <div className="pt-2 text-[11px] text-[var(--color-text-muted)] flex items-center justify-center gap-2">
+                <span className="flex items-center gap-1.5 text-[var(--color-text-muted)]">
+                  <SparklesIcon width={12} height={12} className="text-[var(--color-accent)]" />
+                  内置本地 AI 提交生成与代码审查 · 开箱即用
+                </span>
                 <span>·</span>
                 <button
                   type="button"
-                  onClick={() => setShortcutsModalOpen(true)}
+                  onClick={() => setSettingsModalVisible(true)}
                   className="text-[var(--color-accent)] hover:underline cursor-pointer"
                 >
-                  按 ? 查看快捷键
+                  配置 AI 模型
                 </button>
               </div>
             </div>
@@ -1557,6 +1600,8 @@ export default function App() {
           localStorage.setItem("tongyun_git_path", p);
         }}
         initialTab={settingsTab}
+        checkingUpdate={checkingUpdate}
+        onCheckUpdate={() => void handleCheckUpdate(true)}
       />
 
       {/* Branch Modal (R-08) */}
@@ -1700,7 +1745,32 @@ export default function App() {
         isOpen={aboutModalOpen}
         onClose={() => setAboutModalOpen(false)}
         appInfo={appInfo}
+        checkingUpdate={checkingUpdate}
+        onCheckUpdate={() => void handleCheckUpdate(true)}
       />
+
+      {activeUpdate && (
+        <UpdateModal
+          update={activeUpdate}
+          onClose={() => {
+            activeUpdate.close().catch(() => {});
+            setActiveUpdate(null);
+          }}
+        />
+      )}
+
+      {updateToast && (
+        <div
+          role="status"
+          className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg text-xs font-medium shadow-lg border ${
+            updateToast.tone === "danger"
+              ? "bg-[var(--color-danger)]/15 border-[var(--color-danger)]/40 text-[var(--color-danger)]"
+              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
+          }`}
+        >
+          {updateToast.text}
+        </div>
+      )}
 
       {/* Command Palette (R-16) */}
       <CommandPalette

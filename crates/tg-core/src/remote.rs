@@ -512,3 +512,76 @@ impl<'a> RemoteService<'a> {
         Ok(results)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pull_strategy_default_is_merge() {
+        assert_eq!(PullStrategy::default(), PullStrategy::Merge);
+    }
+
+    #[test]
+    fn test_pull_strategy_serde_variants() {
+        let variants = [
+            (PullStrategy::Merge, "\"Merge\""),
+            (PullStrategy::Rebase, "\"Rebase\""),
+            (PullStrategy::FastForwardOnly, "\"FastForwardOnly\""),
+        ];
+        for (strategy, expected) in variants {
+            let json = serde_json::to_string(&strategy).unwrap();
+            assert_eq!(json, expected);
+            let parsed: PullStrategy = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, strategy);
+        }
+    }
+
+    #[test]
+    fn test_remote_detail_serde_roundtrip() {
+        let detail = RemoteDetail {
+            name: "origin".to_string(),
+            url: Some("https://example.com/repo.git".to_string()),
+            push_url: None,
+        };
+        let json = serde_json::to_string(&detail).unwrap();
+        let parsed: RemoteDetail = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, detail);
+        assert!(parsed.push_url.is_none());
+    }
+
+    #[test]
+    fn test_push_inspection_available_remotes_defaults_to_empty() {
+        let json = r#"{
+            "current_branch": "main",
+            "upstream_branch": null,
+            "default_remote": "origin",
+            "default_target_branch": "main",
+            "needs_upstream_setup": true,
+            "ahead_count": 0,
+            "ahead_commits": []
+        }"#;
+        let parsed: PushInspection = serde_json::from_str(json).unwrap();
+        assert!(parsed.available_remotes.is_empty());
+        assert_eq!(parsed.current_branch, "main");
+        assert_eq!(parsed.default_remote, "origin");
+        assert!(parsed.needs_upstream_setup);
+    }
+
+    #[test]
+    fn test_multi_push_item_result_serde_roundtrip() {
+        let item = MultiPushItemResult {
+            remote: "origin".to_string(),
+            success: false,
+            rejected: true,
+            output: "stdout".to_string(),
+            error_message: Some("please pull first".to_string()),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let parsed: MultiPushItemResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.remote, "origin");
+        assert!(!parsed.success);
+        assert!(parsed.rejected);
+        assert_eq!(parsed.error_message.as_deref(), Some("please pull first"));
+    }
+}

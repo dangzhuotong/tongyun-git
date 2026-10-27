@@ -231,6 +231,8 @@ impl CommitService {
             _ => String::new(),
         };
 
+        let _ = Self::clear_external_draft(repo_root);
+
         Ok(CommitResult {
             oid: oid_str,
             short_oid,
@@ -300,5 +302,239 @@ impl CommitService {
             });
         }
         Ok(())
+    }
+
+    /// Read external commit draft (e.g. prepared by external AI agent via .git/TONGYUN_COMMIT_MSG, or .git/MERGE_MSG).
+    pub fn get_external_draft(repo_root: &Path) -> Result<Option<String>> {
+        let dot_git = if let Ok(repo) = git2::Repository::open(repo_root) {
+            repo.path().to_path_buf()
+        } else {
+            repo_root.join(".git")
+        };
+
+        // 1. Check custom AI / Agent draft file (.git/TONGYUN_COMMIT_MSG)
+        let ai_file = dot_git.join("TONGYUN_COMMIT_MSG");
+        if ai_file.exists() {
+            if let Ok(content) = fs::read_to_string(&ai_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        // 2. Check Git standard merge message (.git/MERGE_MSG)
+        let merge_file = dot_git.join("MERGE_MSG");
+        if merge_file.exists() {
+            if let Ok(content) = fs::read_to_string(&merge_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        // 3. Check Git standard squash message (.git/SQUASH_MSG)
+        let squash_file = dot_git.join("SQUASH_MSG");
+        if squash_file.exists() {
+            if let Ok(content) = fs::read_to_string(&squash_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Clear external commit draft file (.git/TONGYUN_COMMIT_MSG) after commit or discard.
+    pub fn clear_external_draft(repo_root: &Path) -> Result<()> {
+        let dot_git = if let Ok(repo) = git2::Repository::open(repo_root) {
+            repo.path().to_path_buf()
+        } else {
+            repo_root.join(".git")
+        };
+        let ai_file = dot_git.join("TONGYUN_COMMIT_MSG");
+        if ai_file.exists() {
+            let _ = fs::remove_file(ai_file);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::CliRunner;
+
+    fn temp_git_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_is_in_merge_or_rebase_clean_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!CommitService::is_in_merge_or_rebase(dir.path()));
+    }
+
+    #[test]
+    fn test_is_in_merge_or_rebase_detects_markers() {
+        for marker in ["MERGE_HEAD", "rebase-apply", "rebase-merge"] {
+            let dir = temp_git_dir();
+            fs::write(dir.path().join(".git").join(marker), "x").unwrap();
+            assert!(
+                CommitService::is_in_merge_or_rebase(dir.path()),
+                "marker {marker} should be detected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_external_draft_none_when_no_files() {
+        let dir = temp_git_dir();
+        assert_eq!(CommitService::get_external_draft(dir.path()).unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_external_draft_trims_content() {
+        let dir = temp_git_dir();
+        fs::write(
+            dir.path().join(".git").join("TONGYUN_COMMIT_MSG"),
+            "  feat: trimmed draft  \n\n",
+        )
+        .unwrap();
+        assert_eq!(
+            CommitService::get_external_draft(dir.path()).unwrap(),
+            Some("feat: trimmed draft".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_external_draft_priority_ai_then_merge_then_squash() {
+        let dir = temp_git_dir();
+        let dot_git = dir.path().join(".git");
+
+        fs::write(dot_git.join("SQUASH_MSG"), "squash message").unwrap();
+        assert_eq!(
+            CommitService::get_external_draft(dir.path()).unwrap(),
+            Some("squash message".to_string())
+        );
+
+        fs::write(dot_git.join("MERGE_MSG"), "merge message").unwrap();
+        assert_eq!(
+            CommitService::get_external_draft(dir.path()).unwrap(),
+            Some("merge message".to_string())
+        );
+
+        fs::write(dot_git.join("TONGYUN_COMMIT_MSG"), "ai message").unwrap();
+        assert_eq!(
+            CommitService::get_external_draft(dir.path()).unwrap(),
+            Some("ai message".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_external_draft_skips_blank_and_falls_through() {
+        let dir = temp_git_dir();
+        let dot_git = dir.path().join(".git");
+        fs::write(dot_git.join("TONGYUN_COMMIT_MSG"), "   \n").unwrap();
+        fs::write(dot_git.join("MERGE_MSG"), "from merge").unwrap();
+        assert_eq!(
+            CommitService::get_external_draft(dir.path()).unwrap(),
+            Some("from merge".to_string())
+        );
+    }
+
+    #[test]
+    fn test_clear_external_draft_removes_file_and_is_idempotent() {
+        let dir = temp_git_dir();
+        let ai_file = dir.path().join(".git").join("TONGYUN_COMMIT_MSG");
+        fs::write(&ai_file, "draft").unwrap();
+        assert!(ai_file.exists());
+
+        CommitService::clear_external_draft(dir.path()).unwrap();
+        assert!(!ai_file.exists());
+
+        // Second call on an already-cleared directory must still succeed.
+        CommitService::clear_external_draft(dir.path()).unwrap();
+        assert!(!ai_file.exists());
+    }
+
+    #[test]
+    fn test_commit_rejects_blank_message() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        let err = CommitService::commit(&runner, dir.path(), "   \n\t ", false);
+        assert!(matches!(err, Err(CoreError::CommitError(_))));
+    }
+
+    #[test]
+    fn test_checkout_commit_rejects_blank_oid() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        let err = CommitService::checkout_commit(&runner, dir.path(), "  ");
+        assert!(matches!(err, Err(CoreError::CommitError(_))));
+    }
+
+    #[test]
+    fn test_reset_to_commit_rejects_empty_oid() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        let err = CommitService::reset_to_commit(&runner, dir.path(), "   ", "soft");
+        assert!(matches!(err, Err(CoreError::ResetError(_))));
+    }
+
+    #[test]
+    fn test_commit_structs_serde_roundtrip() {
+        let identity = GitIdentity {
+            name: "Alice Developer".to_string(),
+            email: "alice@example.com".to_string(),
+        };
+        let id_json = serde_json::to_string(&identity).unwrap();
+        let id_de: GitIdentity = serde_json::from_str(&id_json).unwrap();
+        assert_eq!(id_de.name, identity.name);
+        assert_eq!(id_de.email, identity.email);
+
+        let commit_res = CommitResult {
+            oid: "a".repeat(40),
+            short_oid: "aaaaaaa".to_string(),
+            summary: "feat: commit summary".to_string(),
+        };
+        let cr_json = serde_json::to_string(&commit_res).unwrap();
+        let cr_de: CommitResult = serde_json::from_str(&cr_json).unwrap();
+        assert_eq!(cr_de.oid, commit_res.oid);
+        assert_eq!(cr_de.short_oid, commit_res.short_oid);
+        assert_eq!(cr_de.summary, commit_res.summary);
+
+        let amend = AmendStatus {
+            can_amend: true,
+            disabled_reason: None,
+            head_message: Some("previous commit message".to_string()),
+            is_pushed: false,
+            pushed_remote_branches: vec![],
+        };
+        let am_json = serde_json::to_string(&amend).unwrap();
+        let am_de: AmendStatus = serde_json::from_str(&am_json).unwrap();
+        assert_eq!(am_de.can_amend, amend.can_amend);
+        assert_eq!(am_de.disabled_reason, amend.disabled_reason);
+        assert_eq!(am_de.head_message, amend.head_message);
+        assert_eq!(am_de.is_pushed, amend.is_pushed);
+        assert_eq!(am_de.pushed_remote_branches, amend.pushed_remote_branches);
+    }
+
+    #[test]
+    fn test_reset_to_commit_rejects_hard_and_unknown_modes() {
+        let runner = CliRunner::new("git");
+        let dir = tempfile::tempdir().unwrap();
+        for mode in ["hard", "HARD", "unknown", ""] {
+            let err = CommitService::reset_to_commit(&runner, dir.path(), "abc1234", mode);
+            assert!(
+                matches!(err, Err(CoreError::ResetError(_))),
+                "mode {mode:?} should be rejected"
+            );
+        }
     }
 }

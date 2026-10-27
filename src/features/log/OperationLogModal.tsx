@@ -124,9 +124,23 @@ const OperationLogModalContent: React.FC<{ onClose: () => void }> = ({
             </div>
           ) : (
             logs.map((log) => {
-              const isAudit=Boolean(log.audit_phase);
-              const isSuccess=isAudit?log.audit_phase==='finished' && log.audit_outcome==='succeeded':log.exit_code===0;
-              const label=isAudit?(log.audit_phase==='started'?'进行中或待核查':isSuccess?'已完成':'失败或结果待核查'):(log.exit_code==null?'结果待核查':isSuccess?'成功':`退出码: ${log.exit_code}`);
+              const isAudit = Boolean(log.audit_phase);
+              const auditOutcome = log.audit_outcome ?? "";
+              const isSuccess = isAudit
+                ? log.audit_phase === "finished" &&
+                  (auditOutcome === "succeeded" || auditOutcome === "completed")
+                : log.exit_code === 0;
+              const label = isAudit
+                ? log.audit_phase === "started"
+                  ? "进行中或待核查"
+                  : isSuccess
+                    ? "已完成"
+                    : "失败或结果待核查"
+                : log.exit_code == null
+                  ? "结果待核查"
+                  : isSuccess
+                    ? "成功"
+                    : `退出码: ${log.exit_code}`;
               return (
                 <div
                   key={log.id}

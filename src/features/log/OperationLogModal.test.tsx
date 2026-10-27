@@ -57,4 +57,53 @@ describe("OperationLogModal", () => {
     expect(screen.getByText(/agent:fixture/)).toBeDefined();
   });
 
+  it("shows CLI succeeded and legacy completed audit records as finished", async () => {
+    vi.mocked(host.getOperationLogs).mockResolvedValue([
+      {
+        ...mockLogs[0],
+        id: "audit-succeeded",
+        command_line: "status",
+        exit_code: null,
+        audit_phase: "finished",
+        audit_outcome: "succeeded",
+        operation_id: "op-succeeded",
+        task_id: "task-fixture",
+        actor: "agent:cli",
+      },
+      {
+        ...mockLogs[0],
+        id: "audit-completed",
+        command_line: "commit",
+        exit_code: null,
+        audit_phase: "finished",
+        audit_outcome: "completed",
+        operation_id: "op-completed",
+        task_id: "task-fixture",
+        actor: "agent:cli",
+      },
+    ]);
+    render(<OperationLogModal isOpen={true} onClose={vi.fn()} />);
+    expect(await screen.findAllByText("已完成")).toHaveLength(2);
+    expect(screen.queryByText("失败或结果待核查")).toBeNull();
+  });
+
+  it("shows a non-success finished audit record as needing review", async () => {
+    vi.mocked(host.getOperationLogs).mockResolvedValue([
+      {
+        ...mockLogs[0],
+        id: "audit-failed",
+        command_line: "commit",
+        exit_code: null,
+        audit_phase: "finished",
+        audit_outcome: "failed_or_unknown",
+        operation_id: "op-failed",
+        task_id: "task-fixture",
+        actor: "agent:cli",
+      },
+    ]);
+    render(<OperationLogModal isOpen={true} onClose={vi.fn()} />);
+    expect(await screen.findByText("失败或结果待核查")).toBeDefined();
+    expect(screen.queryByText("已完成")).toBeNull();
+  });
+
 });

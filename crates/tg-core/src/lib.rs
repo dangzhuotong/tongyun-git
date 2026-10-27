@@ -1,10 +1,12 @@
 pub mod ai;
 pub mod audit;
+pub mod auto_agent;
 pub mod backend;
 pub mod branch;
 pub mod cli;
 pub mod commit;
 pub mod conflict;
+pub mod context_pack;
 pub mod discard;
 pub mod error;
 pub mod journal;
@@ -22,9 +24,19 @@ pub mod worktree;
 #[cfg(windows)]
 mod win_job;
 
+pub use auto_agent::{
+    agent_display_name, cached_running_agent_processes, evaluate_burst, evaluate_timestamp_burst,
+    find_running_agent_processes, fingerprint_delta, is_ide_host_process, is_known_agent_process,
+    match_agent_process, normalize_process_name, prune_idle_managers, AutoAgentConfig,
+    AutoAgentManager, AutoAgentStateMachine, AutoCheckReport, AutoSessionAction, AutoSessionState,
+    AutoTrigger, BurstConfig, BurstDetector, DirtyFingerprint, ProcessScanCache,
+    BASELINE_MIN_INTERVAL_MS, IDE_HOST_PROCESSES, KNOWN_AGENT_PROCESSES, MANAGER_IDLE_TTL,
+    PROCESS_SCAN_TTL,
+};
+
 pub use ai::{
-    AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings, DiffReviewResult,
-    KeyringStore, MemoryKeyring, ReviewIssue, SecretFilter, SystemKeyring,
+    configure_secret_dir, AiLogMatch, AiLogQueryResult, AiProviderType, AiService, AiSettings,
+    DiffReviewResult, KeyringStore, MemoryKeyring, ReviewIssue, SecretFilter, SystemKeyring,
 };
 
 pub use backend::{
@@ -38,6 +50,7 @@ pub use cli::{
 };
 pub use commit::{AmendStatus, CommitResult, CommitService, GitIdentity};
 pub use conflict::{ConflictFileDetails, ConflictFileSummary, ConflictHunk, ConflictService};
+pub use context_pack::{ContextFileSummary, ContextPack, ContextPackGenerator, ContextPackSummary};
 pub use discard::{
     DiscardCandidate, DiscardResult, DiscardService, UndoDiscardResult, MAX_SINGLE_FILE_SNAPSHOT,
     MAX_SNAPSHOT_COUNT, MAX_TOTAL_SNAPSHOT,

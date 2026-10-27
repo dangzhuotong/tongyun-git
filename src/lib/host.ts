@@ -258,6 +258,14 @@ export async function createCommit(
   });
 }
 
+export async function getExternalCommitDraft(rootPath: string): Promise<string | null> {
+  return await invoke<string | null>("get_external_commit_draft", { rootPath });
+}
+
+export async function clearExternalCommitDraft(rootPath: string): Promise<void> {
+  return await invoke("clear_external_commit_draft", { rootPath });
+}
+
 export async function getAiKeyStatus(): Promise<AiKeyStatus> {
   return await invoke<AiKeyStatus>("get_ai_key_status");
 }
@@ -993,6 +1001,19 @@ export interface WorkspaceOverview {
 export interface BranchComparison { from: string; to: string; patch: string; files: number; additions: number; deletions: number }
 export interface BlameLine { line: number; oid: string; author: string; content: string }
 export type HistoryAction = "cherry_pick" | "revert" | "merge" | "continue" | "abort";
+export interface AutoAgentConfig {
+  enabled: boolean;
+  burst_threshold: number;
+  burst_window_secs: number;
+  silence_timeout_secs: number;
+}
+export interface AutoCheckReport {
+  active: boolean;
+  session_reference?: string | null;
+  session_label?: string | null;
+  action_taken?: string | null;
+  warning?: string | null;
+}
 export type WorkspaceRequest =
   | { type: "overview" | "snapshots" }
   | { type: "compare"; from: string; to: string }
@@ -1003,7 +1024,52 @@ export type WorkspaceRequest =
   | { type: "restore"; reference: string; changes: SnapshotChange[] }
   | { type: "shelve"; label: string; paths: string[] }
   | { type: "discard_lines"; expected: FileDiff; hunk_index: number; selected: number[] }
-  | { type: "open"; application: "idea" | "terminal" | "folder" };
+  | { type: "open"; application: "idea" | "terminal" | "folder" }
+  | { type: "auto_check"; config?: AutoAgentConfig };
 export async function workspaceTask<T>(rootPath: string, request: WorkspaceRequest): Promise<T> {
   return invoke<T>("workspace_task", { rootPath, request, gitPath: localStorage.getItem("tongyun_git_path") || null });
+}
+
+export interface BridgeStatus {
+  online: boolean;
+  port: number;
+  version: string;
+  active_repo: {
+    root_path: string;
+    name: string;
+    branch?: string | null;
+    head_oid?: string | null;
+    staged_count: number;
+    unstaged_count: number;
+    untracked_count: number;
+    conflicts_count: number;
+  } | null;
+}
+
+export interface AgentReviewNote {
+  file: string;
+  line?: number;
+  level?: string;
+  message: string;
+}
+
+export interface AgentIntent {
+  agent_name?: string;
+  task?: string;
+  commit_message: string;
+  suggested_stage?: string[];
+  review_notes?: AgentReviewNote[];
+  timestamp: number;
+}
+
+export async function getBridgeInfo(): Promise<BridgeStatus> {
+  return invoke<BridgeStatus>("get_bridge_info");
+}
+
+export async function getAgentIntent(): Promise<AgentIntent | null> {
+  return invoke<AgentIntent | null>("get_agent_intent");
+}
+
+export async function clearAgentIntent(): Promise<void> {
+  return invoke<void>("clear_agent_intent");
 }

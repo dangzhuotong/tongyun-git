@@ -20,7 +20,7 @@ pub enum CoreError {
     #[error("git command timed out after {after_ms}ms: {command_line}")]
     Timeout { command_line: String, after_ms: u64 },
 
-    #[error("git cli error (exit code {exit_code:?}): {stderr}")]
+    #[error("git cli error (exit code {}): {stderr}", display_exit_code(exit_code))]
     Cli {
         exit_code: Option<i32>,
         stderr: String,
@@ -72,6 +72,13 @@ pub enum CoreError {
 
 pub type Result<T> = std::result::Result<T, CoreError>;
 
+fn display_exit_code(code: &Option<i32>) -> String {
+    match code {
+        Some(n) => n.to_string(),
+        None => "none".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,7 +113,7 @@ mod tests {
                 stderr: "fatal error".to_string(),
             }
             .to_string(),
-            "git cli error (exit code Some(1)): fatal error"
+            "git cli error (exit code 1): fatal error"
         );
 
         assert_eq!(
@@ -115,7 +122,7 @@ mod tests {
                 stderr: "killed".to_string(),
             }
             .to_string(),
-            "git cli error (exit code None): killed"
+            "git cli error (exit code none): killed"
         );
 
         assert_eq!(

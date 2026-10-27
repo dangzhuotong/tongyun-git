@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import type { AppInfo, AiSettings, AiKeyStatus, AiProvider } from "../../lib/host";
+import type { AppInfo, AiSettings, AiKeyStatus, AiProvider, AutoAgentConfig } from "../../lib/host";
+import {
+  AUTO_AGENT_SETTINGS_EVENT,
+  AUTO_AGENT_SETTINGS_KEY,
+  loadAutoAgentConfig,
+} from "../../lib/autoAgentConfig";
 import {
   checkGit,
   type GitCheckResult,
@@ -28,6 +33,8 @@ interface SettingsModalProps {
   gitPath: string;
   onGitPathChange: (path: string) => void;
   initialTab?: "general" | "ai";
+  checkingUpdate?: boolean;
+  onCheckUpdate?: () => void;
 }
 
 const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -51,6 +58,8 @@ export function SettingsModal({
   gitPath,
   onGitPathChange,
   initialTab = "general",
+  checkingUpdate = false,
+  onCheckUpdate,
 }: SettingsModalProps) {
   useEscapeKey(onClose, isOpen);
 
@@ -60,6 +69,18 @@ export function SettingsModal({
   const [customPath, setCustomPath] = useState(gitPath);
   const [testResult, setTestResult] = useState<GitCheckResult | null>(null);
   const [testing, setTesting] = useState(false);
+
+  // Auto Agent settings (V2-07)
+  const [autoAgentSettings, setAutoAgentSettings] = useState<AutoAgentConfig>(() =>
+    loadAutoAgentConfig(localStorage.getItem(AUTO_AGENT_SETTINGS_KEY)),
+  );
+
+  const updateAutoAgentSettings = (partial: Partial<AutoAgentConfig>) => {
+    const updated = { ...autoAgentSettings, ...partial };
+    setAutoAgentSettings(updated);
+    localStorage.setItem(AUTO_AGENT_SETTINGS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event(AUTO_AGENT_SETTINGS_EVENT));
+  };
 
   // AI tab state
   const [aiSettings, setAiSettings] = useState<AiSettings>(() => {
@@ -169,7 +190,7 @@ export function SettingsModal({
     try {
       await saveAiKey(aiSettings.provider, newKey.trim());
       setNewKey("");
-      setKeySuccessMessage("密钥已安全加密保存到系统钥匙串");
+      setKeySuccessMessage("密钥已加密保存在本机");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -185,7 +206,7 @@ export function SettingsModal({
     setKeySuccessMessage(null);
     try {
       await deleteAiKey(aiSettings.provider);
-      setKeySuccessMessage("密钥已从系统钥匙串中清除");
+      setKeySuccessMessage("密钥已从本机加密存储中清除");
       await refreshKeyStatus();
     } catch (err: any) {
       setKeyError(err?.message || String(err));
@@ -223,7 +244,7 @@ export function SettingsModal({
         try {
           await saveAiKey(aiSettings.provider, newKey.trim());
           setNewKey("");
-          setKeySuccessMessage("已自动为您将密钥存入系统钥匙串");
+          setKeySuccessMessage("已自动将密钥加密保存在本机");
           await refreshKeyStatus();
         } catch {
           // ignore error here, proceed to test
@@ -404,15 +425,105 @@ export function SettingsModal({
                 )}
               </div>
 
+              {/* Agent Session Auto-Detection (V2-07) */}
+              <div className="space-y-3 pt-2 border-t border-[var(--color-border)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label htmlFor="auto-agent-toggle" className="block text-xs font-semibold text-[var(--color-text)]">
+                      Agent 会话自动检测与快照 (V2-07)
+                    </label>
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      检测 claude、codex、tongyun-cli 进程，或短时间文件突增，自动开会话并打快照。Cursor 作为常驻编辑器不会单独触发。关闭后会结束进行中的自动会话。
+                    </p>
+                  </div>
+                  <input
+                    id="auto-agent-toggle"
+                    type="checkbox"
+                    checked={autoAgentSettings.enabled}
+                    onChange={(e) => updateAutoAgentSettings({ enabled: e.target.checked })}
+                    className="cursor-pointer"
+                  />
+                </div>
+
+                {autoAgentSettings.enabled && (
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        突增阈值 (个文件)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={autoAgentSettings.burst_threshold}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            burst_threshold: Math.max(1, parseInt(e.target.value) || 1),
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        判定窗口 (秒)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={autoAgentSettings.burst_window_secs}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            burst_window_secs: Math.max(1, parseInt(e.target.value) || 1),
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                        静默超时 (分钟)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={Math.round(autoAgentSettings.silence_timeout_secs / 60)}
+                        onChange={(e) =>
+                          updateAutoAgentSettings({
+                            silence_timeout_secs:
+                              Math.max(1, parseInt(e.target.value) || 1) * 60,
+                          })
+                        }
+                        className="w-full px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* About / Versions */}
               <div className="space-y-1.5 pt-2 border-t border-[var(--color-border)] text-[11px] text-[var(--color-text-muted)]">
                 <div className="flex justify-between">
                   <span>应用名称</span>
                   <span className="font-medium text-[var(--color-text)]">{appInfo?.name}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center gap-2">
                   <span>应用版本</span>
-                  <span className="font-mono">{appInfo?.version}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-[var(--color-text)]">
+                      v{appInfo?.version || "0.1.1"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onCheckUpdate}
+                      disabled={checkingUpdate || !onCheckUpdate}
+                      className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[var(--color-accent)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {checkingUpdate ? "正在检查更新…" : "检查更新"}
+                    </button>
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>libgit2</span>
@@ -552,7 +663,7 @@ export function SettingsModal({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-semibold text-xs text-[var(--color-text)]">
                     <KeyIcon width={14} height={14} className="text-[var(--color-accent)]" />
-                    <span>API 密钥 (安全存入系统钥匙串)</span>
+                    <span>API 密钥 (加密保存在本机)</span>
                   </div>
 
                   {/* Status Badge */}
@@ -575,7 +686,7 @@ export function SettingsModal({
                   <div className="p-2.5 rounded border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] text-[11px] flex gap-2">
                     <AlertCircleIcon width={14} height={14} className="shrink-0 mt-0.5" />
                     <div>
-                      系统钥匙串服务不可用（如 Linux 未运行 Secret Service）。为保护密钥安全，应用不会以明文保存密钥。请配置系统钥匙串服务，或改用无需密钥的本机 Ollama。
+                      本机加密存储不可用。为保护密钥安全，应用不会以明文保存密钥。请检查应用数据目录权限，或改用无需密钥的本机 Ollama。
                     </div>
                   </div>
                 ) : (
@@ -593,7 +704,7 @@ export function SettingsModal({
                         placeholder={
                           isCurrentProviderKeySaved
                             ? "输入新密钥以覆盖现有密钥..."
-                            : "输入 API Key 并存入钥匙串..."
+                            : "输入 API Key 并加密保存..."
                         }
                         className="flex-1 px-3 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] font-mono text-xs focus:outline-none focus:border-[var(--color-accent)] select-text"
                       />
@@ -633,7 +744,7 @@ export function SettingsModal({
                   </div>
                 )}
                 <p className="text-[10px] text-[var(--color-text-muted)]">
-                  密钥完全由 Rust 本地调用操作系统钥匙串加密保存，不存入任何文件，不读取环境变量，界面不回显明文。
+                  密钥只在 Rust 侧写入本机加密文件，不进入系统钥匙串，不读取环境变量，界面不回显明文。
                 </p>
               </div>
 

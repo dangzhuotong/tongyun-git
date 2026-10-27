@@ -490,26 +490,10 @@ impl AiService {
             return String::new();
         }
 
-        // 1. Check for markdown code fence (```...```) anywhere in the message
-        if let (Some(start), Some(end)) = (trimmed.find("```"), trimmed.rfind("```")) {
-            if start < end {
-                let inside = &trimmed[start + 3..end];
-                // Strip optional language identifier on the first line (e.g. ```git\n, ```text\n)
-                let content = if let Some(first_newline) = inside.find('\n') {
-                    let first_line = inside[..first_newline].trim();
-                    if first_line
-                        .chars()
-                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-                    {
-                        &inside[first_newline + 1..]
-                    } else {
-                        inside
-                    }
-                } else {
-                    inside
-                };
-                return Self::clean_commit_message(content);
-            }
+        // 1. Unwrap a fence only when it wraps the whole reply (optional preamble before it).
+        // A fence inside an already-written commit body is an example, not a wrapper.
+        if let Some(content) = unwrap_wrapping_fence(trimmed) {
+            return Self::clean_commit_message(content);
         }
 
         // 2. Check for `git commit -m "..."` pattern
@@ -527,32 +511,11 @@ impl AiService {
         let lines: Vec<&str> = trimmed.lines().collect();
         let mut filtered_lines: Vec<&str> = Vec::new();
 
-        let preamble_prefixes = [
-            "好的",
-            "根据以上",
-            "建议的提交信息",
-            "提交信息如下",
-            "生成的提交信息",
-            "commit message:",
-            "commit message：",
-            "here is the commit message",
-            "here's the commit message",
-        ];
-
         let mut skipping_preamble = true;
         for line in lines {
             let l_trim = line.trim();
             if skipping_preamble {
-                if l_trim.is_empty() {
-                    continue;
-                }
-                let lower = l_trim.to_lowercase();
-                let is_preamble = preamble_prefixes.iter().any(|prefix| {
-                    lower.starts_with(prefix)
-                        || lower.contains("提交信息如下")
-                        || lower.contains("commit message:")
-                });
-                if is_preamble {
+                if l_trim.is_empty() || is_ai_preamble_line(l_trim) {
                     continue;
                 }
                 skipping_preamble = false;
@@ -630,6 +593,55 @@ impl AiService {
     }
 }
 
+fn is_ai_preamble_line(line: &str) -> bool {
+    let lower = line.trim().to_lowercase();
+    const PREFIXES: &[&str] = &[
+        "好的",
+        "根据以上",
+        "建议的提交信息",
+        "提交信息如下",
+        "生成的提交信息",
+        "commit message:",
+        "commit message：",
+        "here is the commit message",
+        "here's the commit message",
+    ];
+    // Match only a leading preamble. A subject that merely mentions
+    // "commit message:" or "提交信息如下" is the commit text itself.
+    PREFIXES.iter().any(|prefix| lower.starts_with(prefix))
+}
+
+/// Returns the inside of a fence when the text before it is empty or only AI preamble.
+fn unwrap_wrapping_fence(trimmed: &str) -> Option<&str> {
+    let start = trimmed.find("```")?;
+    let end = trimmed.rfind("```")?;
+    if start >= end {
+        return None;
+    }
+    let before = &trimmed[..start];
+    if !before
+        .lines()
+        .all(|line| line.trim().is_empty() || is_ai_preamble_line(line))
+    {
+        return None;
+    }
+    let inside = &trimmed[start + 3..end];
+    Some(strip_fence_language(inside))
+}
+
+fn strip_fence_language(inside: &str) -> &str {
+    if let Some(first_newline) = inside.find('\n') {
+        let first_line = inside[..first_newline].trim();
+        if first_line
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return &inside[first_newline + 1..];
+        }
+    }
+    inside
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,6 +686,86 @@ mod tests {
         assert_eq!(
             AiService::clean_commit_message(preamble_only),
             "docs: update readme"
+        );
+    }
+
+    #[test]
+    fn keeps_subject_that_mentions_commit_message_phrasing() {
+        let raw = "docs: commit message: document the hook\n\n正文里写提交信息如下所示";
+        let cleaned = AiService::clean_commit_message(raw);
+        assert_eq!(
+            cleaned, raw,
+            "a real subject was treated as an AI preamble: {cleaned}"
+        );
+    }
+
+    #[test]
+    fn still_strips_a_leading_commit_message_preamble() {
+        let raw = "commit message:\ndocs: update readme\n";
+        assert_eq!(AiService::clean_commit_message(raw), "docs: update readme");
+    }
+
+    #[test]
+    fn rust8_empty_and_whitespace_commit_message() {
+        assert_eq!(AiService::clean_commit_message(""), "");
+        assert_eq!(AiService::clean_commit_message("   \n\t  "), "");
+    }
+
+    #[test]
+    fn rust8_single_quotes_and_commit_m_wrapper() {
+        assert_eq!(
+            AiService::clean_commit_message("'feat: quoted'"),
+            "feat: quoted"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("git commit -m 'fix: hook'"),
+            "fix: hook"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("git commit -m fix: bare"),
+            "git commit -m fix: bare"
+        );
+    }
+
+    #[test]
+    fn rust8_strips_leading_preamble_and_trailing_explanation() {
+        assert_eq!(
+            AiService::clean_commit_message("好的，如下：\nfeat: ok"),
+            "feat: ok"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("根据以上改动：\nfix: x"),
+            "fix: x"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("commit message：\nfeat: zh colon"),
+            "feat: zh colon"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("Here's the commit message\nfeat: title"),
+            "feat: title"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("feat: add\n\nbody\n说明: 这是解释\nmore"),
+            "feat: add\n\nbody"
+        );
+        assert_eq!(
+            AiService::clean_commit_message("feat: add\nNote: hidden"),
+            "feat: add"
+        );
+    }
+
+    #[test]
+    fn keeps_commit_body_when_it_contains_a_code_fence() {
+        let raw = "feat: document parser\n\nExample:\n\n```\ncode sample\n```\n";
+        let cleaned = AiService::clean_commit_message(raw);
+        assert!(
+            cleaned.contains("feat: document parser"),
+            "title dropped: {cleaned}"
+        );
+        assert!(
+            cleaned.contains("code sample"),
+            "example dropped: {cleaned}"
         );
     }
 
@@ -737,5 +829,202 @@ mod tests {
         let parsed_fallback = AiService::parse_log_query_response(fallback_input);
         assert_eq!(parsed_fallback.answer, fallback_input);
         assert!(parsed_fallback.matched_oids.is_empty());
+    }
+
+    #[test]
+    fn rust9_provider_type_as_str_matches_serde_names() {
+        assert_eq!(AiProviderType::Kie.as_str(), "kie");
+        assert_eq!(AiProviderType::OpenAi.as_str(), "openai");
+        assert_eq!(AiProviderType::Ollama.as_str(), "ollama");
+    }
+
+    #[test]
+    fn rust9_ai_settings_default_values_are_stable() {
+        let settings = AiSettings::default();
+        assert_eq!(settings.provider, AiProviderType::OpenAi);
+        assert_eq!(settings.base_url, None);
+        assert_eq!(settings.model, "deepseek-chat");
+        assert_eq!(settings.language, "zh");
+        assert!(settings.conventional);
+        assert_eq!(settings.timeout_seconds, 30);
+        assert_eq!(settings.max_diff_chars, 20000);
+        assert!(settings.custom_secret_patterns.is_empty());
+        assert!(!settings.consented);
+    }
+
+    #[test]
+    fn rust9_compute_endpoint_url_kie_trims_slash_and_defaults_base() {
+        assert_eq!(
+            AiService::compute_endpoint_url(
+                AiProviderType::Kie,
+                Some("https://api.kie.ai/"),
+                "gpt-x"
+            ),
+            "https://api.kie.ai/gpt-x/v1/chat/completions"
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(AiProviderType::Kie, None, "model"),
+            "https://api.kie.ai/model/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn rust9_compute_endpoint_url_openai_keeps_full_path_and_defaults_base() {
+        let full = "https://api.openai.com/v1/chat/completions";
+        assert_eq!(
+            AiService::compute_endpoint_url(AiProviderType::OpenAi, Some(full), "m"),
+            full
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(
+                AiProviderType::OpenAi,
+                Some("https://api.openai.com/v1/"),
+                "m"
+            ),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(AiProviderType::OpenAi, None, "m"),
+            full
+        );
+    }
+
+    #[test]
+    fn rust9_compute_endpoint_url_ollama_variants() {
+        let full = "http://localhost:11434/v1/chat/completions";
+        assert_eq!(
+            AiService::compute_endpoint_url(AiProviderType::Ollama, Some(full), "m"),
+            full
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(
+                AiProviderType::Ollama,
+                Some("http://localhost:11434/v1"),
+                "m"
+            ),
+            full
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(
+                AiProviderType::Ollama,
+                Some("http://localhost:11434"),
+                "m"
+            ),
+            full
+        );
+        assert_eq!(
+            AiService::compute_endpoint_url(AiProviderType::Ollama, None, "m"),
+            full
+        );
+    }
+
+    #[test]
+    fn rust9_build_system_prompt_language_and_conventional_flags() {
+        let mut settings = AiSettings::default();
+
+        let zh = AiService::build_system_prompt(&settings);
+        assert!(zh.contains("请一律使用中文撰写提交标题与说明。"), "{zh}");
+        assert!(zh.contains("Conventional Commits"), "{zh}");
+
+        settings.language = "en".to_string();
+        let en = AiService::build_system_prompt(&settings);
+        assert!(
+            en.contains("Please write the commit message in English."),
+            "{en}"
+        );
+
+        settings.language = "follow".to_string();
+        let follow = AiService::build_system_prompt(&settings);
+        assert!(
+            follow.contains("跟随仓库最近的提交历史语言风格"),
+            "{follow}"
+        );
+        assert!(follow.contains("Conventional Commits"), "{follow}");
+
+        settings.conventional = false;
+        let plain = AiService::build_system_prompt(&settings);
+        assert!(!plain.contains("Conventional Commits"), "{plain}");
+        assert!(
+            plain.contains("首行为单行概括，不超过 72 字符。"),
+            "{plain}"
+        );
+    }
+
+    #[test]
+    fn rust9_build_user_prompt_without_recent_commits() {
+        let prompt = AiService::build_user_prompt("main", &[], "DIFF-BODY");
+        assert_eq!(prompt, "当前分支: main\n\n已暂存改动内容如下:\nDIFF-BODY");
+    }
+
+    #[test]
+    fn rust9_build_user_prompt_lists_recent_commits_capped_at_ten() {
+        let commits: Vec<String> = (0..12).map(|i| format!("commit {i}")).collect();
+        let prompt = AiService::build_user_prompt("dev", &commits, "X");
+        assert!(prompt.starts_with("当前分支: dev\n\n"), "{prompt}");
+        assert!(prompt.contains("最近提交参考:\n"), "{prompt}");
+        assert!(prompt.contains("- commit 0\n"), "{prompt}");
+        assert!(prompt.contains("- commit 9\n"), "{prompt}");
+        assert!(!prompt.contains("- commit 10\n"), "{prompt}");
+        assert!(prompt.contains("已暂存改动内容如下:\nX"), "{prompt}");
+    }
+
+    #[test]
+    fn rust9_is_ai_preamble_line_matches_only_leading_phrases() {
+        assert!(is_ai_preamble_line("好的，以下是提交信息"));
+        assert!(is_ai_preamble_line("  Commit message:  "));
+        assert!(is_ai_preamble_line("提交信息如下："));
+        assert!(is_ai_preamble_line("生成的提交信息如下"));
+        assert!(is_ai_preamble_line("Here's the commit message"));
+        assert!(!is_ai_preamble_line("feat: add parser"));
+        assert!(!is_ai_preamble_line(
+            "docs: note that commit message: is fine inside"
+        ));
+        assert!(!is_ai_preamble_line("正文里写提交信息如下所示"));
+    }
+
+    #[test]
+    fn rust9_unwrap_wrapping_fence_requires_only_preamble_before() {
+        assert_eq!(
+            unwrap_wrapping_fence("```git\nfeat: x\n```"),
+            Some("feat: x\n")
+        );
+        assert_eq!(
+            unwrap_wrapping_fence("好的\n```\nfeat: y\n```"),
+            Some("feat: y\n")
+        );
+        assert_eq!(unwrap_wrapping_fence("feat: x\n```\nbody\n```"), None);
+        assert_eq!(unwrap_wrapping_fence("no fence here"), None);
+        assert_eq!(unwrap_wrapping_fence("```only one fence"), None);
+    }
+
+    #[test]
+    fn rust9_strip_fence_language_only_removes_language_tag() {
+        assert_eq!(strip_fence_language("git\nfeat: x"), "feat: x");
+        assert_eq!(strip_fence_language("rust\ncode"), "code");
+        assert_eq!(strip_fence_language("\nbody"), "body");
+        assert_eq!(strip_fence_language("feat: no newline"), "feat: no newline");
+        assert_eq!(
+            strip_fence_language("bad lang!\nfeat: x"),
+            "bad lang!\nfeat: x"
+        );
+    }
+
+    #[test]
+    fn rust9_parse_review_response_fallback_marks_danger_keywords() {
+        let dangerous = AiService::parse_review_response("检测到密码泄露风险，请修复。");
+        assert!(!dangerous.passed);
+        assert!(dangerous.issues.is_empty());
+        assert_eq!(dangerous.summary, "检测到密码泄露风险，请修复。");
+
+        let level = AiService::parse_review_response("LEVEL: danger found a secret");
+        assert!(!level.passed);
+    }
+
+    #[test]
+    fn rust9_parse_log_query_response_handles_missing_brace() {
+        let raw = "{ \"answer\": unclosed";
+        let parsed = AiService::parse_log_query_response(raw);
+        assert_eq!(parsed.answer, raw);
+        assert!(parsed.matched_oids.is_empty());
     }
 }

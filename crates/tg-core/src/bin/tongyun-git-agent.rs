@@ -159,9 +159,9 @@ fn run() -> Result<(), String> {
     })();
     operation
         .finish(if result.is_ok() {
-            "completed"
+            tg_core::audit::OUTCOME_SUCCEEDED
         } else {
-            "failed_or_unknown"
+            tg_core::audit::OUTCOME_FAILED_OR_UNKNOWN
         })
         .map_err(|_| "AUDIT_COMPLETION_FAILED: inspect started operation before retry")?;
     match result {

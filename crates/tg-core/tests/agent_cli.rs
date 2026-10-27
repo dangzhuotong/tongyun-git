@@ -91,6 +91,34 @@ fn cli_confirms_exact_index_then_commits_through_core_and_preserves_history() {
         .iter()
         .all(|e| e["taskId"] == "fixture-task" && e["actor"] == "agent:fixture"));
     assert!(!history.to_string().contains("feat: fixture commit"));
+    assert!(events.iter().all(|event| event["outcome"] != "completed"));
+    assert!(events.iter().any(|event| {
+        event["action"] == "commit"
+            && event["phase"] == "finished"
+            && event["outcome"] == "succeeded"
+    }));
+    assert!(events.iter().any(|event| {
+        event["action"] == "status"
+            && event["phase"] == "finished"
+            && event["outcome"] == "succeeded"
+    }));
+    assert!(events
+        .iter()
+        .any(|event| { event["phase"] == "finished" && event["outcome"] == "failed_or_unknown" }));
+}
+#[test]
+fn successful_status_records_succeeded_not_completed() {
+    let repo = common::basic();
+    let (ok, _) = run(&repo, &["status"]);
+    assert!(ok);
+    let (_, history) = run(&repo, &["history"]);
+    let events = history["data"].as_array().unwrap();
+    assert!(events.iter().any(|event| {
+        event["action"] == "status"
+            && event["phase"] == "finished"
+            && event["outcome"] == "succeeded"
+    }));
+    assert!(events.iter().all(|event| event["outcome"] != "completed"));
 }
 #[test]
 fn unavailable_audit_rejects_before_commit() {

@@ -316,3 +316,93 @@ pub fn overview(runner: &CliRunner, root: &Path) -> Result<WorkspaceOverview> {
         hunk_overlaps,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_safe_path_empty_rejected() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(safe_path(temp.path(), "").is_err());
+    }
+
+    #[test]
+    fn test_safe_path_forbidden_characters() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(safe_path(temp.path(), "a\\b.txt").is_err());
+        assert!(safe_path(temp.path(), "a\0b.txt").is_err());
+        assert!(safe_path(temp.path(), "a\nb.txt").is_err());
+        assert!(safe_path(temp.path(), "a\rb.txt").is_err());
+        assert!(safe_path(temp.path(), "C:file.txt").is_err());
+    }
+
+    #[test]
+    fn test_safe_path_directory_traversal() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(safe_path(temp.path(), "../file.txt").is_err());
+        assert!(safe_path(temp.path(), "foo/../../file.txt").is_err());
+        assert!(safe_path(temp.path(), "./file.txt").is_err());
+        assert!(safe_path(temp.path(), "/file.txt").is_err());
+    }
+
+    #[test]
+    fn test_safe_path_dot_git_case_insensitive() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(safe_path(temp.path(), ".git").is_err());
+        assert!(safe_path(temp.path(), ".GIT").is_err());
+        assert!(safe_path(temp.path(), ".Git").is_err());
+        assert!(safe_path(temp.path(), "dir/.git/config").is_err());
+        assert!(safe_path(temp.path(), "dir/.GIT/config").is_err());
+    }
+
+    #[test]
+    fn test_safe_path_valid_nested_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("src").join("main.rs");
+        let result = safe_path(temp.path(), "src/main.rs").expect("valid relative path");
+        assert_eq!(result, target);
+    }
+
+    #[test]
+    fn test_history_action_serde_roundtrip() {
+        let actions = vec![
+            (HistoryAction::CherryPick, "\"cherry_pick\""),
+            (HistoryAction::Revert, "\"revert\""),
+            (HistoryAction::Merge, "\"merge\""),
+            (HistoryAction::Continue, "\"continue\""),
+            (HistoryAction::Abort, "\"abort\""),
+        ];
+
+        for (action, expected_json) in actions {
+            let json = serde_json::to_string(&action).unwrap();
+            assert_eq!(json, expected_json);
+            let parsed: HistoryAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                serde_json::to_string(&parsed).unwrap(),
+                serde_json::to_string(&action).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_workspace_overview_serde_roundtrip() {
+        let overview = WorkspaceOverview {
+            worktrees: vec![WorktreeOverview {
+                path: "wt1".to_string(),
+                branch: Some("feat".to_string()),
+                changed: vec!["file.txt".to_string()],
+                ahead: Some(1),
+                behind: Some(2),
+                error: None,
+            }],
+            overlaps: BTreeMap::new(),
+            hunk_overlaps: vec!["file.txt".to_string()],
+        };
+        let json = serde_json::to_string(&overview).unwrap();
+        let parsed: WorkspaceOverview = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.worktrees.len(), 1);
+        assert_eq!(parsed.worktrees[0].path, "wt1");
+        assert_eq!(parsed.hunk_overlaps, vec!["file.txt"]);
+    }
+}

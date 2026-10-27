@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   getCommitLog,
   getCommitDetails,
@@ -16,6 +16,7 @@ import {
   type AiLogMatch,
 } from "../../lib/host";
 import { LogGraphLane } from "./LogGraphLane";
+import { computeGraphTopology } from "./graphTopology";
 import { DiffViewer } from "../changes/DiffViewer";
 import {
   RefreshIcon,
@@ -80,6 +81,171 @@ export function LogView({
     y: number;
     commit: LogCommit;
   } | null>(null);
+
+  // Right details panel sizing (resizable splitter)
+  const [detailsWidth, setDetailsWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("tongyun_log_details_width");
+      return saved ? Math.max(300, Math.min(1200, parseInt(saved, 10))) : 480;
+    } catch {
+      return 480;
+    }
+  });
+  const isResizingDetailsRef = useRef(false);
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
+
+  // Table column widths resizing state (persisted)
+  const [authorColWidth, setAuthorColWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("tongyun_log_col_author_width");
+      return saved ? Math.max(60, Math.min(300, parseInt(saved, 10))) : 100;
+    } catch {
+      return 100;
+    }
+  });
+
+  const [dateColWidth, setDateColWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("tongyun_log_col_date_width");
+      return saved ? Math.max(60, Math.min(240, parseInt(saved, 10))) : 95;
+    } catch {
+      return 95;
+    }
+  });
+
+  const [shaColWidth, setShaColWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("tongyun_log_col_sha_width");
+      return saved ? Math.max(55, Math.min(200, parseInt(saved, 10))) : 72;
+    } catch {
+      return 72;
+    }
+  });
+
+  // Column resize handler
+  const handleStartColResize = (
+    colKey: "author" | "date" | "sha",
+    e: React.MouseEvent
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const initialWidth =
+      colKey === "author"
+        ? authorColWidth
+        : colKey === "date"
+        ? dateColWidth
+        : shaColWidth;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      if (colKey === "author") {
+        const next = Math.max(60, Math.min(300, initialWidth + delta));
+        setAuthorColWidth(next);
+      } else if (colKey === "date") {
+        const next = Math.max(60, Math.min(240, initialWidth + delta));
+        setDateColWidth(next);
+      } else {
+        const next = Math.max(55, Math.min(200, initialWidth + delta));
+        setShaColWidth(next);
+      }
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      const delta = upEvent.clientX - startX;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+
+      let finalW: number;
+      if (colKey === "author") {
+        finalW = Math.max(60, Math.min(300, initialWidth + delta));
+        setAuthorColWidth(finalW);
+      } else if (colKey === "date") {
+        finalW = Math.max(60, Math.min(240, initialWidth + delta));
+        setDateColWidth(finalW);
+      } else {
+        finalW = Math.max(55, Math.min(200, initialWidth + delta));
+        setShaColWidth(finalW);
+      }
+
+      try {
+        localStorage.setItem(`tongyun_log_col_${colKey}_width`, finalW.toString());
+      } catch {
+        // Storage failure ignored
+      }
+
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleResetColWidth = (colKey: "author" | "date" | "sha") => {
+    const defaultW = colKey === "author" ? 100 : colKey === "date" ? 95 : 72;
+    if (colKey === "author") setAuthorColWidth(defaultW);
+    else if (colKey === "date") setDateColWidth(defaultW);
+    else setShaColWidth(defaultW);
+
+    try {
+      localStorage.setItem(`tongyun_log_col_${colKey}_width`, defaultW.toString());
+    } catch {
+      // Storage failure ignored
+    }
+  };
+
+  // Resize handler for log details panel
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingDetailsRef.current = true;
+    setIsDraggingSplitter(true);
+    const startX = e.clientX;
+    const startWidth = detailsWidth;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isResizingDetailsRef.current) return;
+      const delta = startX - moveEvent.clientX;
+      const newWidth = Math.max(280, Math.min(1200, startWidth + delta));
+      setDetailsWidth(newWidth);
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      isResizingDetailsRef.current = false;
+      setIsDraggingSplitter(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+
+      const delta = startX - upEvent.clientX;
+      const finalWidth = Math.max(280, Math.min(1200, startWidth + delta));
+      try {
+        localStorage.setItem("tongyun_log_details_width", finalWidth.toString());
+      } catch {
+        // Storage failure ignored
+      }
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleDoubleClickSplitter = () => {
+    setDetailsWidth(480);
+    try {
+      localStorage.setItem("tongyun_log_details_width", "480");
+    } catch {
+      // Storage failure ignored
+    }
+  };
 
   // Load file diff for commit
   const loadDiff = useCallback(
@@ -311,8 +477,19 @@ export function LogView({
     return commits.filter((c) => matchedCommitMap.has(c.oid));
   }, [commits, filterMatchedOnly, aiQueryResult, matchedCommitMap]);
 
+  // Calculate continuous graph lane topology
+  const graphTopology = useMemo(
+    () => computeGraphTopology(displayCommits),
+    [displayCommits]
+  );
+
   // Calculate max lane column for SVG sizing
-  const maxCol = displayCommits.reduce((max, c) => Math.max(max, c.col), 0);
+  const maxCol = useMemo(() => {
+    return graphTopology.reduce((max, r) => Math.max(max, r.maxCol), 0);
+  }, [graphTopology]);
+
+  // Dynamic width for graph column to prevent clipping on multiple branches
+  const graphColWidth = Math.max(64, (maxCol + 1) * 14 + 16);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -538,12 +715,61 @@ export function LogView({
           )}
 
           {/* Table Header */}
-          <div className="h-7 px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-[11px] font-semibold text-[var(--color-text-muted)] flex items-center shrink-0">
-            <div className="w-16">图形</div>
-            <div className="flex-1">提交信息</div>
-            <div className="w-24 text-right">作者</div>
-            <div className="w-24 text-right">日期</div>
-            <div className="w-18 text-right font-mono">SHA</div>
+          <div className="h-7 px-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-[11px] font-semibold text-[var(--color-text-muted)] flex items-center shrink-0 select-none">
+            <div style={{ width: `${graphColWidth}px` }} className="shrink-0">
+              图形
+            </div>
+            <div className="flex-1 overflow-hidden pr-2">
+              提交信息
+            </div>
+
+            {/* Author Header */}
+            <div
+              style={{ width: `${authorColWidth}px` }}
+              className="relative shrink-0 text-right pr-2 group/col"
+            >
+              <span>作者</span>
+              <div
+                onMouseDown={(e) => handleStartColResize("author", e)}
+                onDoubleClick={() => handleResetColWidth("author")}
+                title="按住拖拽调整作者列宽（双击恢复默认 100px）"
+                className="absolute -right-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-[var(--color-accent)]/50 active:bg-[var(--color-accent)] flex items-center justify-center z-10 select-none group-hover/col:opacity-100 opacity-0 transition-opacity"
+              >
+                <div className="w-[1px] h-3.5 bg-[var(--color-border-strong)]" />
+              </div>
+            </div>
+
+            {/* Date Header */}
+            <div
+              style={{ width: `${dateColWidth}px` }}
+              className="relative shrink-0 text-right pr-2 group/col"
+            >
+              <span>日期</span>
+              <div
+                onMouseDown={(e) => handleStartColResize("date", e)}
+                onDoubleClick={() => handleResetColWidth("date")}
+                title="按住拖拽调整日期列宽（双击恢复默认 95px）"
+                className="absolute -right-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-[var(--color-accent)]/50 active:bg-[var(--color-accent)] flex items-center justify-center z-10 select-none group-hover/col:opacity-100 opacity-0 transition-opacity"
+              >
+                <div className="w-[1px] h-3.5 bg-[var(--color-border-strong)]" />
+              </div>
+            </div>
+
+            {/* SHA Header */}
+            <div
+              style={{ width: `${shaColWidth}px` }}
+              className="relative shrink-0 text-right font-mono pr-1 group/col"
+            >
+              <span>SHA</span>
+              <div
+                onMouseDown={(e) => handleStartColResize("sha", e)}
+                onDoubleClick={() => handleResetColWidth("sha")}
+                title="按住拖拽调整 SHA 列宽（双击恢复默认 72px）"
+                className="absolute -right-1 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-[var(--color-accent)]/50 active:bg-[var(--color-accent)] flex items-center justify-center z-10 select-none group-hover/col:opacity-100 opacity-0 transition-opacity"
+              >
+                <div className="w-[1px] h-3.5 bg-[var(--color-border-strong)]" />
+              </div>
+            </div>
           </div>
 
           {/* Table Rows List */}
@@ -557,10 +783,11 @@ export function LogView({
                 {filterMatchedOnly ? "没有匹配 AI 查询的提交记录" : "没有匹配的提交记录"}
               </div>
             ) : (
-              displayCommits.map((commit) => {
+              displayCommits.map((commit, index) => {
                 const isSelected = commit.oid === selectedOid;
                 const formattedDate = formatDate(commit.timestamp);
                 const matchInfo = matchedCommitMap.get(commit.oid);
+                const rowInfo = graphTopology[index];
 
                 return (
                   <div
@@ -583,27 +810,50 @@ export function LogView({
                     }`}
                   >
                     {/* Graph Lane Cell */}
-                    <div className="w-16 shrink-0 flex items-center overflow-visible">
+                    <div
+                      style={{ width: `${graphColWidth}px` }}
+                      className="shrink-0 flex items-center overflow-hidden"
+                    >
                       <LogGraphLane
                         col={commit.col}
                         edges={commit.edges}
                         maxCol={maxCol}
+                        rowInfo={rowInfo}
                       />
                     </div>
 
                     {/* Commit summary & Ref Badges */}
                     <div className="flex-1 flex items-center gap-1.5 overflow-hidden pr-2">
-                      {/* Ref Badges (HEAD, Branches, Tags) */}
-                      {commit.refs.map((r, i) => (
-                        <span
-                          key={i}
-                          className={`px-1.5 py-0.2 rounded text-[10px] font-sans font-medium shrink-0 ${getRefBadgeClass(
-                            r
-                          )}`}
-                        >
-                          {r.name}
-                        </span>
-                      ))}
+                      {/* Ref Badges (Cleaned & Grouped to remove noise) */}
+                      {(() => {
+                        const badges = cleanRefBadges(commit.refs);
+                        const visibleBadges = badges.slice(0, 2);
+                        const hiddenCount = badges.length - visibleBadges.length;
+
+                        return (
+                          <>
+                            {visibleBadges.map((b, i) => (
+                              <span
+                                key={i}
+                                title={b.fullTitle}
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-sans font-medium shrink-0 max-w-[150px] truncate ${getRefBadgeClass(
+                                  b.kind
+                                )}`}
+                              >
+                                {b.label}
+                              </span>
+                            ))}
+                            {hiddenCount > 0 && (
+                              <span
+                                title={badges.map((b) => b.fullTitle).join("\n")}
+                                className="px-1 py-0.2 rounded text-[9px] font-sans font-medium shrink-0 bg-[var(--color-surface-raised)] border border-[var(--color-border)] text-[var(--color-text-muted)] cursor-help"
+                              >
+                                +{hiddenCount}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
 
                       {/* AI Match Badge */}
                       {matchInfo && (
@@ -622,17 +872,29 @@ export function LogView({
                     </div>
 
                     {/* Author Name */}
-                    <div className="w-24 shrink-0 text-right text-[11px] text-[var(--color-text-muted)] truncate font-sans">
+                    <div
+                      style={{ width: `${authorColWidth}px` }}
+                      className="shrink-0 text-right text-[11px] text-[var(--color-text-muted)] truncate font-sans pr-2"
+                      title={commit.author_name}
+                    >
                       {commit.author_name}
                     </div>
 
                     {/* Date */}
-                    <div className="w-24 shrink-0 text-right text-[10px] text-[var(--color-text-muted)] font-mono">
+                    <div
+                      style={{ width: `${dateColWidth}px` }}
+                      className="shrink-0 text-right text-[10px] text-[var(--color-text-muted)] font-mono pr-2"
+                      title={formattedDate}
+                    >
                       {formattedDate}
                     </div>
 
                     {/* Short SHA */}
-                    <div className="w-18 shrink-0 text-right text-[11px] font-mono opacity-70">
+                    <div
+                      style={{ width: `${shaColWidth}px` }}
+                      className="shrink-0 text-right text-[11px] font-mono opacity-70 pr-1"
+                      title={commit.oid}
+                    >
                       {commit.short_oid}
                     </div>
                   </div>
@@ -656,8 +918,33 @@ export function LogView({
           </div>
         </div>
 
+        {/* Splitter Resize Handle */}
+        <div
+          onMouseDown={handleMouseDownResize}
+          onDoubleClick={handleDoubleClickSplitter}
+          title="拖动调整日志列表与代码详情宽度（双击恢复默认 480px）"
+          className={`w-2 -ml-1 h-full cursor-col-resize z-20 shrink-0 select-none group relative transition-colors flex items-center justify-center ${
+            isDraggingSplitter
+              ? "bg-[var(--color-accent)]/40"
+              : "hover:bg-[var(--color-accent)]/20"
+          }`}
+        >
+          {/* 1px 细分割线 */}
+          <div className="w-[1px] h-full bg-[var(--color-border)] group-hover:bg-[var(--color-accent)] transition-colors" />
+
+          {/* 居中把手图标（3 个小抓手圆点） */}
+          <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-7 rounded-full bg-[var(--color-surface-raised)] border border-[var(--color-border)] group-hover:border-[var(--color-accent)] group-hover:bg-[var(--color-accent)] flex flex-col items-center justify-center gap-0.5 opacity-80 group-hover:opacity-100 transition-all shadow-2xs">
+            <div className="w-0.5 h-0.5 rounded-full bg-[var(--color-text-muted)] group-hover:bg-white" />
+            <div className="w-0.5 h-0.5 rounded-full bg-[var(--color-text-muted)] group-hover:bg-white" />
+            <div className="w-0.5 h-0.5 rounded-full bg-[var(--color-text-muted)] group-hover:bg-white" />
+          </div>
+        </div>
+
         {/* Right: Commit Details & Read-only Diff (S4 / AT-10c) */}
-        <div className="w-[420px] flex flex-col bg-[var(--color-surface)] shrink-0 overflow-hidden">
+        <div
+          style={{ width: `${detailsWidth}px` }}
+          className="flex flex-col bg-[var(--color-surface)] shrink-0 overflow-hidden"
+        >
           {detailsLoading ? (
             <div className="p-6 text-center text-[var(--color-text-muted)]">
               读取提交详情...
@@ -690,9 +977,27 @@ export function LogView({
                       </button>
                     )}
                   </div>
-                  <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
-                    {formatFullDate(details.author_timestamp)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextWidth = detailsWidth > 600 ? 480 : 800;
+                        setDetailsWidth(nextWidth);
+                        try {
+                          localStorage.setItem("tongyun_log_details_width", nextWidth.toString());
+                        } catch {
+                          // Storage failure ignored
+                        }
+                      }}
+                      className="px-1.5 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-raised)] text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer transition-colors"
+                      title={detailsWidth > 600 ? "恢复标准宽度 (480px)" : "宽屏模式查看代码 (800px)"}
+                    >
+                      {detailsWidth > 600 ? "标准宽度" : "宽屏看代码"}
+                    </button>
+                    <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                      {formatFullDate(details.author_timestamp)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="text-[11px] text-[var(--color-text-muted)]">
@@ -778,7 +1083,7 @@ export function LogView({
                     读取 diff...
                   </div>
                 ) : diff ? (
-                  <DiffViewer diff={diff} loading={false} error={null} />
+                  <DiffViewer diff={diff} loading={false} error={null} readOnly={true} />
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)] text-[11px]">
                     选择上方文件查看只读 diff
@@ -928,8 +1233,65 @@ function formatFullDate(timestamp: number): string {
   ).padStart(2, "0")}`;
 }
 
-function getRefBadgeClass(badge: RefBadge): string {
-  switch (badge.kind) {
+export interface CleanedRefBadge {
+  label: string;
+  fullTitle: string;
+  kind: "Head" | "LocalBranch" | "RemoteBranch" | "Tag" | "Other";
+}
+
+export function cleanRefBadges(refs: RefBadge[]): CleanedRefBadge[] {
+  if (!refs || refs.length === 0) return [];
+
+  const localBranches = new Set(
+    refs.filter((r) => r.kind === "LocalBranch").map((r) => r.name)
+  );
+
+  const cleaned: CleanedRefBadge[] = [];
+
+  for (const r of refs) {
+    if (r.kind === "Head") {
+      cleaned.push({
+        label: "HEAD",
+        fullTitle: "HEAD 检出指针",
+        kind: "Head",
+      });
+    } else if (r.kind === "LocalBranch") {
+      cleaned.push({
+        label: r.name,
+        fullTitle: `本地分支: ${r.name}`,
+        kind: "LocalBranch",
+      });
+    } else if (r.kind === "RemoteBranch") {
+      // 过滤与本地同名的冗余远程分支（如本地已显示 main，不再重复显示 origin/main）
+      const shortName = r.name.replace(/^origin\//, "");
+      if (localBranches.has(shortName)) {
+        continue;
+      }
+      cleaned.push({
+        label: r.name,
+        fullTitle: `远程分支: ${r.name}`,
+        kind: "RemoteBranch",
+      });
+    } else if (r.kind === "Tag") {
+      cleaned.push({
+        label: r.name,
+        fullTitle: `标签: ${r.name}`,
+        kind: "Tag",
+      });
+    } else {
+      cleaned.push({
+        label: r.name,
+        fullTitle: r.name,
+        kind: "Other",
+      });
+    }
+  }
+
+  return cleaned;
+}
+
+function getRefBadgeClass(badgeKind: string): string {
+  switch (badgeKind) {
     case "Head":
       return "bg-[var(--color-status-added)]/15 text-[var(--color-status-added)] border border-[var(--color-status-added)]/30";
     case "LocalBranch":

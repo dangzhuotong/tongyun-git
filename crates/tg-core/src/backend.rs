@@ -624,3 +624,147 @@ impl GitBackend for Git2Backend {
         Git2Backend::list_repo_files(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_repo_state() {
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Clean),
+            RepoState::Clean
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Merge),
+            RepoState::Merge
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Rebase),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RebaseInteractive),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RebaseMerge),
+            RepoState::Rebase
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::CherryPick),
+            RepoState::CherryPick
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::CherryPickSequence),
+            RepoState::CherryPick
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Revert),
+            RepoState::Revert
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::RevertSequence),
+            RepoState::Revert
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::Bisect),
+            RepoState::Bisect
+        );
+        assert_eq!(
+            map_repo_state(git2::RepositoryState::ApplyMailbox),
+            RepoState::Other
+        );
+    }
+
+    #[test]
+    fn test_repo_state_default() {
+        assert_eq!(RepoState::default(), RepoState::Clean);
+    }
+
+    #[test]
+    fn test_change_kind_serde_roundtrip() {
+        let kinds = vec![
+            (ChangeKind::Added, "\"Added\""),
+            (ChangeKind::Modified, "\"Modified\""),
+            (ChangeKind::Deleted, "\"Deleted\""),
+            (ChangeKind::Renamed, "\"Renamed\""),
+            (ChangeKind::TypeChange, "\"TypeChange\""),
+            (ChangeKind::Untracked, "\"Untracked\""),
+        ];
+
+        for (kind, expected_json) in kinds {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(json, expected_json);
+            let de: ChangeKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(kind, de);
+        }
+    }
+
+    #[test]
+    fn test_file_status_serde_roundtrip() {
+        let status = FileStatus {
+            path: "src/new_name.rs".to_string(),
+            old_path: Some("src/old_name.rs".to_string()),
+            index: Some(ChangeKind::Renamed),
+            worktree: Some(ChangeKind::Modified),
+            conflicted: false,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let de: FileStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(status, de);
+    }
+
+    #[test]
+    fn test_head_info_serde_roundtrip() {
+        let head = HeadInfo {
+            branch: Some("main".to_string()),
+            oid: Some("abc1234567890".to_string()),
+            unborn: false,
+            repo_state: RepoState::Clean,
+        };
+        let json = serde_json::to_string(&head).unwrap();
+        let de: HeadInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(head, de);
+    }
+
+    #[test]
+    fn test_diff_structures_serde_roundtrip() {
+        let line = DiffLine {
+            origin: '+',
+            old_lineno: None,
+            new_lineno: Some(1),
+            content: "println!(\"hello\");\n".to_string(),
+        };
+        let hunk = DiffHunk {
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 1,
+            header: "@@ -0,0 +1,1 @@".to_string(),
+            lines: vec![line],
+        };
+        let diff = FileDiff {
+            path: "main.rs".to_string(),
+            old_path: None,
+            staged: true,
+            is_binary: false,
+            old_size: Some(0),
+            new_size: Some(20),
+            is_crlf_change: false,
+            is_large: false,
+            hunks: vec![hunk],
+        };
+        let json = serde_json::to_string(&diff).unwrap();
+        let de: FileDiff = serde_json::from_str(&json).unwrap();
+        assert_eq!(diff, de);
+
+        let tree_file = TreeFile {
+            path: "main.rs".to_string(),
+            deleted_on_disk: false,
+        };
+        let tf_json = serde_json::to_string(&tree_file).unwrap();
+        let tf_de: TreeFile = serde_json::from_str(&tf_json).unwrap();
+        assert_eq!(tree_file, tf_de);
+    }
+}
