@@ -30,6 +30,15 @@
 
 > 注：`npm run check` 包含 Rust 检查（`lint:rust` 与 `test:rust`），Tauri 编译期会核验 `frontendDist`（即 `dist/` 目录）是否存在。全新检出或执行清理后，首次运行 `npm run check` 前需先运行 `npm run build` 生成一次 dist。
 
+## 依赖安全告警
+
+`npm audit` 现状：critical 0、high 0、moderate 2（2026-10-29）。
+
+- `zod`（high，GHSA-mrhx-c7xc-m3w5）已随 `npm audit fix` 升到 4.6.7（同一 major 内）。
+- `tinypool`（critical ×2，GHSA-5gmw-xhrv-c9v3、GHSA-85c8-ppgw-ccpr）原先随 vitest 3.2.7 固定在 1.1.1。用 `package.json` 的 `overrides` 钉到 2.2.0（修复版本），不升 vitest。已核对 1.1.1 → 2.2.0 的公开 API 无破坏性变化：导出的成员完全一致，`Tinypool` 类只新增可选字段（`filename` 放宽为可接受 `URL`、新增可选 `serialization`），`run()` 签名不变；forks 与 threads 两种 pool 各跑一遍 345 个前端用例全绿。
+- 剩下 2 个 moderate（GHSA-82fw-gwwq-j7x9 路径穿越、GHSA-qxg6-89mg-rqv8 未认证手动 mock 注册）由 vitest 3.2.7 固定依赖的 `@vitest/mocker` 3.2.7 引入，修复需要 vitest ≥ 4.1.11，属于跨大版本，本次不升级，只记录在此待后续单独评估。
+  - 已验证不能单独把 `@vitest/mocker` 覆盖到 4.1.12：mocker 4.x 的 `MockObjectOptions` 把 `spyOn` 改名为 `createMockInstance`，而 vitest 3 仍传 `spyOn`，无 factory 的 `vi.mock`（automock 路径）会直接报 ``createMockInstance` is not defined`。本仓库当前 23 处 `vi.mock` 全带 factory，automock 路径无覆盖，常规测试不会暴露这个不兼容，所以不能只看测试是否变绿。
+
 ## CI
 
 仓库已公开。日常检查仍集中在一台 Linux 运行器上；安装包分两条流水线，合进 main 不会发 Release。
@@ -64,7 +73,7 @@
 
 ## 许可证
 
-当前不放 LICENSE（私有仓库）。**是否开源、用什么许可证，在决定公开仓库时再定。** 依赖的许可证需要在那时一并核对，目前已知：Tauri（MIT / Apache-2.0）、git2（MIT / Apache-2.0）、libgit2（GPLv2 附链接例外，静态链接后闭源或任意开源许可证分发都允许）。
+当前不放 LICENSE。**仓库已经公开，但许可证选型尚未确定，补 LICENSE 前先与阿橦确认。** 依赖的许可证需要在那时一并核对，目前已知：Tauri（MIT / Apache-2.0）、git2（MIT / Apache-2.0）、libgit2（GPLv2 附链接例外，静态链接后闭源或任意开源许可证分发都允许）。
 
 ## 暂不做
 
