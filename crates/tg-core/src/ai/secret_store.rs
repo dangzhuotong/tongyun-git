@@ -1374,7 +1374,11 @@ mod tests {
     fn refuses_symlink_vault() {
         let dir = TempDir::new();
         let paths = dir.paths();
-        let store = FileSecretStore::open(paths.clone()).unwrap();
+        // `set` needs `&mut self`; on non-unix the binding is never mutated,
+        // so silence the unused_mut lint instead of dropping `mut` (which
+        // breaks the unix branch with E0596).
+        #[allow(unused_mut)]
+        let mut store = FileSecretStore::open(paths.clone()).unwrap();
         let outside = dir.0.join("outside.txt");
         fs::write(&outside, b"keep").unwrap();
         #[cfg(unix)]

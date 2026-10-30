@@ -55,9 +55,9 @@
 4. **Git 调用**：本地读写走 `GitBackend`；commit（含 amend）、fetch、pull、push、abort 走 `CliRunner`（决策 0001）。新增调用系统 git 的地方必须经过 `CliRunner`，以便统一设置 `LC_ALL=C`、`GIT_TERMINAL_PROMPT=0`、记录操作日志和打码 URL 凭据。
 5. **前后端接口**：改 Tauri 命令的参数或返回结构时，同步修改前端类型和调用方，并跑受影响的 L1、L2 测试。
 6. **需求编号稳定**：行为变化时更新 PRD 原条目和对应 AT 用例，不新开重复编号。
-7. **远程与发布**：只推 GitHub（`dangzhuotong/tongyun-git`，私有）。不接 CNB、不同步 Gitee。打标签发版按 [docs/development.md](docs/development.md)，只在明确要求时执行。
-8. **许可证**：现在不加 LICENSE 文件，公开仓库时再定。
-9. **依赖**：新增依赖要说明必要性并核对许可证；不为一个界面引入第二套组件库（以 ui-direction.md 第 8 节为准）。
+7. **远程与发布**：只推 GitHub（`dangzhuotong/tongyun-git`，仓库已公开）。不接 CNB、不同步 Gitee。打标签发版按 [docs/development.md](docs/development.md)，只在明确要求时执行。
+8. **许可证**：现在不加 LICENSE 文件，许可证选型待定（仓库虽已公开，但许可证尚未确定，补之前先与阿橦确认）。
+9. **依赖**：新增依赖要说明必要性并核对许可证；不为一个界面引入第二套组件库（以 ui-direction.md 第 8 节为准）。安全告警升级不跨大版本，跨大版本的只在 PR 里列出并说明，不擅自升级。
 
 ## 提交与合并
 

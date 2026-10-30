@@ -39,7 +39,8 @@ npm run tauri dev
 npm run check
 
 # 打包生产环境单文件客户端（不签名、不生成更新包）
-npx tauri build --no-bundle -- --config src-tauri/tauri.unsigned.json
+# 注意：--config 必须放在 -- 之前，否则会被透传给 cargo 而不是 tauri
+npm run tauri build -- --no-bundle --config src-tauri/tauri.unsigned.json
 ```
 
 ## 检查更新
